@@ -57,8 +57,7 @@ def main():
         cards = [
             (48, "facility_ranking.png"),
             (49, "monthly_anomaly_rate.png"),
-            (50, "rolling_24h_average.png"),
-            (51, "real_vs_synthetic_comparison.png")
+            (50, "rolling_24h_average.png")
         ]
 
         for card_id, filename in cards:

@@ -383,10 +383,10 @@ To make the SQL analytics accessible and actionable for executive decision-maker
 |  Visualises ranking from 05_facility_ranking.sql                       |  Monthly Anomaly   |
 |  Identifies highest-performing solar & wind plants                     |  Rate Trend (04)   |
 +------------------------------------------------------------------------+--------------------+
-|  [Line Chart] Rolling 24h Average Power by Type                        |  [Line Chart]      |
-|  Demonstrates window functions (AVG OVER 23 PRECEDING) from 03         |  Real vs Synthetic |
-|  Compares solar vs wind diurnal generation curves                      |  Wind Patterns (08)|
-+------------------------------------------------------------------------+--------------------+
+|  [Line Chart] Rolling 24h Average Power by Type                                             |
+|  Demonstrates window functions (AVG OVER 23 PRECEDING) from 03                              |
+|  Compares solar vs wind diurnal generation curves                                           |
++---------------------------------------------------------------------------------------------+
 ```
 
 ### Full Dashboard Overview
@@ -400,6 +400,3 @@ To make the SQL analytics accessible and actionable for executive decision-maker
 
 ### 3. Rolling 24h Average Power by Facility Type
 ![Rolling 24h Average Power by Facility Type](docs/screenshots/rolling_24h_average.png)
-
-### 4. Real vs. Synthetic Wind Pattern Comparison
-![Real vs. Synthetic Wind Pattern Comparison](docs/screenshots/real_vs_synthetic_comparison.png)
