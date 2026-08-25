@@ -65,6 +65,15 @@ def main():
             print(f"Taking screenshot of Card {card_id} -> {filename}...")
             page.goto(f"{METABASE_URL}/question/{card_id}")
             page.wait_for_timeout(4000) # wait for query and chart rendering
+            
+            try:
+                exploring_btn = page.get_by_text("Start exploring")
+                if exploring_btn.is_visible():
+                    exploring_btn.click()
+                    page.wait_for_timeout(1000)
+            except Exception:
+                pass
+                
             page.screenshot(path=os.path.join(SCREENSHOTS_DIR, filename))
             print(f"  ✓ Saved {filename}")
 
