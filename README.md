@@ -1,6 +1,10 @@
 # Energy Facility Performance & Anomaly Analytics Platform
 
 [![CI Pipeline](https://github.com/miladgk/energy-grid-sql-pipeline/actions/workflows/ci.yml/badge.svg)](https://github.com/miladgk/energy-grid-sql-pipeline/actions/workflows/ci.yml)
+![Python 3.11](https://img.shields.io/badge/python-3.11-blue.svg)
+![PostgreSQL 15](https://img.shields.io/badge/postgres-15-blue.svg)
+![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
 A local data engineering project that ingests, transforms, and analyses
 operational time-series data from a fictional network of 20 industrial energy
@@ -13,32 +17,15 @@ analysis → automated CSV reporting → FastAPI JSON endpoint.
 
 ## Architecture
 
-```
-┌─────────────────────┐
-│  generate_data.py   │  Creates ~6.3 M synthetic rows
-│  (Pandas + NumPy)   │  at 5-minute resolution
-└────────┬────────────┘
-         │  data/raw/*.csv
-         ▼
-┌─────────────────────┐
-│    ingest.py        │  Chunked loading (5 k rows/batch)
-│    (psycopg2)       │  ON CONFLICT DO NOTHING — idempotent
-└────────┬────────────┘
-         │  SQL COPY
-         ▼
-┌─────────────────────────────────────────────────────┐
-│              PostgreSQL 15  (Docker)                │
-│                                                     │
-│   facilities ──< sensors ──< readings               │
-│                              (6.3 M rows, indexed)  │
-└──────┬───────────────────────────────┬──────────────┘
-       │  pandas.read_sql_query        │  psycopg2
-       ▼                               ▼
-┌─────────────────┐          ┌──────────────────────┐
-│  run_report.py  │          │       api.py         │
-│  SQL → CSV      │          │  FastAPI  :8000      │
-│  outputs/*.csv  │          │  GET /api/anomalies  │
-└─────────────────┘          └──────────────────────┘
+```mermaid
+flowchart TD
+    A[generate_data.py<br/>Pandas + NumPy] -->|Creates ~6.3 M rows<br/>5-minute resolution| B[(data/raw/*.csv)]
+    B --> C[ingest.py<br/>psycopg2]
+    C -->|Chunked loading<br/>ON CONFLICT DO NOTHING| D[(PostgreSQL 15<br/>Docker)]
+    D -->|pandas.read_sql_query| E[run_report.py<br/>SQL → CSV]
+    E --> F[outputs/*.csv]
+    D -->|psycopg2| G[api.py<br/>FastAPI :8000]
+    G --> H[GET /api/anomalies]
 ```
 
 ---
