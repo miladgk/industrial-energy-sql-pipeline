@@ -1,7 +1,12 @@
 """Generate and load the full synthetic dataset into a remote PostgreSQL database."""
 
 import os
+import sys
 from pathlib import Path
+
+# Ensure the project root is on sys.path so `src.*` imports work regardless of
+# the working directory or whether PYTHONPATH is set manually.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.generate_data import main as generate_data
 from src.db_connection import get_connection

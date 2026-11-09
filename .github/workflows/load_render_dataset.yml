@@ -1,0 +1,64 @@
+name: Load Dataset → Render PostgreSQL
+
+# دستی اجرا می‌شود؛ هیچ push/schedule‌ای آن را فعال نمی‌کند.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: >
+          برای تأیید تایپ کنید: load-6m
+          (این عملیات ~6.3 میلیون رکورد در Render درج می‌کند)
+        required: true
+        default: ""
+
+jobs:
+  load:
+    name: Generate & ingest 6.3 M readings
+    runs-on: ubuntu-latest
+
+    # ─── تمام کارهای سنگین روی سرورهای GitHub اجرا می‌شود ───────────────────
+    # نیاز به آپلود لوکال یا تنظیم PYTHONPATH دستی وجود ندارد.
+
+    steps:
+      # ── ۱. دریافت کد ────────────────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── ۲. راه‌اندازی Python ─────────────────────────────────────────────────
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      # ── ۳. نصب وابستگی‌ها ────────────────────────────────────────────────────
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # ── ۴. تأیید ورودی (جلوگیری از اجرای تصادفی) ────────────────────────────
+      - name: Validate confirmation input
+        run: |
+          if [ "${{ github.event.inputs.confirm }}" != "load-6m" ]; then
+            echo "❌ تأیید اشتباه است. لطفاً دقیقاً «load-6m» را وارد کنید."
+            exit 1
+          fi
+
+      # ── ۵. اجرای اسکریپت بارگذاری ────────────────────────────────────────────
+      # متغیر DATABASE_URL از GitHub Secrets خوانده می‌شود.
+      # کلید Secret را در: Settings → Secrets and variables → Actions
+      # با نام RENDER_DATABASE_URL تعریف کنید.
+      - name: Generate data & load into Render PostgreSQL
+        env:
+          DATABASE_URL: ${{ secrets.RENDER_DATABASE_URL }}
+        run: |
+          python scripts/load_render_dataset.py
+
+      # ── ۶. خلاصه نتیجه ───────────────────────────────────────────────────────
+      - name: Summary
+        if: success()
+        run: |
+          echo "✅ بارگذاری با موفقیت تکمیل شد."
+          echo "   رکوردها در Render PostgreSQL درج شدند."
+
