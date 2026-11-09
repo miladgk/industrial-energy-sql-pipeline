@@ -30,7 +30,7 @@ from typing import Optional
 
 import psycopg2.extras
 from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 
 sys.path.insert(0, os.path.dirname(__file__))
 from db_connection import get_connection
@@ -43,6 +43,19 @@ app = FastAPI(
         "PostgreSQL database."
     ),
     version="1.0.0",
+)
+
+allowed_origins = [
+    origin.strip()
+    for origin in os.environ.get("CORS_ORIGINS", "*").split(",")
+    if origin.strip()
+]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allowed_origins,
+    allow_credentials="*" not in allowed_origins,
+    allow_methods=["GET", "OPTIONS"],
+    allow_headers=["*"],
 )
 
 
@@ -70,6 +83,75 @@ def _fetch_rows(sql: str, params: tuple = ()) -> list[dict]:
 def health_check():
     """Liveness probe — returns 200 if the API process is running."""
     return {"status": "ok"}
+
+
+@app.get("/api/overview", tags=["analytics"])
+def get_overview():
+    """Return the current dashboard KPIs and latest reading timestamp."""
+    sql = """
+        SELECT
+            (SELECT COUNT(*) FROM facilities) AS facility_count,
+            (SELECT COUNT(*) FROM sensors) AS sensor_count,
+            (SELECT COUNT(*) FROM readings) AS reading_count,
+            (SELECT COUNT(*) FROM readings WHERE is_anomaly = TRUE) AS anomaly_count,
+            (SELECT MAX(recorded_at) FROM readings) AS latest_reading_at,
+            (SELECT AVG(value) FROM readings r
+             JOIN sensors s ON s.sensor_id = r.sensor_id
+             WHERE s.sensor_type = 'power_output'
+               AND r.is_anomaly = FALSE) AS avg_power_output_mw
+    """
+    try:
+        row = _fetch_rows(sql)[0]
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+    for key, value in row.items():
+        if hasattr(value, "isoformat"):
+            row[key] = value.isoformat()
+        elif hasattr(value, "__float__"):
+            row[key] = float(value)
+    row["anomaly_rate_pct"] = (
+        round(row["anomaly_count"] / row["reading_count"] * 100, 2)
+        if row["reading_count"]
+        else 0
+    )
+    return row
+
+
+@app.get("/api/output-trend", tags=["analytics"])
+def get_output_trend(
+    hours: int = Query(default=24, ge=1, le=168),
+    facility_type: Optional[str] = Query(default=None),
+):
+    """Return hourly average power output for the dashboard trend chart."""
+    type_filter = "AND f.facility_type = %s" if facility_type else ""
+    params: tuple = (facility_type,) if facility_type else ()
+    sql = f"""
+        SELECT
+            DATE_TRUNC('hour', r.recorded_at) AS recorded_at,
+            ROUND(AVG(r.value)::NUMERIC, 2) AS avg_output_mw,
+            COUNT(*) AS reading_count
+        FROM readings r
+        JOIN sensors s ON s.sensor_id = r.sensor_id
+        JOIN facilities f ON f.facility_id = s.facility_id
+        WHERE s.sensor_type = 'power_output'
+          AND r.is_anomaly = FALSE
+          AND r.recorded_at >= NOW() - (%s * INTERVAL '1 hour')
+          {type_filter}
+        GROUP BY DATE_TRUNC('hour', r.recorded_at)
+        ORDER BY recorded_at
+    """
+    try:
+        rows = _fetch_rows(sql, (hours,) + params)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+    for row in rows:
+        for key, value in row.items():
+            if hasattr(value, "isoformat"):
+                row[key] = value.isoformat()
+            elif hasattr(value, "__float__"):
+                row[key] = float(value)
+    return {"hours": hours, "facility_type": facility_type, "points": rows}
 
 
 @app.get("/api/anomalies", tags=["analytics"])

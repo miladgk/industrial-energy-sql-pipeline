@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Industrial Energy Analytics</title>
+  <style>
+    :root{--bg:#071211;--surface:#102a25;--surface-2:#0b1d1a;--ink:#ecf7f2;--muted:#91aaa2;--line:rgba(147,201,187,.2);--accent:#65e1bd;--warn:#f4bd73;--sans:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;--mono:"DM Mono",ui-monospace,monospace}
+    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.5}body:before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.35;background-image:linear-gradient(rgba(101,225,189,.04) 1px,transparent 1px),linear-gradient(90deg,rgba(101,225,189,.04) 1px,transparent 1px);background-size:42px 42px}.shell{width:min(1180px,calc(100% - 32px));margin:auto;position:relative}.topbar{display:flex;justify-content:space-between;align-items:center;padding:24px 0;border-bottom:1px solid var(--line)}.brand{font-weight:800;letter-spacing:-.03em}.back{color:var(--accent);font:500 .72rem var(--mono);text-decoration:none}.eyebrow{color:var(--accent);font:500 .68rem var(--mono);letter-spacing:.12em;text-transform:uppercase}.hero{padding:72px 0 42px}.hero h1{font-size:clamp(2.8rem,7vw,6.2rem);line-height:.95;letter-spacing:-.07em;margin:16px 0;background:linear-gradient(100deg,#e9fff7,var(--accent),#a994ff);-webkit-background-clip:text;background-clip:text;color:transparent}.hero p{max-width:620px;color:var(--muted);font-size:1.02rem}.status{display:inline-flex;align-items:center;gap:8px;color:var(--muted);font:500 .7rem var(--mono)}.dot{width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 14px var(--accent)}.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:26px 0}.kpi,.panel{border:1px solid var(--line);border-radius:12px;background:linear-gradient(145deg,rgba(18,54,46,.8),rgba(7,22,19,.9))}.kpi{padding:18px}.kpi strong{display:block;color:var(--accent);font-size:1.7rem;letter-spacing:-.06em}.kpi span{color:var(--muted);font:400 .66rem var(--mono)}.grid{display:grid;grid-template-columns:1.45fr .8fr;gap:14px}.panel{padding:22px}.panel h2{font-size:1rem;margin:0 0 18px}.chart-wrap{height:320px}.chart{width:100%;height:100%}.table-wrap{overflow:auto}.table{width:100%;border-collapse:collapse;font-size:.78rem}.table th,.table td{text-align:left;padding:11px 8px;border-bottom:1px solid var(--line);white-space:nowrap}.table th{color:var(--accent);font:500 .62rem var(--mono)}.table td{color:var(--muted)}.error{color:var(--warn);font:500 .76rem var(--mono);min-height:1.2em}.footer{padding:48px 0;color:var(--muted);font:400 .68rem var(--mono)}@media(max-width:800px){.kpis{grid-template-columns:repeat(2,1fr)}.grid{grid-template-columns:1fr}}@media(max-width:520px){.hero{padding-top:46px}.kpi{padding:13px}.kpi strong{font-size:1.35rem}}
+  </style>
+</head>
+<body>
+  <header class="shell topbar"><strong class="brand">Industrial Energy Analytics</strong><a class="back" href="https://miladgk.github.io/" target="_blank" rel="noopener noreferrer">Milad Ghaemi ↗</a></header>
+  <main class="shell">
+    <section class="hero">
+      <div class="eyebrow">LIVE DATA PRODUCT / ENERGY SYSTEMS</div>
+      <h1>From telemetry<br>to operational insight.</h1>
+      <p>Interactive analytics for industrial energy facilities, powered by a FastAPI service and PostgreSQL warehouse.</p>
+      <div class="status"><span class="dot"></span><span id="status">Connecting to live API...</span></div>
+    </section>
+    <section class="kpis">
+      <div class="kpi"><strong id="facility-count">—</strong><span>facilities</span></div>
+      <div class="kpi"><strong id="reading-count">—</strong><span>readings</span></div>
+      <div class="kpi"><strong id="anomaly-rate">—</strong><span>anomaly rate</span></div>
+      <div class="kpi"><strong id="latest-reading">—</strong><span>latest reading</span></div>
+    </section>
+    <div class="grid">
+      <section class="panel"><h2>Average power output / last 24 hours</h2><div class="chart-wrap"><svg id="trend-chart" class="chart" viewBox="0 0 800 320" role="img" aria-label="Average power output trend"></svg></div><p id="trend-error" class="error"></p></section>
+      <section class="panel"><h2>Facility efficiency ranking</h2><div class="table-wrap"><table class="table"><thead><tr><th>#</th><th>Facility</th><th>Efficiency</th></tr></thead><tbody id="ranking"></tbody></table></div><p id="ranking-error" class="error"></p></section>
+    </div>
+  </main>
+  <footer class="shell footer">Refreshes from the live API every 60 seconds · Industrial Energy SQL Pipeline</footer>
+  <script>
+    const API_BASE_URL = "https://industrial-energy-api.onrender.com";
+    const $ = id => document.getElementById(id);
+    const formatNumber = value => new Intl.NumberFormat().format(value ?? 0);
+    function drawTrend(points) {
+      const svg = $("trend-chart"), width = 800, height = 320, pad = 32;
+      svg.replaceChildren();
+      if (!points.length) { $("trend-error").textContent = "No trend data is available yet."; return; }
+      const values = points.map(point => Number(point.avg_output_mw) || 0);
+      const max = Math.max(...values, 1), min = Math.min(...values, 0), range = max - min || 1;
+      const x = index => pad + index * (width - pad * 2) / Math.max(points.length - 1, 1);
+      const y = value => height - pad - (value - min) * (height - pad * 2) / range;
+      const path = values.map((value, index) => `${index ? "L" : "M"}${x(index).toFixed(1)},${y(value).toFixed(1)}`).join(" ");
+      svg.innerHTML = `<path d="${path}" fill="none" stroke="#65e1bd" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><line x1="${pad}" y1="${height-pad}" x2="${width-pad}" y2="${height-pad}" stroke="rgba(147,201,187,.25)"/>`;
+    }
+    async function loadDashboard() {
+      $("status").textContent = "Refreshing live data...";
+      try {
+        const [overviewResponse, trendResponse, rankingResponse] = await Promise.all([
+          fetch(`${API_BASE_URL}/api/overview`),
+          fetch(`${API_BASE_URL}/api/output-trend?hours=24`),
+          fetch(`${API_BASE_URL}/api/facilities/ranking`)
+        ]);
+        if (![overviewResponse, trendResponse, rankingResponse].every(response => response.ok)) throw new Error("The API returned an error.");
+        const overview = await overviewResponse.json(), trend = await trendResponse.json(), ranking = await rankingResponse.json();
+        $("facility-count").textContent = formatNumber(overview.facility_count);
+        $("reading-count").textContent = formatNumber(overview.reading_count);
+        $("anomaly-rate").textContent = `${overview.anomaly_rate_pct}%`;
+        $("latest-reading").textContent = overview.latest_reading_at ? new Date(overview.latest_reading_at).toLocaleString() : "—";
+        drawTrend(trend.points || []);
+        $("ranking").innerHTML = (ranking.facilities || []).slice(0, 10).map(row => `<tr><td>${row.overall_rank}</td><td>${row.facility_name}</td><td>${row.avg_efficiency_pct}%</td></tr>`).join("");
+        $("status").textContent = `Live · updated ${new Date().toLocaleTimeString()}`;
+        $("trend-error").textContent = $("ranking-error").textContent = "";
+      } catch (error) {
+        $("status").textContent = "API unavailable";
+        $("trend-error").textContent = error.message;
+        $("ranking-error").textContent = "Connect the Render API to load rankings.";
+      }
+    }
+    loadDashboard();
+    setInterval(loadDashboard, 60000);
+  </script>
+</body>
+</html>

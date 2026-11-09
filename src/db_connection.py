@@ -45,6 +45,10 @@ def get_connection(config_path: str = _CONFIG_PATH) -> PgConnection:
     psycopg2.OperationalError
         If the database cannot be reached with the supplied credentials.
     """
+    database_url = os.environ.get("DATABASE_URL")
+    if database_url:
+        return psycopg2.connect(database_url, sslmode=os.environ.get("DATABASE_SSLMODE", "prefer"))
+
     if not os.path.exists(config_path):
         raise FileNotFoundError(
             f"Database config not found at '{config_path}'.\n"

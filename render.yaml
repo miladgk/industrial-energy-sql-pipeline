@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: industrial-energy-api
+    runtime: docker
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: industrial-energy-db
+          property: connectionString
+      - key: DATABASE_SSLMODE
+        value: require
+      - key: CORS_ORIGINS
+        value: https://miladgk.github.io
+
+databases:
+  - name: industrial-energy-db
+    plan: free
