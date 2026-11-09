@@ -17,6 +17,7 @@ Reproducibility: numpy seed(42) throughout.
 """
 
 import os
+import sys
 import numpy as np
 import pandas as pd
 
@@ -231,6 +232,5 @@ def main():
     print(f"  Anomaly %  : {actual_anomaly_pct:.2f}%  (target ~2.00%)")
 
 if __name__ == "__main__":
-    import sys
     main()
 
