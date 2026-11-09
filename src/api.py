@@ -136,7 +136,9 @@ def get_output_trend(
         JOIN facilities f ON f.facility_id = s.facility_id
         WHERE s.sensor_type = 'power_output'
           AND r.is_anomaly = FALSE
-          AND r.recorded_at >= NOW() - (%s * INTERVAL '1 hour')
+          AND r.recorded_at >= (
+              SELECT MAX(recorded_at) FROM readings
+          ) - (%s * INTERVAL '1 hour')
           {type_filter}
         GROUP BY DATE_TRUNC('hour', r.recorded_at)
         ORDER BY recorded_at
