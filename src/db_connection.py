@@ -47,7 +47,16 @@ def get_connection(config_path: str = _CONFIG_PATH) -> PgConnection:
     """
     database_url = os.environ.get("DATABASE_URL")
     if database_url:
-        return psycopg2.connect(database_url, sslmode=os.environ.get("DATABASE_SSLMODE", "prefer"))
+        return psycopg2.connect(
+            database_url,
+            sslmode=os.environ.get("DATABASE_SSLMODE", "prefer"),
+            # TCP keepalives — prevent the SSL socket from being silently
+            # dropped by firewalls / proxies during long-running bulk loads.
+            keepalives=1,
+            keepalives_idle=30,
+            keepalives_interval=10,
+            keepalives_count=5,
+        )
 
     if not os.path.exists(config_path):
         raise FileNotFoundError(
