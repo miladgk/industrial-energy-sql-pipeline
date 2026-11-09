@@ -89,7 +89,7 @@ def ingest_sensors(conn: PgConnection, filepath: str) -> None:
 _INSERT_READING = """
     INSERT INTO readings (reading_id, sensor_id, recorded_at, value, is_anomaly)
     VALUES (%s, %s, %s, %s, %s)
-    ON CONFLICT (reading_id, recorded_at) DO NOTHING
+    ON CONFLICT (reading_id) DO NOTHING
 """
 
 def ingest_readings(

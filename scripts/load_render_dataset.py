@@ -18,31 +18,31 @@ RAW_DIR = ROOT / "data" / "raw"
 
 
 def load_readings_fast(connection) -> None:
-    """Bulk-load readings through PostgreSQL COPY and preserve idempotency."""
+    """Bulk-load readings into Render PostgreSQL via COPY.
+
+    Strategy: TRUNCATE → COPY directly into the target table.
+    * No staging table needed — avoids the ON CONFLICT constraint issue
+      (readings has PRIMARY KEY on reading_id only, not (reading_id, recorded_at)).
+    * TRUNCATE + COPY is the fastest possible ingest path for a full reload.
+    * Safe to re-run: TRUNCATE clears any previous partial load before writing.
+    """
     with connection.cursor() as cursor:
-        cursor.execute(
-            """
-            CREATE TEMP TABLE readings_import (LIKE readings INCLUDING DEFAULTS)
-            ON COMMIT DROP
-            """
-        )
+        # Clear any previously loaded rows so this is idempotent.
+        cursor.execute("TRUNCATE TABLE readings RESTART IDENTITY CASCADE;")
+
         with (RAW_DIR / "readings.csv").open("r", encoding="utf-8") as readings_file:
             cursor.copy_expert(
                 """
-                COPY readings_import (reading_id, sensor_id, recorded_at, value, is_anomaly)
+                COPY readings (reading_id, sensor_id, recorded_at, value, is_anomaly)
                 FROM STDIN WITH (FORMAT CSV, HEADER TRUE)
                 """,
                 readings_file,
             )
-        cursor.execute(
-            """
-            INSERT INTO readings (reading_id, sensor_id, recorded_at, value, is_anomaly)
-            SELECT reading_id, sensor_id, recorded_at, value, is_anomaly
-            FROM readings_import
-            ON CONFLICT (reading_id, recorded_at) DO NOTHING
-            """
-        )
-        print(f"Loaded {cursor.rowcount:,} readings into Render PostgreSQL.")
+
+        # cursor.rowcount is -1 after COPY; query the actual count instead.
+        cursor.execute("SELECT COUNT(*) FROM readings;")
+        row_count = cursor.fetchone()[0]
+        print(f"Loaded {row_count:,} readings into Render PostgreSQL.")
     connection.commit()
 
 
