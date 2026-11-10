@@ -49,13 +49,13 @@
       const yTicks = Array.from({length: tickCount + 1}, (_, index) => {
         const value = min + range * index / tickCount;
         const tickY = y(value);
-        return `<line x1="${plot.left}" y1="${tickY}" x2="${width - plot.right}" y2="${tickY}" stroke="rgba(147,201,187,.14)"/><text x="${plot.left - 10}" y="${tickY + 4}" text-anchor="end" fill="#91aaa2" font-size="12">${value.toFixed(0)}</text>`;
+        return `<line x1="${plot.left}" y1="${tickY}" x2="${width - plot.right}" y2="${tickY}" stroke="rgba(147,201,187,.14)"/><text x="${plot.left - 10}" y="${tickY + 6}" text-anchor="end" fill="#91aaa2" font-size="18">${value.toFixed(0)}</text>`;
       }).join("");
       const xLabels = points.filter((_, index) => index % Math.max(1, Math.ceil(points.length / 6)) === 0).map(point => {
         const index = points.indexOf(point);
-        return `<text x="${x(index)}" y="${height - 28}" text-anchor="middle" fill="#91aaa2" font-size="12">${new Date(point.recorded_at).toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"})}</text>`;
+        return `<text x="${x(index)}" y="${height - 28}" text-anchor="middle" fill="#91aaa2" font-size="18">${new Date(point.recorded_at).toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"})}</text>`;
       }).join("");
-      svg.innerHTML = `${yTicks}<path d="${path}" fill="none" stroke="#65e1bd" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><line x1="${plot.left}" y1="${height - plot.bottom}" x2="${width - plot.right}" y2="${height - plot.bottom}" stroke="rgba(147,201,187,.35)"/><text x="16" y="${height / 2}" transform="rotate(-90 16 ${height / 2})" text-anchor="middle" fill="#91aaa2" font-size="12">Average output (MW)</text><text x="${(plot.left + width - plot.right) / 2}" y="${height - 6}" text-anchor="middle" fill="#91aaa2" font-size="12">Time</text>${xLabels}`;
+      svg.innerHTML = `${yTicks}<path d="${path}" fill="none" stroke="#65e1bd" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><line x1="${plot.left}" y1="${height - plot.bottom}" x2="${width - plot.right}" y2="${height - plot.bottom}" stroke="rgba(147,201,187,.35)"/><text x="16" y="${height / 2}" transform="rotate(-90 16 ${height / 2})" text-anchor="middle" fill="#91aaa2" font-size="18">Average output (MW)</text><text x="${(plot.left + width - plot.right) / 2}" y="${height - 6}" text-anchor="middle" fill="#91aaa2" font-size="18">Time</text>${xLabels}`;
     }
     async function loadDashboard() {
       $("status").textContent = "Refreshing live data...";
