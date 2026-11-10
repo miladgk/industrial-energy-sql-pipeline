@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title>Industrial Energy Analytics</title>
+  <rect width="64" height="64" rx="16" fill="#071211"/>
+  <path d="M14 48V29l10-7v26M24 48V17l10-6v37M34 48V25l10-6v29M44 48V31l7-4v21" fill="none" stroke="#65e1bd" stroke-width="4" stroke-linejoin="round"/>
+  <path d="m35 18-7 13h7l-4 12 11-16h-7z" fill="#f4bd73" stroke="#fff1d6" stroke-width="1.5" stroke-linejoin="round"/>
+  <path d="M10 49h44" stroke="#d7fff1" stroke-width="3" stroke-linecap="round"/>
+</svg>
