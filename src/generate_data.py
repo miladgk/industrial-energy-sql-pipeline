@@ -100,13 +100,17 @@ def generate_readings(
     facilities: pd.DataFrame,
     interval_minutes: int = INTERVAL_MINS,
     rows_limit: int = None,
-    target_date: str = None
+    target_date: str = None,
+    days: int = None,
 ) -> pd.DataFrame:
     """
     Generate time-series readings at *interval_minutes* resolution.
-    If target_date is specified, generates only for that date.
-    Otherwise generates for the full calendar year 2023.
-    If rows_limit is specified, scales down the number of timestamps to fit.
+
+    Priority of mode selection (first match wins):
+      1. ``target_date`` — single day, used for incremental loads.
+      2. ``days``        — explicit window starting 2023-01-01 (e.g. 30 days).
+      3. ``rows_limit``  — back-calculates the number of timestamps per sensor.
+      4. default         — full calendar year 2023.
 
     Returns a DataFrame with columns:
         reading_id, sensor_id, recorded_at, value, is_anomaly
@@ -115,6 +119,16 @@ def generate_readings(
         start_ts = f"{target_date} 00:00"
         end_ts   = f"{target_date} 23:55"
         timestamps = pd.date_range(start=start_ts, end=end_ts, freq=f"{interval_minutes}min")
+        n_timestamps = len(timestamps)
+    elif days is not None:
+        # Build a clean date-range window: 2023-01-01 00:00 … 2023-01-<days> 23:55
+        from datetime import timedelta, date
+        end_date = date(2023, 1, 1) + timedelta(days=days - 1)
+        timestamps = pd.date_range(
+            start="2023-01-01 00:00",
+            end=f"{end_date} 23:55",
+            freq=f"{interval_minutes}min",
+        )
         n_timestamps = len(timestamps)
     elif rows_limit is not None:
         n_timestamps = max(1, rows_limit // len(sensors))
@@ -214,12 +228,20 @@ def main():
         sensors.to_csv(sen_path, index=False)
         print(f"  ✓ {len(sensors):,} rows → {sen_path}")
 
-        print("Generating readings (this may take 30–60 seconds) …")
+        print("Generating readings (this may take a few seconds) …")
         rows_limit = args.rows
-        if rows_limit is None and args.days != 365:
-            rows_limit = len(sensors) * args.days * (1440 // args.interval)
+        # ``--days`` builds a clean calendar window; ``--rows`` overrides it.
+        days_window = None if args.rows is not None else (
+            args.days if args.days != 365 else None
+        )
 
-        readings = generate_readings(sensors, facilities, interval_minutes=args.interval, rows_limit=rows_limit)
+        readings = generate_readings(
+            sensors,
+            facilities,
+            interval_minutes=args.interval,
+            rows_limit=rows_limit,
+            days=days_window,
+        )
         red_path = os.path.join(RAW_DIR, "readings.csv")
         readings.to_csv(red_path, index=False)
         print(f"  ✓ {len(readings):,} rows → {red_path}")

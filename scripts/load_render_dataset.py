@@ -17,9 +17,10 @@ from src.ingest import ingest_facilities, ingest_sensors
 ROOT    = Path(__file__).resolve().parents[1]
 RAW_DIR = ROOT / "data" / "raw"
 
-# Number of CSV rows sent per COPY call.  200 k rows ≈ 30–40 MB per chunk,
-# keeping each round-trip well under typical proxy / SSL idle-timeout limits.
-CHUNK_SIZE = 200_000
+# Number of CSV rows sent per COPY call.
+# 50 k rows ≈ 7–8 MB per chunk — fast round-trips on Render's free tier
+# and keeps the GitHub Actions log updating every few seconds.
+CHUNK_SIZE = 50_000
 
 
 def load_readings_fast(connection) -> None:
@@ -106,8 +107,12 @@ def main() -> None:
 
     RAW_DIR.mkdir(parents=True, exist_ok=True)
 
-    print("Generating facilities, sensors, and the full 6.3M-row readings dataset...")
-    sys.argv = ["generate_data.py"]
+    # Generate 30 days of data: 60 sensors × 30 days × 288 readings/day ≈ 518,400 rows.
+    # This keeps the Render free-tier database well under the 1 GB disk limit
+    # (~75–80 MB on disk) while preserving all facility / sensor relationships
+    # and the full anomaly-detection logic.
+    print("Generating 30-day dataset (≈518,400 rows across 20 facilities / 60 sensors)...")
+    sys.argv = ["generate_data.py", "--days", "30"]
     generate_data()
 
     print("\nLoading the generated CSV files into Render PostgreSQL...")
