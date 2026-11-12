@@ -12,7 +12,8 @@ GET /api/anomalies
     readings table, with optional query parameters for filtering.
 
 GET /api/facilities/ranking
-    Returns all facilities ranked by average power efficiency.
+    Returns all facilities ranked by average output as a share of nameplate
+    capacity (capacity factor) over the available data window.
 
 GET /health
     Simple liveness check.
@@ -251,8 +252,10 @@ def get_anomalies(
 @app.get("/api/facilities/ranking", tags=["analytics"])
 def get_facility_ranking():
     """
-    Return all facilities ranked by annual average power output efficiency
-    (actual output as % of nameplate capacity).
+    Return all facilities ranked by average power output as a share of
+    nameplate capacity (capacity factor), over all non-anomalous readings in
+    the available data window. The response field is named
+    avg_efficiency_pct for backward compatibility.
     """
     sql = """
         WITH monthly_output AS (

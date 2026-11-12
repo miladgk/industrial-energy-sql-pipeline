@@ -10,7 +10,10 @@ Key engineering decisions
 * executemany is used for bulk inserts; psycopg2 batches these into a
   single round-trip per chunk.
 * ON CONFLICT DO NOTHING makes every function idempotent — safe to re-run
-  without duplicating data.
+  without duplicating data. For readings, the conflict target is read from
+  the table's primary key at run time, so it works both before
+  (PRIMARY KEY (reading_id)) and after partitioning
+  (PRIMARY KEY (reading_id, recorded_at)).
 * Each function wraps its work in an explicit transaction with rollback on
   failure, so a partial load never leaves the database in a dirty state.
 """
@@ -59,10 +62,15 @@ def ingest_facilities(conn: PgConnection, filepath: str) -> None:
 # sensors
 # ──────────────────────────────────────────────────────────────
 
+# Sensors are reference data: upsert so a regenerated sensors.csv (e.g. new
+# sensor types) also updates rows that already exist. Still idempotent.
 _INSERT_SENSOR = """
     INSERT INTO sensors (sensor_id, facility_id, sensor_type, unit)
     VALUES (%s, %s, %s, %s)
-    ON CONFLICT (sensor_id) DO NOTHING
+    ON CONFLICT (sensor_id) DO UPDATE SET
+        facility_id = EXCLUDED.facility_id,
+        sensor_type = EXCLUDED.sensor_type,
+        unit        = EXCLUDED.unit
 """
 
 def ingest_sensors(conn: PgConnection, filepath: str) -> None:
@@ -76,7 +84,7 @@ def ingest_sensors(conn: PgConnection, filepath: str) -> None:
         with conn.cursor() as cur:
             cur.executemany(_INSERT_SENSOR, rows)
         conn.commit()
-        print(f"  ✓ sensors   : {len(rows):,} rows inserted (or skipped if already present)")
+        print(f"  ✓ sensors   : {len(rows):,} rows inserted or updated")
     except Exception as exc:
         conn.rollback()
         raise RuntimeError(f"ingest_sensors failed: {exc}") from exc
@@ -86,11 +94,44 @@ def ingest_sensors(conn: PgConnection, filepath: str) -> None:
 # readings  (chunked — the large table)
 # ──────────────────────────────────────────────────────────────
 
-_INSERT_READING = """
+_INSERT_READING_TEMPLATE = """
     INSERT INTO readings (reading_id, sensor_id, recorded_at, value, is_anomaly)
     VALUES (%s, %s, %s, %s, %s)
-    ON CONFLICT (reading_id) DO NOTHING
+    ON CONFLICT ({conflict_cols}) DO NOTHING
 """
+
+# Columns that may appear in the readings primary key (whitelist: the result is
+# interpolated into SQL, so only known column names are accepted).
+_READINGS_PK_ALLOWED = ("reading_id", "recorded_at")
+
+
+def readings_conflict_target(conn: PgConnection) -> str:
+    """
+    Return the primary-key column list of `readings` for use as an
+    ON CONFLICT target.
+
+    PostgreSQL requires the ON CONFLICT columns to match a unique constraint
+    exactly. The unpartitioned table has PRIMARY KEY (reading_id); after
+    migrate_to_partitioned.py the key becomes (reading_id, recorded_at),
+    because a partitioned table's key must include the partition column.
+    """
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT a.attname
+            FROM pg_index i
+            JOIN pg_attribute a
+              ON a.attrelid = i.indrelid
+             AND a.attnum = ANY (i.indkey)
+            WHERE i.indrelid = 'readings'::regclass
+              AND i.indisprimary
+            ORDER BY array_position(i.indkey::int2[], a.attnum)
+            """
+        )
+        cols = [row[0] for row in cur.fetchall()]
+    if not cols or any(c not in _READINGS_PK_ALLOWED for c in cols):
+        raise RuntimeError(f"Unexpected primary key on readings: {cols!r}")
+    return ", ".join(cols)
 
 def ingest_readings(
     conn: PgConnection,
@@ -109,6 +150,9 @@ def ingest_readings(
     chunk_num  = 0
 
     try:
+        insert_sql = _INSERT_READING_TEMPLATE.format(
+            conflict_cols=readings_conflict_target(conn)
+        )
         watermark = None
         if use_watermark:
             with conn.cursor() as cur:
@@ -146,7 +190,7 @@ def ingest_readings(
                 for r in chunk.itertuples(index=False)
             ]
             with conn.cursor() as cur:
-                cur.executemany(_INSERT_READING, rows)
+                cur.executemany(insert_sql, rows)
             conn.commit()
             total_rows += len(rows)
 

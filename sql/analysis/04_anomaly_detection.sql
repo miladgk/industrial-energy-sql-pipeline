@@ -2,8 +2,10 @@
 -- 04_anomaly_detection.sql
 -- Statistical anomaly detection: z-score > 3 per sensor per month.
 --
--- This is independent of the pre-labelled is_anomaly flag —
--- it detects outliers purely from the data distribution.
+-- The baseline (mean, standard deviation) is computed from readings that
+-- are not pre-labelled as injected faults; every reading is then scored
+-- against it, and was_flagged_in_source shows whether a detection matches
+-- an injected value.
 --
 -- Techniques: multi-level CTEs, STDDEV(), ABS(), computed columns,
 --             JOIN on composite key (sensor_id + month)

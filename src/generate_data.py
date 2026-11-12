@@ -54,21 +54,25 @@ def generate_facilities(n: int = 20) -> pd.DataFrame:
 
 
 # ──────────────────────────────────────────────────────────────
-# 2. Sensors  (3 per facility, fixed sensor_type order)
+# 2. Sensors  (3 per facility, fixed slot order)
 # ──────────────────────────────────────────────────────────────
 
-SENSOR_META = [
-    ("power_output", "MW"),
-    ("temperature",  "Celsius"),
-    ("wind_speed",   "m/s"),
-]
+# Every facility has power output and temperature; the third sensor depends on
+# what the facility is: wind farms measure wind speed, solar plants measure
+# irradiance, substations measure bus voltage. Slot order is fixed, so sensor
+# IDs (and the random draws behind each power reading) stay stable.
+SENSOR_META_BY_TYPE = {
+    "wind":       [("power_output", "MW"), ("temperature", "Celsius"), ("wind_speed", "m/s")],
+    "solar":      [("power_output", "MW"), ("temperature", "Celsius"), ("irradiance", "W/m2")],
+    "substation": [("power_output", "MW"), ("temperature", "Celsius"), ("voltage", "kV")],
+}
 
 def generate_sensors(facilities: pd.DataFrame) -> pd.DataFrame:
-    """Return 3 sensors per facility."""
+    """Return 3 sensors per facility, matched to the facility type."""
     rows = []
     sensor_id = 1
     for _, fac in facilities.iterrows():
-        for sensor_type, unit in SENSOR_META:
+        for sensor_type, unit in SENSOR_META_BY_TYPE[fac["facility_type"]]:
             rows.append({
                 "sensor_id"  : sensor_id,
                 "facility_id": int(fac["facility_id"]),
@@ -92,8 +96,13 @@ def _value_range(sensor_type: str, capacity_mw: float):
         return 0.0, float(capacity_mw)
     if sensor_type == "temperature":
         return -20.0, 35.0
-    # wind_speed
-    return 0.0, 25.0
+    if sensor_type == "irradiance":
+        return 0.0, 1000.0          # W/m2, clear-sky peak is roughly 1000
+    if sensor_type == "voltage":
+        return 104.5, 115.5         # kV, a 110 kV bus within +/-5 %
+    if sensor_type == "wind_speed":
+        return 0.0, 25.0            # m/s, typical turbine cut-out is ~25
+    raise ValueError(f"Unknown sensor_type: {sensor_type}")
 
 def generate_readings(
     sensors: pd.DataFrame,
@@ -102,6 +111,7 @@ def generate_readings(
     rows_limit: int = None,
     target_date: str = None,
     days: int = None,
+    id_start: int = 1,
 ) -> pd.DataFrame:
     """
     Generate time-series readings at *interval_minutes* resolution.
@@ -111,6 +121,9 @@ def generate_readings(
       2. ``days``        — explicit window starting 2023-01-01 (e.g. 30 days).
       3. ``rows_limit``  — back-calculates the number of timestamps per sensor.
       4. default         — full calendar year 2023.
+
+    ``id_start`` sets the first reading_id. Incremental batches must not reuse
+    IDs from the base dataset (see ``incremental_id_start``).
 
     Returns a DataFrame with columns:
         reading_id, sensor_id, recorded_at, value, is_anomaly
@@ -182,8 +195,33 @@ def generate_readings(
 
     df = pd.concat(all_chunks, ignore_index=True)
     # reading_id needs to be globally unique and sequential
-    df["reading_id"] = range(1, len(df) + 1)
+    df["reading_id"] = range(id_start, id_start + len(df))
     return df
+
+
+def incremental_id_start(base_path: str, target_date: str, rows_per_day: int) -> int:
+    """
+    First reading_id for an incremental batch on *target_date*.
+
+    IDs continue after the base dataset (readings.csv) and are offset by the
+    number of days between the end of the base data and *target_date*. This is
+    deterministic: regenerating the same date yields the same IDs, so a re-run
+    is caught by ON CONFLICT instead of inserting duplicates, and batches for
+    different dates never collide.
+    """
+    if not os.path.exists(base_path):
+        print("  ⚠ readings.csv not found; incremental IDs start at 1")
+        return 1
+    base = pd.read_csv(base_path, usecols=["reading_id", "recorded_at"], parse_dates=["recorded_at"])
+    base_max_id = int(base["reading_id"].max())
+    base_end_day = base["recorded_at"].max().normalize()
+    day_offset = (pd.Timestamp(target_date).normalize() - base_end_day).days - 1
+    if day_offset < 0:
+        raise SystemExit(
+            f"Error: incremental date {target_date} is inside the base dataset "
+            f"(which ends {base_end_day.date()}). Choose a later date."
+        )
+    return base_max_id + 1 + day_offset * rows_per_day
 
 
 # ──────────────────────────────────────────────────────────────
@@ -212,7 +250,12 @@ def main():
         sensors = pd.read_csv(sen_path)
         
         print(f"Generating incremental readings for {args.date} ...")
-        readings = generate_readings(sensors, facilities, interval_minutes=args.interval, target_date=args.date)
+        rows_per_day = len(sensors) * (24 * 60 // args.interval)
+        id_start = incremental_id_start(os.path.join(RAW_DIR, "readings.csv"), args.date, rows_per_day)
+        readings = generate_readings(
+            sensors, facilities, interval_minutes=args.interval,
+            target_date=args.date, id_start=id_start,
+        )
         red_path = os.path.join(RAW_DIR, "readings_incremental.csv")
         readings.to_csv(red_path, index=False)
         print(f"  ✓ {len(readings):,} rows → {red_path}")

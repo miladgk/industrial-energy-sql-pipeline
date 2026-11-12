@@ -69,3 +69,16 @@ def test_incremental_idempotency(db_conn):
         count_after_third = cur.fetchone()[0]
 
     assert count_after_third == count_after_first, "Third ingest should not add rows (Database ON CONFLICT DO NOTHING)"
+
+    # 5. Incremental IDs must not reuse IDs from the base dataset. On a partitioned
+    #    table (PK = reading_id, recorded_at) a reused ID would still be inserted,
+    #    and on an unpartitioned table (PK = reading_id) the new day would be
+    #    silently dropped, so check both outcomes explicitly.
+    with db_conn.cursor() as cur:
+        cur.execute("SELECT COUNT(*) - COUNT(DISTINCT reading_id) FROM readings;")
+        duplicate_ids = cur.fetchone()[0]
+        cur.execute("SELECT COUNT(*) FROM readings WHERE recorded_at >= %s AND recorded_at < %s::date + 1;", (target_date, target_date))
+        target_day_rows = cur.fetchone()[0]
+
+    assert duplicate_ids == 0, f"{duplicate_ids} reading_id values are reused across batches"
+    assert target_day_rows == added_rows, "All rows for the incremental day should be stored"

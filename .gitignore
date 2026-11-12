@@ -1,5 +1,6 @@
 # Credentials — never commit this
 config.yaml
+docs/PROJECT_BRIEF.md
 
 # Python
 __pycache__/

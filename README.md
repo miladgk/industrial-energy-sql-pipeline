@@ -216,6 +216,17 @@ python src/generate_data.py
 This writes ~6.3 million rows to `data/raw/readings.csv` (and the two
 smaller files). Expect ~45 seconds on a modern laptop.
 
+Each facility gets three sensors that match its type: every facility has
+`power_output` (MW) and `temperature` (°C); wind farms add `wind_speed` (m/s),
+solar plants add `irradiance` (W/m²) and substations add bus `voltage` (kV).
+Values are drawn uniformly within each sensor's normal range (for power,
+between zero and nameplate capacity, so every facility averages about 50 %
+of capacity), and about 2 % of readings are replaced by injected sensor-fault
+values (zero, or three times the normal maximum).
+
+`python src/generate_data.py --days 30` produces the 30-day dataset
+(518,400 rows) that is loaded into the hosted demo database.
+
 ### 5 — Ingest into PostgreSQL
 
 ```bash
@@ -236,7 +247,9 @@ The pipeline employs a **two-layered defense** against duplicate data insertion:
 1. **Application-Level High-Watermark Filter (`--incremental` mode):**
    Before loading CSV chunks, `ingest.py` queries `SELECT MAX(recorded_at) FROM readings;` and preemptively filters out incoming rows where `recorded_at <= watermark`. This saves database CPU, I/O, and transaction log overhead when re-running against historical files.
 2. **Database-Level Constraint Deduplication (`ON CONFLICT`):**
-   If duplicate rows arrive within a new batch (or if the application watermark is bypassed via `--no-watermark`), PostgreSQL's composite primary key `(reading_id, recorded_at)` catches the collision and `ON CONFLICT DO NOTHING` silently drops the duplicate records without aborting the transaction.
+   If duplicate rows arrive within a new batch (or if the application watermark is bypassed via `--no-watermark`), `ON CONFLICT DO NOTHING` drops them without aborting the transaction. The conflict target is read from the table's primary key at run time, because PostgreSQL requires it to match a unique constraint exactly: `(reading_id)` on the plain table, `(reading_id, recorded_at)` after `migrate_to_partitioned.py` (a partitioned table's key must include the partition column).
+
+Incremental batches continue the `reading_id` sequence after the base dataset (offset by the number of days after it), so a new day never reuses an existing ID, and regenerating the same day yields the same IDs. `test_incremental.py` checks this explicitly.
 
 ```bash
 # Generate one new day of data for Jan 1, 2024
@@ -278,7 +291,11 @@ All six assertions should pass across both test suites (`test_data_quality.py` a
 - Anomaly rate in [1 %, 4 %]
 - 365+ days of coverage
 - Row count within 5 % of 6,307,200
-- Strict idempotency on duplicate batch loads (Watermark & ON CONFLICT)
+- Strict idempotency on duplicate batch loads (Watermark & ON CONFLICT), with no reused `reading_id` values
+
+The coverage and row-count targets are the defaults for a full-year run. For a
+smaller dataset, set `DAYS_EXPECTED` and `ROWS_EXPECTED` (CI uses 3 days and
+50,000 rows).
 
 ### 8 — Run the analysis report
 
@@ -317,6 +334,20 @@ python scripts/setup_metabase.py
 
 ---
 
+### 11 — Refresh the dashboard data files
+
+The GitHub Pages dashboard (`docs/`) reads three static files besides the live API:
+the daily Fingrid series, the real-vs-synthetic validation result, and a snapshot of
+the API responses that is shown instantly while the free Render service wakes up.
+Rebuild them after regenerating data or re-running the analysis:
+
+```bash
+python scripts/export_dashboard_data.py                  # all files (calls the hosted API)
+python scripts/export_dashboard_data.py --skip-snapshot  # local files only
+```
+
+---
+
 ## SQL Techniques Demonstrated
 
 | Technique | Where |
@@ -338,29 +369,39 @@ python scripts/setup_metabase.py
 
 ## Sample Output — Facility Ranking (05)
 
+From the 30-day demo dataset (the one served by the API). Because power is drawn
+uniformly between zero and capacity, every facility lands close to 50 % and the
+differences between facilities are small by construction.
+
 ```
-facility_name            facility_type  country   capacity_mw  avg_efficiency_pct  overall_rank  rank_within_type  performance_quartile  percentile
------------------------  -------------  --------  -----------  ------------------  ------------  ----------------  --------------------  ----------
-SolarPlant_East_07       solar          Denmark        87.43               38.21             1                 1                     1       100.0
-WindFarm_North_03        wind           Norway        412.50               37.84             2                 1                     1        94.7
-SolarPlant_Central_12    solar          Sweden        203.11               36.90             3                 2                     1        89.5
-WindFarm_South_01        wind           Finland       298.00               35.43             4                 2                     1        84.2
-Substation_West_18       substation     Denmark        55.00               34.71             5                 1                     1        78.9
+facility_name          facility_type  country  capacity_mw  avg_efficiency_pct  overall_rank  rank_within_type  performance_quartile  percentile
+---------------------  -------------  -------  -----------  ------------------  ------------  ----------------  --------------------  ----------
+SolarPlant_West_20     solar          Norway         78.48               50.65             1                 1                     1       100.0
+SolarPlant_Central_04  solar          Sweden        191.53               50.49             2                 2                     1        94.7
+SolarPlant_East_11     solar          Denmark       224.20               50.47             3                 3                     1        89.5
+SolarPlant_West_05     solar          Finland       240.08               50.42             4                 4                     1        84.2
+WindFarm_East_10       wind           Denmark       338.21               50.27             5                 1                     1        78.9
 ...
 ```
 
 ---
 
-## Sample Output — Anomaly Detection (04) top-5
+## Sample Output — Anomaly Detection (04)
+
+Strongest detection per sensor type in the 30-day demo dataset, using the scoring
+in `04_anomaly_detection.sql` (monthly mean and standard deviation per sensor from
+non-injected readings; flag z > 3). z-scores depend on each sensor's normal spread,
+so they are comparable within a sensor, not across sensors: bus voltage varies
+only ±5 %, so an injected fault there scores far higher.
 
 ```
-reading_id  sensor_id  recorded_at               value      z_score  facility_name          sensor_type   was_flagged_in_source
-----------  ---------  ------------------------  ---------  -------  ---------------------  ------------  ---------------------
-4821903     17         2023-07-14T13:35:00+00    1247.5000    18.43  WindFarm_North_03      power_output  true
-1093421     5          2023-03-02T08:10:00+00    -62.0000     16.21  SolarPlant_East_07     temperature   true
-6102847     42         2023-11-29T22:45:00+00     75.0000     15.87  Substation_West_18     wind_speed    true
-2984510     23         2023-05-18T14:20:00+00    904.0000     14.92  WindFarm_South_01      power_output  true
-5417623     38         2023-09-07T06:55:00+00   -64.5000     13.54  SolarPlant_Central_12  temperature   true
+reading_id  sensor_id  recorded_at             value     z_score  was_flagged_in_source  facility_name          sensor_type   unit
+----------  ---------  ----------------------  --------  -------  ---------------------  ---------------------  ------------  -------
+146886      18         2023-01-01 00:25:00+00    346.50    74.98  true                   Substation_West_06     voltage       kV
+95110       12         2023-01-01 05:45:00+00   3000.00     8.72  true                   SolarPlant_Central_04  irradiance    W/m2
+224650      27         2023-01-01 00:45:00+00     75.00     8.72  true                   WindFarm_East_09       wind_speed    m/s
+155912      19         2023-01-02 08:35:00+00    220.98     8.70  true                   WindFarm_East_07       power_output  MW
+501257      59         2023-01-01 11:20:00+00    105.00     6.22  true                   SolarPlant_West_20     temperature   Celsius
 ```
 
 ---
@@ -368,6 +409,11 @@ reading_id  sensor_id  recorded_at               value      z_score  facility_na
 ## Real vs. Synthetic Wind Pattern Validation
 
 To validate the synthetic data generator against reality, daily average wind production patterns were compared against real Fingrid grid data for Finland (2023) using z-score standardization. The analysis yielded a Pearson correlation coefficient of **-0.0614** over a sample size of **n = 365** days (degrees of freedom **df = 363**). With a p-value of **0.242**, this correlation is **not statistically significant** at the conventional α = 0.05 threshold. This result shows no statistically detectable relationship between the synthetic and real wind patterns — consistent with the synthetic generator's known lack of seasonal modeling, since it produces a nearly flat capacity factor year-round while real Nordic wind production varies strongly by season. Surfacing this result, rather than reporting only the earlier (statistically underpowered) monthly comparison, demonstrates how real-world API data can be used to rigorously audit simulation assumptions. See `outputs/08_real_vs_synthetic_comparison.csv` for the full daily breakdown.
+
+This comparison needs a full year of synthetic data, so it was run on a local
+full-year dataset (`python src/generate_data.py`, then `sql/analysis/08_real_vs_synthetic_comparison.sql`).
+The hosted demo database holds only 30 days of synthetic readings, so the live
+dashboard shows the stored result of that run rather than recomputing it.
 
 ---
 

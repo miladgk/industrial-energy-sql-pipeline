@@ -6,14 +6,14 @@ on:
     inputs:
       confirm:
         description: >
-          برای تأیید تایپ کنید: load-6m
-          (این عملیات ~6.3 میلیون رکورد در Render درج می‌کند)
+          برای تأیید تایپ کنید: load-30-days
+          (جدول readings در Render خالی و با داده‌ی ۳۰ روزه، ۵۱۸٬۴۰۰ رکورد، دوباره پر می‌شود)
         required: true
         default: ""
 
 jobs:
   load:
-    name: Generate & ingest 6.3 M readings
+    name: Generate & load the 30-day dataset (518,400 readings)
     runs-on: ubuntu-latest
 
     # ─── تمام کارهای سنگین روی سرورهای GitHub اجرا می‌شود ───────────────────
@@ -40,8 +40,8 @@ jobs:
       # ── ۴. تأیید ورودی (جلوگیری از اجرای تصادفی) ────────────────────────────
       - name: Validate confirmation input
         run: |
-          if [ "${{ github.event.inputs.confirm }}" != "load-6m" ]; then
-            echo "❌ تأیید اشتباه است. لطفاً دقیقاً «load-6m» را وارد کنید."
+          if [ "${{ github.event.inputs.confirm }}" != "load-30-days" ]; then
+            echo "❌ تأیید اشتباه است. لطفاً دقیقاً «load-30-days» را وارد کنید."
             exit 1
           fi
 

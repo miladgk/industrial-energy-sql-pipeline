@@ -4,85 +4,366 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Industrial Energy Analytics</title>
+  <meta name="description" content="Data engineering demo: chunked ingestion into a partitioned PostgreSQL warehouse, SQL quality gates and z-score anomaly detection, served by FastAPI. Synthetic facility telemetry plus real Fingrid grid data for Finland (2023).">
+  <link rel="canonical" href="https://miladgk.github.io/industrial-energy-sql-pipeline/">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Industrial Energy Analytics · SQL data pipeline">
+  <meta property="og:description" content="PostgreSQL warehouse, SQL quality gates and anomaly detection served by FastAPI, with real Fingrid grid data for Finland (2023).">
+  <meta property="og:url" content="https://miladgk.github.io/industrial-energy-sql-pipeline/">
+  <meta property="og:image" content="https://miladgk.github.io/industrial-energy-sql-pipeline/assets/og-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Industrial Energy Analytics dashboard: KPIs, power output trend and facility table">
+  <meta name="twitter:card" content="summary_large_image">
   <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
   <style>
     :root{--bg:#071211;--surface:#102a25;--surface-2:#0b1d1a;--ink:#ecf7f2;--muted:#91aaa2;--line:rgba(147,201,187,.2);--accent:#65e1bd;--warn:#f4bd73;--sans:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;--mono:"DM Mono",ui-monospace,monospace}
-    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.5}body:before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.35;background-image:linear-gradient(rgba(101,225,189,.04) 1px,transparent 1px),linear-gradient(90deg,rgba(101,225,189,.04) 1px,transparent 1px);background-size:42px 42px}.shell{width:min(1180px,calc(100% - 32px));margin:auto;position:relative}.topbar{display:flex;justify-content:space-between;align-items:center;padding:24px 0;border-bottom:1px solid var(--line)}.brand{font-weight:800;letter-spacing:-.03em}.back{color:var(--accent);font:500 .72rem var(--mono);text-decoration:none}.eyebrow{color:var(--accent);font:500 .68rem var(--mono);letter-spacing:.12em;text-transform:uppercase}.hero{padding:72px 0 42px}.hero h1{font-size:clamp(2.8rem,7vw,6.2rem);line-height:.95;letter-spacing:-.07em;margin:16px 0;background:linear-gradient(100deg,#e9fff7,var(--accent),#a994ff);-webkit-background-clip:text;background-clip:text;color:transparent}.hero p{max-width:620px;color:var(--muted);font-size:1.02rem}.status{display:inline-flex;align-items:center;gap:8px;color:var(--muted);font:500 .7rem var(--mono)}.dot{width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 14px var(--accent)}.kpis{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1.5fr);gap:12px;margin:26px 0}.kpi,.panel{border:1px solid var(--line);border-radius:12px;background:linear-gradient(145deg,rgba(18,54,46,.8),rgba(7,22,19,.9))}.kpi{padding:18px}.kpi strong{display:block;color:var(--accent);font-size:1.7rem;letter-spacing:-.06em;line-height:1.2}.kpi span{color:var(--muted);font:400 .78rem var(--mono)}.kpi:last-child strong{font-size:1.45rem}.grid{display:grid;grid-template-columns:1.45fr .8fr;gap:14px}.panel{padding:22px}.panel h2{font-size:1rem;margin:0 0 18px}.chart-wrap{height:360px}.chart{width:100%;height:100%}.table-wrap{overflow:auto}.table{width:100%;border-collapse:collapse;font-size:.78rem}.table th,.table td{text-align:left;padding:11px 8px;border-bottom:1px solid var(--line);white-space:nowrap}.table th{color:var(--accent);font:500 .62rem var(--mono)}.table td{color:var(--muted)}.error{color:var(--warn);font:500 .76rem var(--mono);min-height:1.2em}.footer{padding:48px 0;color:var(--muted);font:400 .68rem var(--mono)}@media(max-width:800px){.kpis{grid-template-columns:repeat(2,1fr)}.grid{grid-template-columns:1fr}}@media(max-width:520px){.hero{padding-top:46px}.kpis{grid-template-columns:1fr}.kpi{padding:13px}.kpi strong{font-size:1.35rem}.kpi:last-child strong{font-size:1.3rem}}@media(max-width:600px){.shell{width:calc(100% - 28px)}.topbar{padding:17px 0;gap:14px}.brand{font-size:.9rem}.back{font-size:.6rem;white-space:nowrap}.hero{padding:48px 0 28px}.hero h1{font-size:clamp(2.35rem,13vw,4rem)}.hero p{font-size:.9rem}.kpis{gap:8px}.kpi{padding:13px 11px}.kpi strong{font-size:1.2rem}.kpi span{font-size:.66rem}.panel{padding:15px}.panel h2{font-size:.86rem}.chart-wrap{height:260px}.footer{padding:34px 0;font-size:.58rem}}
+    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.5}body:before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.35;background-image:linear-gradient(rgba(101,225,189,.04) 1px,transparent 1px),linear-gradient(90deg,rgba(101,225,189,.04) 1px,transparent 1px);background-size:42px 42px}.shell{width:min(1180px,calc(100% - 32px));margin:auto;position:relative}.topbar{display:flex;justify-content:space-between;align-items:center;padding:24px 0;border-bottom:1px solid var(--line)}.brand{font-weight:800;letter-spacing:-.03em}.back{color:var(--accent);font:500 .72rem var(--mono);text-decoration:none}.eyebrow{color:var(--accent);font:500 .68rem var(--mono);letter-spacing:.12em;text-transform:uppercase}.hero{padding:72px 0 42px}.hero h1{font-size:clamp(2.8rem,7vw,6.2rem);line-height:.95;letter-spacing:-.07em;margin:16px 0;background:linear-gradient(100deg,#e9fff7,var(--accent),#a994ff);-webkit-background-clip:text;background-clip:text;color:transparent}.hero p{max-width:620px;color:var(--muted);font-size:1.02rem}.status{display:inline-flex;align-items:center;gap:8px;color:var(--muted);font:500 .7rem var(--mono)}.dot{width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 14px var(--accent)}.kpis{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1.5fr);gap:12px;margin:26px 0}.kpi,.panel{border:1px solid var(--line);border-radius:12px;background:linear-gradient(145deg,rgba(18,54,46,.8),rgba(7,22,19,.9))}.kpi{padding:18px}.kpi strong{display:block;color:var(--accent);font-size:1.7rem;letter-spacing:-.06em;line-height:1.2}.kpi span{color:var(--muted);font:400 .78rem var(--mono)}.kpi:last-child strong{font-size:1.45rem}.grid{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(0,.8fr);gap:14px}.panel{padding:22px}.panel h2{font-size:1rem;margin:0 0 18px}.chart-wrap{height:360px}.chart{width:100%;height:100%}.table-wrap{overflow:auto}.table{width:100%;border-collapse:collapse;font-size:.78rem}.table th,.table td{text-align:left;padding:11px 8px;border-bottom:1px solid var(--line);white-space:nowrap}.table th{color:var(--accent);font:500 .62rem var(--mono)}.table td{color:var(--muted)}.data-note{max-width:680px;margin:10px 0 0;color:var(--muted);font:400 .74rem var(--mono);line-height:1.6}.data-note b{color:var(--warn);font-weight:500}.panel-sub{margin:-12px 0 16px;color:var(--muted);font:400 .7rem var(--mono)}.type-tabs{display:flex;gap:6px;margin:-6px 0 14px;flex-wrap:wrap}.type-tab{font:500 .68rem var(--mono);color:var(--muted);background:transparent;border:1px solid var(--line);border-radius:999px;padding:5px 12px;cursor:pointer}.type-tab[aria-pressed="true"]{color:var(--bg);background:var(--accent);border-color:var(--accent)}.type-tab:focus-visible{outline:2px solid var(--accent);outline-offset:2px}.note{margin:12px 0 0;color:var(--muted);font:400 .66rem var(--mono);line-height:1.55}code{font:400 .86em var(--mono);color:var(--ink);overflow-wrap:anywhere}.section-head{margin:56px 0 18px}.section-head h2{font-size:clamp(1.4rem,3vw,2rem);letter-spacing:-.04em;margin:8px 0 6px}.section-head p{color:var(--muted);max-width:700px;margin:0;font-size:.92rem}.mini-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:0 0 14px}.mini-kpis .kpi strong{font-size:1.25rem}.legend{display:flex;gap:16px;flex-wrap:wrap;margin:-8px 0 12px;color:var(--muted);font:400 .68rem var(--mono)}.legend i{display:inline-block;width:14px;height:3px;border-radius:2px;margin-right:6px;vertical-align:middle}.wide{margin-top:14px}.pipeline{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:10px;counter-reset:step}.step{position:relative;border:1px solid var(--line);border-radius:12px;padding:14px 12px;background:linear-gradient(145deg,rgba(18,54,46,.8),rgba(7,22,19,.9))}.step b{display:block;font-size:.82rem;margin-bottom:6px}.step span{display:block;color:var(--muted);font:400 .66rem var(--mono);line-height:1.5}.step:before{counter-increment:step;content:"0" counter(step);display:block;color:var(--accent);font:500 .62rem var(--mono);margin-bottom:6px}.step:not(:last-child):after{content:"→";position:absolute;right:-10px;top:50%;transform:translateY(-50%);color:var(--accent);font-size:.8rem}.links{display:flex;gap:18px;flex-wrap:wrap;margin-top:16px}.links a{color:var(--accent);font:500 .74rem var(--mono);text-decoration:none}.links a:hover{text-decoration:underline}.tag{display:inline-block;padding:1px 7px;border-radius:999px;font:500 .6rem var(--mono);border:1px solid var(--line)}.tag.inj{color:var(--warn);border-color:rgba(244,189,115,.4)}@media(max-width:1000px){.pipeline{grid-template-columns:repeat(2,minmax(0,1fr))}.step:not(:last-child):after{display:none}}@media(max-width:800px){.mini-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}.error{color:var(--warn);font:500 .76rem var(--mono);min-height:1.2em}.footer{padding:48px 0;color:var(--muted);font:400 .68rem var(--mono)}@media(max-width:800px){.kpis{grid-template-columns:repeat(2,1fr)}.grid{grid-template-columns:minmax(0,1fr)}}@media(max-width:520px){.hero{padding-top:46px}.kpis{grid-template-columns:1fr}.kpi{padding:13px}.kpi strong{font-size:1.35rem}.kpi:last-child strong{font-size:1.3rem}}@media(max-width:600px){.shell{width:calc(100% - 28px)}.topbar{padding:17px 0;gap:14px}.brand{font-size:.9rem}.back{font-size:.6rem;white-space:nowrap}.hero{padding:48px 0 28px}.hero h1{font-size:clamp(2.35rem,13vw,4rem)}.hero p{font-size:.9rem}.kpis{gap:8px}.kpi{padding:13px 11px}.kpi strong{font-size:1.2rem}.kpi span{font-size:.66rem}.panel{padding:15px}.panel h2{font-size:.86rem}.chart-wrap{height:260px}.footer{padding:34px 0;font-size:.58rem}}
   </style>
 </head>
 <body>
   <header class="shell topbar"><strong class="brand">Industrial Energy Analytics</strong><a class="back" href="https://miladgk.github.io/" target="_blank" rel="noopener noreferrer">Milad Ghaemi ↗</a></header>
   <main class="shell">
     <section class="hero">
-      <div class="eyebrow">LIVE DATA PRODUCT / ENERGY SYSTEMS</div>
+      <div class="eyebrow">API-SERVED DATA PRODUCT / ENERGY SYSTEMS</div>
       <h1>From telemetry<br>to operational insight.</h1>
-      <p>Interactive analytics for industrial energy facilities, powered by a FastAPI service and PostgreSQL warehouse.</p>
-      <div class="status"><span class="dot"></span><span id="status">Connecting to live API...</span></div>
+      <p>Interactive analytics for 20 industrial energy facilities, served on request by a FastAPI service over a PostgreSQL warehouse.</p>
+      <p class="data-note"><b>Data note:</b> facility telemetry is <b>synthetic</b> (reproducible generator, seed 42) and covers a fixed historical window; it is not a real-time feed. The pipeline also ingests real Fingrid open grid data for Finland (2023), which is not shown on this page.</p>
+      <div class="status"><span class="dot"></span><span id="status">Connecting to the API...</span></div>
     </section>
     <section class="kpis">
-      <div class="kpi"><strong id="facility-count">—</strong><span>facilities</span></div>
-      <div class="kpi"><strong id="reading-count">—</strong><span>readings</span></div>
-      <div class="kpi"><strong id="anomaly-rate">—</strong><span>anomaly rate</span></div>
-      <div class="kpi"><strong id="latest-reading">—</strong><span>latest reading</span></div>
+      <div class="kpi"><strong id="facility-count">-</strong><span>facilities</span></div>
+      <div class="kpi"><strong id="reading-count">-</strong><span>readings</span></div>
+      <div class="kpi"><strong id="anomaly-rate">-</strong><span>anomaly rate</span></div>
+      <div class="kpi"><strong id="latest-reading">-</strong><span>last reading in dataset</span></div>
     </section>
     <div class="grid">
-      <section class="panel"><h2>Average power output / last 24 hours</h2><div class="chart-wrap"><svg id="trend-chart" class="chart" viewBox="0 0 800 320" role="img" aria-label="Average power output trend"></svg></div><p id="trend-error" class="error"></p></section>
-      <section class="panel"><h2>Facility efficiency ranking</h2><div class="table-wrap"><table class="table"><thead><tr><th>#</th><th>Facility</th><th>Efficiency</th></tr></thead><tbody id="ranking"></tbody></table></div><p id="ranking-error" class="error"></p></section>
+      <section class="panel"><h2>Average power output / final 24 hours of the dataset</h2><p class="panel-sub" id="trend-window">Loading data window...</p><div class="chart-wrap"><svg id="trend-chart" class="chart" viewBox="0 0 800 320" role="img" aria-label="Average power output trend"></svg></div><p id="trend-error" class="error"></p></section>
+      <section class="panel"><h2>Average output vs. nameplate capacity</h2><div class="type-tabs" role="group" aria-label="Facility type"><button class="type-tab" type="button" data-type="wind" aria-pressed="true">Wind</button><button class="type-tab" type="button" data-type="solar" aria-pressed="false">Solar</button><button class="type-tab" type="button" data-type="substation" aria-pressed="false">Substation</button></div><div class="table-wrap"><table class="table"><thead><tr><th>#</th><th>Facility</th><th>Country</th><th>Output / capacity</th></tr></thead><tbody id="ranking"></tbody></table></div><p class="note">Ranked within each facility type, so unlike assets are not compared. In this synthetic dataset, power output is drawn uniformly between zero and nameplate capacity, so every facility averages close to 50% and the differences are small by construction.</p><p id="ranking-error" class="error"></p></section>
     </div>
+    <section aria-labelledby="grid-title">
+      <div class="section-head"><div class="eyebrow">REAL DATA / FINGRID OPEN DATA</div><h2 id="grid-title">Finland's grid in 2023: wind vs. consumption</h2><p>Real hourly data from Fingrid, the Finnish transmission system operator (dataset 75: wind power production, dataset 124: electricity consumption), averaged per day. Loaded by the same pipeline; this chart reads a static export of the ingested file.</p></div>
+      <div class="mini-kpis" id="grid-kpis"></div>
+      <section class="panel"><h2>Daily average power, 2023 (MW)</h2><div class="legend"><span><i style="background:#65e1bd"></i>Wind production</span><span><i style="background:#a994ff"></i>Electricity consumption</span></div><div class="chart-wrap"><svg id="grid-chart" class="chart" viewBox="0 0 800 360" role="img" aria-label="Daily average wind production and electricity consumption in Finland, 2023"></svg></div><p id="grid-error" class="error"></p></section>
+    </section>
+
+    <section aria-labelledby="val-title">
+      <div class="section-head"><div class="eyebrow">VALIDATION / REAL VS. SYNTHETIC</div><h2 id="val-title">Does the synthetic generator behave like real wind?</h2><p>Daily wind output from the synthetic generator compared with real Fingrid wind production, both standardized as z-scores. Computed by <code>sql/analysis/08_real_vs_synthetic_comparison.sql</code> on an earlier full-year synthetic run (the dataset served above now covers one month).</p></div>
+      <section class="panel"><h2 id="val-stats">Pearson correlation</h2><div class="legend"><span><i style="background:#65e1bd"></i>Real wind (z-score)</span><span><i style="background:#f4bd73"></i>Synthetic wind (z-score)</span></div><div class="chart-wrap"><svg id="val-chart" class="chart" viewBox="0 0 800 360" role="img" aria-label="Real and synthetic daily wind z-scores, 2023"></svg></div><p class="note" id="val-note"></p><p id="val-error" class="error"></p></section>
+    </section>
+
+    <section aria-labelledby="anom-title">
+      <div class="section-head"><div class="eyebrow">ANOMALY DETECTION / Z-SCORE SQL</div><h2 id="anom-title">Strongest detected anomalies</h2><p>The generator injects sensor-fault values (zero, or three times the sensor's normal maximum) into about 2% of readings. A SQL query computes each sensor's monthly mean and standard deviation from the normal (non-injected) readings, then flags every reading more than 3 standard deviations away (z &gt; 3). The <span class="tag inj">injected</span> tag marks detections that match an injected value.</p></div>
+      <section class="panel"><h2>Strongest anomaly per facility type and sensor</h2><div class="table-wrap"><table class="table"><thead><tr><th>Time (UTC)</th><th>Facility</th><th>Sensor</th><th>Value</th><th>z-score</th><th>Label</th></tr></thead><tbody id="anomalies"></tbody></table></div><p class="note">From the 300 highest z-scores per facility type returned by <code>/api/anomalies</code>. z-scores depend on each sensor's normal spread, so they are comparable within a sensor, not across sensors.</p><p id="anom-error" class="error"></p></section>
+    </section>
+
+    <section aria-labelledby="how-title">
+      <div class="section-head"><div class="eyebrow">HOW IT WORKS / PIPELINE</div><h2 id="how-title">From raw files to this page</h2></div>
+      <div class="pipeline">
+        <div class="step"><b>Sources</b><span>Synthetic telemetry (20 facilities, 3 sensors each, 5-min) and the Fingrid Open Data API</span></div>
+        <div class="step"><b>Landing</b><span>Raw CSV files in data/raw</span></div>
+        <div class="step"><b>Ingestion</b><span>Chunked loads (5,000 rows), high-watermark incremental mode, upsert for grid data</span></div>
+        <div class="step"><b>Warehouse</b><span>PostgreSQL 15, readings range-partitioned by month (13 partitions)</span></div>
+        <div class="step"><b>Quality gate</b><span>Checks orphans, nulls, anomaly rate and date coverage; fails the run on error</span></div>
+        <div class="step"><b>Analytics SQL</b><span>z-score anomalies, rankings, rolling averages, real vs. synthetic</span></div>
+        <div class="step"><b>Serving</b><span>FastAPI on Render feeds this page; Metabase for local BI</span></div>
+      </div>
+      <div class="links"><a href="https://github.com/miladgk/industrial-energy-sql-pipeline" target="_blank" rel="noopener noreferrer">Source code on GitHub ↗</a><a href="https://industrial-energy-api.onrender.com/docs" target="_blank" rel="noopener noreferrer">Interactive API docs ↗</a></div>
+    </section>
   </main>
-  <footer class="shell footer">Refreshes from the live API every 60 seconds · Industrial Energy SQL Pipeline</footer>
+  <footer class="shell footer">Values are queried from the API when the page loads; the underlying dataset is a fixed snapshot · Industrial Energy SQL Pipeline</footer>
   <script>
     const API_BASE_URL = "https://industrial-energy-api.onrender.com";
     const $ = id => document.getElementById(id);
     const formatNumber = value => new Intl.NumberFormat().format(value ?? 0);
     function drawTrend(points) {
-      const svg = $("trend-chart"), width = 800, height = 360;
-      svg.replaceChildren();
-      if (!points.length) { $("trend-error").textContent = "No trend data is available yet."; return; }
-      const values = points.map(point => Number(point.avg_output_mw) || 0);
-      const plot = {left: 64, right: 20, top: 20, bottom: 58};
-      const max = Math.max(...values, 1), min = Math.min(...values, 0), range = max - min || 1;
-      const x = index => plot.left + index * (width - plot.left - plot.right) / Math.max(points.length - 1, 1);
-      const y = value => height - plot.bottom - (value - min) * (height - plot.top - plot.bottom) / range;
-      const path = values.map((value, index) => `${index ? "L" : "M"}${x(index).toFixed(1)},${y(value).toFixed(1)}`).join(" ");
-      const tickCount = 4;
-      const yTicks = Array.from({length: tickCount + 1}, (_, index) => {
-        const value = min + range * index / tickCount;
-        const tickY = y(value);
-        return `<line x1="${plot.left}" y1="${tickY}" x2="${width - plot.right}" y2="${tickY}" stroke="rgba(147,201,187,.14)"/><text x="${plot.left - 10}" y="${tickY + 6}" text-anchor="end" fill="#91aaa2" font-size="18">${value.toFixed(0)}</text>`;
-      }).join("");
-      const xLabels = points.filter((_, index) => index % Math.max(1, Math.ceil(points.length / 6)) === 0).map(point => {
-        const index = points.indexOf(point);
-        return `<text x="${x(index)}" y="${height - 28}" text-anchor="middle" fill="#91aaa2" font-size="18">${new Date(point.recorded_at).toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"})}</text>`;
-      }).join("");
-      svg.innerHTML = `${yTicks}<path d="${path}" fill="none" stroke="#65e1bd" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><line x1="${plot.left}" y1="${height - plot.bottom}" x2="${width - plot.right}" y2="${height - plot.bottom}" stroke="rgba(147,201,187,.35)"/><text x="16" y="${height / 2}" transform="rotate(-90 16 ${height / 2})" text-anchor="middle" fill="#91aaa2" font-size="18">Average output (MW)</text><text x="${(plot.left + width - plot.right) / 2}" y="${height - 6}" text-anchor="middle" fill="#91aaa2" font-size="18">Time</text>${xLabels}`;
+      points = points.slice();
+      const svg = $("trend-chart");
+      if (!points.length) { svg.replaceChildren(); $("trend-error").textContent = "No trend data is available yet."; return; }
+      // Drop partial hours at the edges of the window: an hour with far fewer readings
+      // than usual gives a misleading average (e.g. the first bucket of the window).
+      const counts = points.map(point => Number(point.reading_count) || 0).sort((a, b) => a - b);
+      const typical = counts[Math.floor(counts.length / 2)] || 0;
+      points = points.filter(point => (Number(point.reading_count) || 0) >= typical * 0.5);
+      if (!points.length) { svg.replaceChildren(); $("trend-error").textContent = "No trend data is available yet."; return; }
+      const times = points.map(point => point.recorded_at);
+      const hhmm = iso => new Date(iso).toLocaleTimeString("en-GB", {hour: "2-digit", minute: "2-digit", timeZone: "UTC"});
+      const step = Math.max(1, Math.ceil(points.length / 6));
+      lineChart(svg, [{name: "Avg output", values: points.map(point => Number(point.avg_output_mw) || 0), color: "#65e1bd", width: 3.5}], times, {
+        yLabel: "Average output (MW)",
+        xTicks: (i, label) => i % step === 0 ? hhmm(label) : null,
+        tipTitle: label => `${shortDate(label)}, ${hhmm(label)} UTC`,
+        tipValue: v => `${v.toFixed(1)} MW`
+      });
     }
+    let rankingRows = [];
+    let rankingType = "wind";
+    const monthYear = iso => new Date(iso).toLocaleDateString("en-GB", {month: "long", year: "numeric", timeZone: "UTC"});
+    const shortDate = iso => new Date(iso).toLocaleDateString("en-GB", {day: "numeric", month: "short", year: "numeric", timeZone: "UTC"});
+    function renderRanking() {
+      const rows = rankingRows
+        .filter(row => row.facility_type === rankingType)
+        .sort((a, b) => b.avg_efficiency_pct - a.avg_efficiency_pct);
+      const body = $("ranking");
+      body.replaceChildren();
+      rows.forEach((row, index) => {
+        const tr = document.createElement("tr");
+        // textContent, not innerHTML: values come from the API
+        [index + 1, row.facility_name, row.country, `${Number(row.avg_efficiency_pct).toFixed(2)}%`].forEach(value => {
+          const td = document.createElement("td");
+          td.textContent = value;
+          tr.appendChild(td);
+        });
+        body.appendChild(tr);
+      });
+    }
+    document.querySelectorAll(".type-tab").forEach(tab => {
+      tab.addEventListener("click", () => {
+        rankingType = tab.dataset.type;
+        document.querySelectorAll(".type-tab").forEach(t => t.setAttribute("aria-pressed", String(t === tab)));
+        renderRanking();
+      });
+    });
+    function renderDashboard(overview, trend, ranking) {
+      $("facility-count").textContent = formatNumber(overview.facility_count);
+      $("reading-count").textContent = formatNumber(overview.reading_count);
+      $("anomaly-rate").textContent = `${overview.anomaly_rate_pct}%`;
+      $("latest-reading").textContent = overview.latest_reading_at ? shortDate(overview.latest_reading_at) : "-";
+      drawTrend(trend.points || []);
+      const pts = trend.points || [];
+      if (pts.length) $("trend-window").textContent = `${shortDate(pts[0].recorded_at)} to ${shortDate(pts[pts.length - 1].recorded_at)} (UTC)`;
+      rankingRows = ranking.facilities || [];
+      renderRanking();
+      $("trend-error").textContent = $("ranking-error").textContent = "";
+    }
+
+    // The free Render service sleeps when idle and can take up to a minute to wake.
+    // Show the bundled snapshot immediately, then replace it with the live API response.
     async function loadDashboard() {
-      $("status").textContent = "Refreshing live data...";
+      let snapshot = null;
       try {
-        const [overviewResponse, trendResponse, rankingResponse] = await Promise.all([
-          fetch(`${API_BASE_URL}/api/overview`),
-          fetch(`${API_BASE_URL}/api/output-trend?hours=24`),
-          fetch(`${API_BASE_URL}/api/facilities/ranking`)
+        const res = await fetch("data/api_snapshot.json");
+        if (res.ok) {
+          snapshot = await res.json();
+          renderDashboard(snapshot.overview, snapshot.trend, snapshot.ranking);
+          $("status").textContent = `Showing a cached snapshot (${shortDate(snapshot.generated_at)}) while the API wakes up...`;
+        }
+      } catch (error) { /* no snapshot: wait for the API */ }
+      if (!snapshot) $("status").textContent = "Loading data from the API...";
+
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 90000);
+      try {
+        const responses = await Promise.all([
+          fetch(`${API_BASE_URL}/api/overview`, {signal: controller.signal}),
+          fetch(`${API_BASE_URL}/api/output-trend?hours=24`, {signal: controller.signal}),
+          fetch(`${API_BASE_URL}/api/facilities/ranking`, {signal: controller.signal})
         ]);
-        if (![overviewResponse, trendResponse, rankingResponse].every(response => response.ok)) throw new Error("The API returned an error.");
-        const overview = await overviewResponse.json(), trend = await trendResponse.json(), ranking = await rankingResponse.json();
-        $("facility-count").textContent = formatNumber(overview.facility_count);
-        $("reading-count").textContent = formatNumber(overview.reading_count);
-        $("anomaly-rate").textContent = `${overview.anomaly_rate_pct}%`;
-        $("latest-reading").textContent = overview.latest_reading_at ? new Date(overview.latest_reading_at).toLocaleString() : "—";
-        drawTrend(trend.points || []);
-        $("ranking").innerHTML = (ranking.facilities || []).slice(0, 10).map(row => `<tr><td>${row.overall_rank}</td><td>${row.facility_name}</td><td>${row.avg_efficiency_pct}%</td></tr>`).join("");
-        $("status").textContent = `Live · updated ${new Date().toLocaleTimeString()}`;
-        $("trend-error").textContent = $("ranking-error").textContent = "";
+        if (!responses.every(response => response.ok)) throw new Error("The API returned an error.");
+        const [overview, trend, ranking] = await Promise.all(responses.map(response => response.json()));
+        renderDashboard(overview, trend, ranking);
+        const dataWindow = overview.latest_reading_at ? ` · data window: ${monthYear(overview.latest_reading_at)}` : "";
+        $("status").textContent = `API online${dataWindow} (historical snapshot)`;
       } catch (error) {
-        $("status").textContent = "API unavailable";
-        $("trend-error").textContent = error.message;
-        $("ranking-error").textContent = "Connect the Render API to load rankings.";
+        if (snapshot) {
+          $("status").textContent = `API unavailable · showing the cached snapshot from ${shortDate(snapshot.generated_at)}`;
+        } else {
+          $("status").textContent = "API unavailable";
+          $("trend-window").textContent = "";
+          $("trend-error").textContent = error.name === "AbortError" ? "The API did not respond in time." : error.message;
+          $("ranking-error").textContent = "The API may be waking up (free hosting sleeps when idle). Please reload in a minute.";
+        }
+      } finally {
+        clearTimeout(timer);
       }
     }
+
+    // ---------- shared SVG line chart ----------
+    const chartArgs = new Map();
+    function lineChart(svg, series, labels, opts = {}) {
+      chartArgs.set(svg, [series, labels, opts]);
+      const {yLabel = "", zeroLine = false, tickFmt = v => v.toFixed(0), xTicks = null,
+             tipTitle = label => label, tipValue = v => v.toFixed(1)} = opts;
+      // Match the viewBox to the element's aspect ratio so the chart fills the panel without distortion
+      const height = 360;
+      const aspect = svg.clientWidth && svg.clientHeight ? svg.clientWidth / svg.clientHeight : 800 / 360;
+      const width = Math.max(420, Math.round(height * aspect));
+      svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+      const plot = {left: 92, right: 16, top: 16, bottom: 52};
+      const all = series.flatMap(s => s.values);
+      let min = Math.min(...all), max = Math.max(...all);
+      if (!zeroLine) min = Math.min(0, min);
+      const range = (max - min) || 1;
+      const n = labels.length;
+      const x = i => plot.left + i * (width - plot.left - plot.right) / Math.max(n - 1, 1);
+      const y = v => height - plot.bottom - (v - min) * (height - plot.top - plot.bottom) / range;
+      let out = "";
+      for (let t = 0; t <= 4; t++) {
+        const v = min + range * t / 4, ty = y(v);
+        out += `<line x1="${plot.left}" y1="${ty}" x2="${width - plot.right}" y2="${ty}" stroke="rgba(147,201,187,.14)"/><text x="${plot.left - 10}" y="${ty + 6}" text-anchor="end" fill="#91aaa2" font-size="18">${tickFmt(v)}</text>`;
+      }
+      if (zeroLine && min < 0 && max > 0) out += `<line x1="${plot.left}" y1="${y(0)}" x2="${width - plot.right}" y2="${y(0)}" stroke="rgba(147,201,187,.45)"/>`;
+      series.forEach(s => {
+        const d = s.values.map((v, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
+        out += `<path d="${d}" fill="none" stroke="${s.color}" stroke-width="${s.width || 2.5}" stroke-opacity="${s.opacity || 1}" stroke-linejoin="round"/>`;
+      });
+      const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+      const monthStep = width < 700 ? 2 : 1; // narrow charts: label every other month
+      labels.forEach((label, i) => {
+        const text = xTicks ? xTicks(i, label)
+          : (label.endsWith("-01") && (Number(label.slice(5, 7)) - 1) % monthStep === 0 ? months[Number(label.slice(5, 7)) - 1] : null);
+        if (text) out += `<text x="${x(i)}" y="${height - 22}" text-anchor="middle" fill="#91aaa2" font-size="17">${text}</text>`;
+      });
+      if (yLabel) out += `<text x="18" y="${(height - plot.bottom) / 2}" transform="rotate(-90 18 ${(height - plot.bottom) / 2})" text-anchor="middle" fill="#91aaa2" font-size="17">${yLabel}</text>`;
+      // Tooltip layer (hover or touch): vertical guide, a dot per series and a label box
+      out += `<g class="tip" visibility="hidden" pointer-events="none"><line class="tip-line" y1="${plot.top}" y2="${height - plot.bottom}" stroke="rgba(236,247,242,.35)" stroke-dasharray="4 4"/>${series.map(s => `<circle class="tip-dot" r="5" fill="${s.color}" stroke="#071211" stroke-width="2"/>`).join("")}<rect class="tip-box" rx="8" fill="#0b1d1a" stroke="rgba(147,201,187,.45)"/><text class="tip-text" font-size="16" fill="#ecf7f2"></text></g>`;
+      out += `<rect class="tip-hit" x="${plot.left}" y="${plot.top}" width="${width - plot.left - plot.right}" height="${height - plot.top - plot.bottom}" fill="transparent"/>`;
+      svg.innerHTML = out;
+
+      const tip = svg.querySelector(".tip"), box = svg.querySelector(".tip-box"), text = svg.querySelector(".tip-text");
+      const guide = svg.querySelector(".tip-line");
+      const dots = [...svg.querySelectorAll(".tip-dot")];
+      const show = event => {
+        const rect = svg.getBoundingClientRect();
+        const px = (event.clientX - rect.left) * width / rect.width;
+        const i = Math.max(0, Math.min(n - 1, Math.round((px - plot.left) / ((width - plot.left - plot.right) / Math.max(n - 1, 1)))));
+        const gx = x(i);
+        guide.setAttribute("x1", gx);
+        guide.setAttribute("x2", gx);
+        dots.forEach((dot, k) => { dot.setAttribute("cx", gx); dot.setAttribute("cy", y(series[k].values[i])); });
+        const lines = [tipTitle(labels[i]), ...series.map(s => `${s.name}: ${tipValue(s.values[i])}`)];
+        text.replaceChildren(...lines.map((line, k) => {
+          const t = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
+          t.setAttribute("dy", k ? "21" : "0");
+          if (k === 0) t.setAttribute("fill", "#91aaa2");
+          t.textContent = line;
+          return t;
+        }));
+        tip.setAttribute("visibility", "visible");
+        const by = plot.top + 6;
+        text.setAttribute("y", by + 22);
+        text.querySelectorAll("tspan").forEach(t => t.setAttribute("x", 0));
+        const bb = text.getBBox();
+        const bw = bb.width + 24, bh = bb.height + 16;
+        const bx = gx + 14 + bw > width - plot.right ? gx - 14 - bw : gx + 14;
+        box.setAttribute("x", bx); box.setAttribute("y", by); box.setAttribute("width", bw); box.setAttribute("height", bh);
+        text.querySelectorAll("tspan").forEach(t => t.setAttribute("x", bx + 12));
+      };
+      const hit = svg.querySelector(".tip-hit");
+      hit.addEventListener("pointermove", show);
+      hit.addEventListener("pointerdown", show);
+      // Mouse: hide when the cursor leaves. Touch: pointerleave fires as soon as the finger
+      // lifts, so keep the tooltip until the next tap elsewhere on the page.
+      hit.addEventListener("pointerleave", event => { if (event.pointerType === "mouse") tip.setAttribute("visibility", "hidden"); });
+      document.addEventListener("pointerdown", event => { if (!svg.contains(event.target)) tip.setAttribute("visibility", "hidden"); });
+    }
+    // Centred moving average: avoids the one-day "window" at the start of a trailing average
+    const rolling = (values, k) => values.map((_, i) => {
+      const half = Math.floor(k / 2);
+      const part = values.slice(Math.max(0, i - half), i + half + 1);
+      return part.reduce((a, b) => a + b, 0) / part.length;
+    });
+    let resizeTimer = null;
+    window.addEventListener("resize", () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => chartArgs.forEach((args, svg) => lineChart(svg, ...args)), 150);
+    });
+    function addKpi(container, value, label) {
+      const box = document.createElement("div"); box.className = "kpi";
+      const strong = document.createElement("strong"); strong.textContent = value;
+      const span = document.createElement("span"); span.textContent = label;
+      box.append(strong, span); container.appendChild(box);
+    }
+
+    // ---------- real Fingrid data (static export, no API needed) ----------
+    async function loadGrid() {
+      try {
+        const res = await fetch("data/fingrid_2023_daily.json");
+        if (!res.ok) throw new Error("Grid data file not found.");
+        const data = await res.json();
+        const labels = data.days.map(d => d.day);
+        lineChart($("grid-chart"), [
+          {name: "Consumption", values: data.days.map(d => d.consumption_mw), color: "#a994ff", width: 2},
+          {name: "Wind", values: data.days.map(d => d.wind_mw), color: "#65e1bd", width: 2.2}
+        ], labels, {yLabel: "MW", tickFmt: v => formatNumber(Math.round(v)),
+                    tipTitle: day => shortDate(`${day}T00:00:00Z`), tipValue: v => `${formatNumber(Math.round(v))} MW`});
+        const sm = data.summary;
+        const monthName = ym => new Date(`${ym}-01T00:00:00Z`).toLocaleDateString("en-GB", {month: "long", timeZone: "UTC"});
+        const k = $("grid-kpis");
+        addKpi(k, `${formatNumber(Math.round(sm.wind_mean_mw))} MW`, "avg wind production");
+        addKpi(k, `${formatNumber(Math.round(sm.consumption_mean_mw))} MW`, "avg consumption");
+        addKpi(k, `${sm.wind_share_pct}%`, "wind share of consumption");
+        addKpi(k, `${monthName(sm.windiest_month)} / ${monthName(sm.calmest_month)}`, "windiest / calmest month");
+      } catch (error) {
+        $("grid-error").textContent = error.message;
+      }
+    }
+
+    // ---------- validation: real vs synthetic ----------
+    async function loadValidation() {
+      try {
+        const res = await fetch("data/wind_validation_2023.json");
+        if (!res.ok) throw new Error("Validation file not found.");
+        const data = await res.json();
+        const labels = data.days.map(d => d.day);
+        lineChart($("val-chart"), [
+          {name: "Synthetic", values: rolling(data.days.map(d => d.synthetic_z), 7), color: "#f4bd73", width: 2.2},
+          {name: "Real", values: rolling(data.days.map(d => d.real_z), 7), color: "#65e1bd", width: 2.4}
+        ], labels, {yLabel: "z-score (7-day mean)", zeroLine: true, tickFmt: v => v.toFixed(1),
+                    tipTitle: day => `${shortDate(`${day}T00:00:00Z`)} (7-day mean)`, tipValue: v => v.toFixed(2)});
+        $("val-stats").textContent = `Pearson r = ${data.pearson_r.toFixed(3)} · n = ${data.n_days} days · p ≈ ${data.p_value.toFixed(2)}`;
+        $("val-note").textContent = "No statistically significant relationship. Real Nordic wind is strongly seasonal (windy winters, calm summers), while the generator draws each value independently with no seasonal model, so its curve is day-to-day noise with no winter or summer pattern. Surfacing this gap is the point of the check: it shows what the synthetic data can and cannot be used for.";
+      } catch (error) {
+        $("val-error").textContent = error.message;
+      }
+    }
+
+    // ---------- anomalies from the API ----------
+    async function loadAnomalies() {
+      try {
+        // One request per facility type: z-scores are not comparable across sensors with
+        // very different spreads (e.g. bus voltage), so a single global top-N would show
+        // only one sensor.
+        const types = ["wind", "solar", "substation"];
+        const responses = await Promise.all(types.map(t => fetch(`${API_BASE_URL}/api/anomalies?limit=300&z_threshold=3&facility_type=${t}`)));
+        if (!responses.every(r => r.ok)) throw new Error("The API returned an error.");
+        const results = await Promise.all(responses.map(r => r.json()));
+        const best = new Map();
+        results.flatMap(d => d.anomalies || []).forEach(a => {
+          const key = `${a.facility_type}|${a.sensor_type}`;
+          if (!best.has(key) || a.z_score > best.get(key).z_score) best.set(key, a);
+        });
+        const rows = [...best.values()].sort((a, b) => b.z_score - a.z_score);
+        const body = $("anomalies");
+        body.replaceChildren();
+        rows.forEach(a => {
+          const tr = document.createElement("tr");
+          const cells = [
+            new Date(a.recorded_at).toISOString().slice(0, 16).replace("T", " "),
+            a.facility_name,
+            a.sensor_type.replace("_", " "),
+            `${Number(a.value).toLocaleString(undefined, {maximumFractionDigits: 1})} ${a.unit}`,
+            Number(a.z_score).toFixed(2)
+          ];
+          cells.forEach(value => { const td = document.createElement("td"); td.textContent = value; tr.appendChild(td); });
+          const tag = document.createElement("td");
+          const span = document.createElement("span");
+          span.className = Number(a.pre_labelled) ? "tag inj" : "tag";
+          span.textContent = Number(a.pre_labelled) ? "injected" : "natural";
+          tag.appendChild(span); tr.appendChild(tag);
+          body.appendChild(tr);
+        });
+        if (!rows.length) $("anom-error").textContent = "No anomalies above the threshold.";
+      } catch (error) {
+        $("anom-error").textContent = "Anomalies could not be loaded from the API. It may be waking up; please reload in a minute.";
+      }
+    }
+
+    // The dataset is a fixed snapshot, so a single load is enough (no polling)
     loadDashboard();
-    setInterval(loadDashboard, 60000);
+    loadGrid();
+    loadValidation();
+    loadAnomalies();
   </script>
 </body>
 </html>
