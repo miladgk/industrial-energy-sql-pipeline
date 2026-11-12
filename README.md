@@ -344,7 +344,15 @@ Rebuild them after regenerating data or re-running the analysis:
 ```bash
 python scripts/export_dashboard_data.py                  # all files (calls the hosted API)
 python scripts/export_dashboard_data.py --skip-snapshot  # local files only
+python scripts/export_dashboard_data.py --parts fingrid-recent  # last 365 days from Fingrid
 ```
+
+The last-12-months Fingrid view is refreshed automatically by
+`.github/workflows/refresh_fingrid.yml` every Monday (or on demand from the
+Actions tab). It needs the repository secret `FINGRID_API_KEY`
+(Settings → Secrets and variables → Actions). The key is read from the
+environment only inside that job; locally, `fingrid_api_key` in the git-ignored
+`config.yaml` is used instead.
 
 ---
 

@@ -1,12 +1,14 @@
 """
 fetch_grid_data.py
 ~~~~~~~~~~~~~~~~~~
-Pulls historical hourly electricity consumption and wind power production
-for Finland from the Fingrid Open Data API (data.fingrid.fi) for the full
-year of 2023.
+Pulls hourly electricity consumption and wind power production for Finland
+from the Fingrid Open Data API (data.fingrid.fi). By default it fetches the
+full year 2023 into data/raw/grid_data.csv; --start/--end/--output select
+another window (used by scripts/export_dashboard_data.py for recent data).
 
-By default, this script requires a valid 'fingrid_api_key' in config.yaml and
-fails loudly if none is present or if API fetching fails.
+The API key is read from the FINGRID_API_KEY environment variable (e.g. a
+GitHub Actions secret) or from 'fingrid_api_key' in the git-ignored
+config.yaml. The script fails loudly if no key is present or fetching fails.
 
 To allow generating synthetic mock data for offline testing or CI, the caller
 must explicitly provide the '--allow-mock' CLI flag. Every row is stamped
@@ -14,11 +16,11 @@ with a 'source' column ('fingrid' vs 'mock') so real vs fake data is
 unambiguously queryable in the database.
 
 API details:
-  - Base URL: https://api.fingrid.fi/v1/variable/{variable_id}/events/json
-  - Dataset ID 124: Electricity consumption in Finland (MW/h)
+  - Endpoint: https://data.fingrid.fi/api/datasets/{dataset_id}/data
+  - Dataset ID 124: Electricity consumption in Finland (MW)
   - Dataset ID 75: Wind power generation - 15 min data (downsampled here to hourly)
   - x-api-key: HTTP header authentication
-  - Rate limit: 1 request per 2 seconds, 10,000 requests per day.
+  - Rate limit: requests are spaced 2 s apart; HTTP 429 triggers exponential backoff.
 """
 
 import os
@@ -34,7 +36,7 @@ import pandas as pd
 import numpy as np
 
 # Fingrid API configuration
-API_BASE_URL = "https://api.fingrid.fi/v1/variable"
+API_URL = "https://data.fingrid.fi/api/datasets/{dataset_id}/data"
 DATASETS = {
     124: "consumption",
     75: "wind_production"
@@ -45,13 +47,16 @@ OUTPUT_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "raw", "grid
 
 
 def load_api_key() -> str:
-    """Load fingrid_api_key from config.yaml."""
+    """Return the Fingrid API key from FINGRID_API_KEY, else from config.yaml."""
+    env_key = os.environ.get("FINGRID_API_KEY", "").strip()
+    if env_key:
+        return env_key
     if not os.path.exists(CONFIG_PATH):
         return ""
     with open(CONFIG_PATH, "r") as fh:
         try:
             cfg = yaml.safe_load(fh)
-            return cfg.get("fingrid_api_key", "").strip()
+            return (cfg.get("fingrid_api_key") or "").strip()
         except Exception:
             return ""
 
@@ -124,7 +129,7 @@ def fetch_dataset_chunk(dataset_id: int, api_key: str, start_time: str, end_time
         "pageSize": 20000
     }
     query_string = urllib.parse.urlencode(params)
-    url = f"https://data.fingrid.fi/api/datasets/{dataset_id}/data?{query_string}"
+    url = f"{API_URL.format(dataset_id=dataset_id)}?{query_string}"
     
     req = urllib.request.Request(url)
     req.add_header("Accept", "application/json")
@@ -161,22 +166,29 @@ def fetch_dataset_chunk(dataset_id: int, api_key: str, start_time: str, end_time
     raise RuntimeError(f"Failed to fetch dataset {dataset_id} for range {start_time} to {end_time} after {max_retries} attempts.")
 
 
-def fetch_fingrid_data(api_key: str) -> pd.DataFrame:
-    """Fetch full year 2023 grid data by dividing it into monthly chunks."""
-    print("Connecting to Fingrid Open Data API ...")
-    months = pd.date_range(start="2023-01-01", end="2024-01-01", freq="MS")
+def _month_windows(start: str, end: str) -> list:
+    """Split [start, end) into windows that never cross a month boundary."""
+    start_ts, end_ts = pd.Timestamp(start), pd.Timestamp(end)
+    edges = [start_ts] + [m for m in pd.date_range(start_ts, end_ts, freq="MS") if start_ts < m < end_ts] + [end_ts]
+    return list(zip(edges[:-1], edges[1:]))
+
+
+def fetch_fingrid_data(api_key: str, start: str = "2023-01-01", end: str = "2024-01-01") -> pd.DataFrame:
+    """Fetch hourly grid data for [start, end) in month-sized requests."""
+    print(f"Connecting to Fingrid Open Data API ({start} to {end}) ...")
+    windows = _month_windows(start, end)
     all_chunks = []
-    
+
     for dataset_id, metric in DATASETS.items():
         print(f"Fetching dataset {dataset_id} ({metric}) chunk-by-chunk ...")
-        for i in range(len(months) - 1):
-            start_str = months[i].strftime("%Y-%m-%dT%H:%M:%SZ")
-            end_str = (months[i+1] - pd.Timedelta(seconds=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
-            
-            print(f"  -> Pulling chunk: {months[i].strftime('%B %Y')} ...")
+        for win_start, win_end in windows:
+            start_str = win_start.strftime("%Y-%m-%dT%H:%M:%SZ")
+            end_str = (win_end - pd.Timedelta(seconds=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+            print(f"  -> Pulling chunk: {win_start.date()} to {win_end.date()} ...")
             chunk_data = fetch_dataset_chunk(dataset_id, api_key, start_str, end_str)
             if not chunk_data:
-                raise RuntimeError(f"API returned empty data for {metric} in {months[i].strftime('%B %Y')}.")
+                raise RuntimeError(f"API returned empty data for {metric} from {win_start.date()} to {win_end.date()}.")
                 
             df_chunk = pd.DataFrame(chunk_data)
             df_chunk["dataset_id"] = dataset_id
@@ -219,6 +231,9 @@ def fetch_fingrid_data(api_key: str) -> pd.DataFrame:
 def main():
     parser = argparse.ArgumentParser(description="Fetch Fingrid hourly data or generate mock fallback.")
     parser.add_argument("--allow-mock", action="store_true", help="Allow generating synthetic mock data if API key is missing or fails")
+    parser.add_argument("--start", default="2023-01-01", help="Window start date (inclusive), default 2023-01-01")
+    parser.add_argument("--end", default="2024-01-01", help="Window end date (exclusive), default 2024-01-01")
+    parser.add_argument("--output", default=OUTPUT_PATH, help="CSV output path (default data/raw/grid_data.csv)")
     args = parser.parse_args()
 
     api_key = load_api_key()
@@ -232,7 +247,7 @@ def main():
             df_grid = get_mock_grid_data()
     else:
         try:
-            df_grid = fetch_fingrid_data(api_key)
+            df_grid = fetch_fingrid_data(api_key, args.start, args.end)
             print("✓ Successfully fetched actual data from Fingrid API (source='fingrid').")
         except Exception as exc:
             print(f"✗ ERROR: Fingrid API request failed: {exc}")
@@ -243,9 +258,9 @@ def main():
                 print("Falling back to generating synthetic mock grid data (source='mock') due to --allow-mock flag...")
                 df_grid = get_mock_grid_data()
             
-    os.makedirs(os.path.dirname(OUTPUT_PATH), exist_ok=True)
-    df_grid.to_csv(OUTPUT_PATH, index=False)
-    print(f"✓ Wrote {len(df_grid):,} grid data rows to: {os.path.abspath(OUTPUT_PATH)}")
+    os.makedirs(os.path.dirname(os.path.abspath(args.output)), exist_ok=True)
+    df_grid.to_csv(args.output, index=False)
+    print(f"✓ Wrote {len(df_grid):,} grid data rows to: {os.path.abspath(args.output)}")
 
 
 if __name__ == "__main__":

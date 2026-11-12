@@ -1,0 +1,75 @@
+name: Refresh Fingrid data for the dashboard
+
+# Fetches the last 365 complete days of real Fingrid data (wind production and
+# electricity consumption in Finland), writes docs/data/fingrid_recent_daily.json,
+# commits it if it changed, and redeploys GitHub Pages.
+#
+# Requires the repository secret FINGRID_API_KEY
+# (Settings -> Secrets and variables -> Actions -> New repository secret).
+# The key is only used inside this job; it is never written to the repository
+# or sent to the browser.
+
+on:
+  schedule:
+    - cron: "17 5 * * 1"     # every Monday 05:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write            # commit the refreshed JSON
+  actions: write             # start the Pages deploy (pushes made with GITHUB_TOKEN do not trigger workflows)
+
+concurrency:
+  group: refresh-fingrid
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pandas pyyaml numpy
+
+      - name: Check that the API key secret exists
+        env:
+          FINGRID_API_KEY: ${{ secrets.FINGRID_API_KEY }}
+        run: |
+          if [ -z "$FINGRID_API_KEY" ]; then
+            echo "::error::Repository secret FINGRID_API_KEY is not set."
+            exit 1
+          fi
+
+      - name: Fetch the last 365 days from Fingrid
+        env:
+          FINGRID_API_KEY: ${{ secrets.FINGRID_API_KEY }}
+        run: python scripts/export_dashboard_data.py --parts fingrid-recent
+
+      - name: Commit if the data changed
+        id: commit
+        run: |
+          if git diff --quiet -- docs/data/fingrid_recent_daily.json; then
+            echo "No change in Fingrid data."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add docs/data/fingrid_recent_daily.json
+            git commit -m "Refresh Fingrid dashboard data ($(date -u +%Y-%m-%d))"
+            git push
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Redeploy GitHub Pages
+        if: steps.commit.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run pages.yml --ref main
