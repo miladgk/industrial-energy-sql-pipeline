@@ -47,7 +47,7 @@
         <div class="step"><b>Ingestion</b><span>Chunked loads (5,000 rows), high-watermark incremental mode, upsert for grid data</span></div>
         <div class="step"><b>Warehouse</b><span>PostgreSQL 15, readings range-partitioned by month (13 partitions)</span></div>
         <div class="step"><b>Quality gate</b><span>Checks orphans, nulls, anomaly rate and date coverage; fails the run on error</span></div>
-        <div class="step"><b>Analytics SQL</b><span>z-score anomalies, rankings, rolling averages, real vs. synthetic</span></div>
+        <div class="step"><b>Analytics SQL</b><span>z-score anomalies, detector scoring, rolling averages, real vs. synthetic</span></div>
         <div class="step"><b>Serving</b><span>FastAPI on Render feeds this page; Metabase for local BI</span></div>
       </div>
       <div class="links"><a href="https://github.com/miladgk/industrial-energy-sql-pipeline" target="_blank" rel="noopener noreferrer">Source code on GitHub ↗</a><a href="https://industrial-energy-api.onrender.com/docs" target="_blank" rel="noopener noreferrer">Interactive API docs ↗</a></div>
@@ -62,15 +62,13 @@
       <div class="kpi"><strong id="anomaly-rate">-</strong><span>anomaly rate</span></div>
       <div class="kpi"><strong id="latest-reading">-</strong><span>last reading in dataset</span></div>
     </section>
-    <div class="grid">
-      <section class="panel"><h2>Average power output / final 24 hours of the dataset</h2><p class="panel-sub" id="trend-window">Loading data window...</p><div class="chart-wrap"><svg id="trend-chart" class="chart" viewBox="0 0 800 320" role="img" aria-label="Average power output trend"></svg></div><p id="trend-error" class="error"></p></section>
-      <section class="panel"><h2>Average output vs. nameplate capacity</h2><div class="type-tabs" role="group" aria-label="Facility type"><button class="type-tab" type="button" data-type="wind" aria-pressed="true">Wind</button><button class="type-tab" type="button" data-type="solar" aria-pressed="false">Solar</button><button class="type-tab" type="button" data-type="substation" aria-pressed="false">Substation</button></div><div class="table-wrap"><table class="table"><thead><tr><th>#</th><th>Facility</th><th>Country</th><th>Output / capacity</th></tr></thead><tbody id="ranking"></tbody></table></div><p class="note">Ranked within each facility type, so unlike assets are not compared. In this synthetic dataset, power output is drawn uniformly between zero and nameplate capacity, so every facility averages close to 50% and the differences are small by construction.</p><p id="ranking-error" class="error"></p></section>
-    </div>
+    <section class="panel"><h2>Average power output / final 24 hours of the dataset</h2><p class="panel-sub" id="trend-window">Loading data window...</p><div class="chart-wrap"><svg id="trend-chart" class="chart" viewBox="0 0 800 320" role="img" aria-label="Average power output trend"></svg></div><p id="trend-error" class="error"></p></section>
     </section>
 
     <section id="anomaly-detection" aria-labelledby="anom-title">
-      <div class="section-head"><div class="eyebrow">ANOMALY DETECTION / Z-SCORE SQL <span class="src src-syn">Synthetic data</span></div><h2 id="anom-title">Strongest detected anomalies</h2><p>The generator injects sensor-fault values (zero, or three times the sensor's normal maximum) into about 2% of readings. A SQL query computes each sensor's monthly mean and standard deviation from the normal (non-injected) readings, then flags every reading more than 3 standard deviations away (z &gt; 3). The <span class="tag inj">injected</span> tag marks detections that match an injected value.</p></div>
-      <section class="panel"><h2>Strongest anomaly per facility type and sensor</h2><div class="table-wrap"><table class="table"><thead><tr><th>Time (UTC)</th><th>Facility</th><th>Sensor</th><th>Value</th><th>z-score</th><th>Label</th></tr></thead><tbody id="anomalies"></tbody></table></div><p class="note">From the 300 highest z-scores per facility type returned by <code>/api/anomalies</code>. z-scores depend on each sensor's normal spread, so they are comparable within a sensor, not across sensors.</p><p id="anom-error" class="error"></p></section>
+      <div class="section-head"><div class="eyebrow">ANOMALY DETECTION / Z-SCORE SQL <span class="src src-syn">Synthetic data</span></div><h2 id="anom-title">How well does the z-score detector work?</h2><p>The generator injects sensor-fault values (zero, or three times the sensor's normal maximum) into about 2% of readings and labels them. A SQL query computes each sensor's monthly mean and standard deviation from the normal (non-injected) readings, then flags every reading more than 3 standard deviations away (z &gt; 3). Because every injected fault is labelled, the detector can be scored against the truth.</p></div>
+      <section class="panel"><h2>Detector scorecard</h2><p class="panel-sub" id="det-sub">Flags (z &gt; 3) compared with the injected faults</p><div class="mini-kpis" id="det-kpis"></div><div class="table-wrap"><table class="table"><thead><tr><th>Sensor</th><th>Injected faults</th><th>Spikes caught</th><th>Zero values caught</th><th>Recall</th></tr></thead><tbody id="detection"></tbody></table></div><p class="note">Every flag is a real fault, but only about half of the faults are flagged. Spikes sit far outside the normal spread, so all of them are caught. A zero value is caught only where zero is far outside the normal range, as for the 110 kV bus voltage (normal range 104.5 to 115.5 kV). For power, temperature, irradiance and wind speed, zero is an ordinary reading, so a dropout to zero is invisible to a z-score; catching it needs a different rule, such as flagging a value that stays identical for many intervals. Source: <code>sql/analysis/11_detection_quality.sql</code>, served by <code>/api/detection-quality</code>.</p><p id="det-error" class="error"></p></section>
+      <section class="panel wide"><h2>Strongest anomaly per facility type and sensor</h2><div class="table-wrap"><table class="table"><thead><tr><th>Time (UTC)</th><th>Facility</th><th>Sensor</th><th>Value</th><th>z-score</th><th>Label</th></tr></thead><tbody id="anomalies"></tbody></table></div><p class="note">The <span class="tag inj">injected</span> tag marks detections that match an injected value. From the 300 highest z-scores per facility type returned by <code>/api/anomalies</code>. z-scores depend on each sensor's normal spread, so they are comparable within a sensor, not across sensors.</p><p id="anom-error" class="error"></p></section>
     </section>
 
     <section id="validation" aria-labelledby="val-title">
@@ -103,35 +101,37 @@
         tipValue: v => `${v.toFixed(1)} MW`
       });
     }
-    let rankingRows = [];
-    let rankingType = "wind";
     const monthYear = iso => new Date(iso).toLocaleDateString("en-GB", {month: "long", year: "numeric", timeZone: "UTC"});
     const shortDate = iso => new Date(iso).toLocaleDateString("en-GB", {day: "numeric", month: "short", year: "numeric", timeZone: "UTC"});
-    function renderRanking() {
-      const rows = rankingRows
-        .filter(row => row.facility_type === rankingType)
-        .sort((a, b) => b.avg_efficiency_pct - a.avg_efficiency_pct);
-      const body = $("ranking");
+    const SENSOR_NAMES = {power_output: "Power output", temperature: "Temperature", wind_speed: "Wind speed", irradiance: "Irradiance", voltage: "Bus voltage"};
+    const pct = value => value == null ? "-" : `${Number(value).toFixed(1)}%`;
+    function renderDetection(data) {
+      if (!data || !data.sensors || !data.total) return;
+      const t = data.total;
+      const kpis = $("det-kpis");
+      kpis.replaceChildren();
+      addKpi(kpis, pct(t.precision_pct), "precision (flags that are real faults)");
+      addKpi(kpis, pct(t.recall_pct), "recall (faults that are flagged)");
+      addKpi(kpis, `${formatNumber(t.spikes_flagged)} / ${formatNumber(t.spikes)}`, "spikes caught");
+      addKpi(kpis, `${formatNumber(t.drops_flagged)} / ${formatNumber(t.drops)}`, "zero values caught");
+      const body = $("detection");
       body.replaceChildren();
-      rows.forEach((row, index) => {
+      data.sensors.forEach(row => {
         const tr = document.createElement("tr");
         // textContent, not innerHTML: values come from the API
-        [index + 1, row.facility_name, row.country, `${Number(row.avg_efficiency_pct).toFixed(2)}%`].forEach(value => {
+        [SENSOR_NAMES[row.sensor_type] || row.sensor_type, formatNumber(row.injected),
+         `${formatNumber(row.spikes_flagged)} / ${formatNumber(row.spikes)}`,
+         `${formatNumber(row.drops_flagged)} / ${formatNumber(row.drops)}`, pct(row.recall_pct)].forEach(value => {
           const td = document.createElement("td");
           td.textContent = value;
           tr.appendChild(td);
         });
         body.appendChild(tr);
       });
+      $("det-sub").textContent = `Flags (z > ${data.z_threshold}) compared with the injected faults, ${formatNumber(t.readings)} readings`;
+      $("det-error").textContent = "";
     }
-    document.querySelectorAll(".type-tab[data-type]").forEach(tab => {
-      tab.addEventListener("click", () => {
-        rankingType = tab.dataset.type;
-        document.querySelectorAll(".type-tab[data-type]").forEach(t => t.setAttribute("aria-pressed", String(t === tab)));
-        renderRanking();
-      });
-    });
-    function renderDashboard(overview, trend, ranking) {
+    function renderDashboard(overview, trend) {
       $("facility-count").textContent = formatNumber(overview.facility_count);
       $("reading-count").textContent = formatNumber(overview.reading_count);
       $("anomaly-rate").textContent = `${overview.anomaly_rate_pct}%`;
@@ -139,9 +139,7 @@
       drawTrend(trend.points || []);
       const pts = trend.points || [];
       if (pts.length) $("trend-window").textContent = `${shortDate(pts[0].recorded_at)} to ${shortDate(pts[pts.length - 1].recorded_at)} (UTC)`;
-      rankingRows = ranking.facilities || [];
-      renderRanking();
-      $("trend-error").textContent = $("ranking-error").textContent = "";
+      $("trend-error").textContent = "";
     }
 
     // The free Render service sleeps when idle and can take up to a minute to wake.
@@ -152,7 +150,8 @@
         const res = await fetch("data/api_snapshot.json");
         if (res.ok) {
           snapshot = await res.json();
-          renderDashboard(snapshot.overview, snapshot.trend, snapshot.ranking);
+          renderDashboard(snapshot.overview, snapshot.trend);
+          renderDetection(snapshot.detection);
           $("status").textContent = `Showing a cached snapshot (${shortDate(snapshot.generated_at)}) while the API wakes up...`;
         }
       } catch (error) { /* no snapshot: wait for the API */ }
@@ -163,12 +162,11 @@
       try {
         const responses = await Promise.all([
           fetch(`${API_BASE_URL}/api/overview`, {signal: controller.signal}),
-          fetch(`${API_BASE_URL}/api/output-trend?hours=24`, {signal: controller.signal}),
-          fetch(`${API_BASE_URL}/api/facilities/ranking`, {signal: controller.signal})
+          fetch(`${API_BASE_URL}/api/output-trend?hours=24`, {signal: controller.signal})
         ]);
         if (!responses.every(response => response.ok)) throw new Error("The API returned an error.");
-        const [overview, trend, ranking] = await Promise.all(responses.map(response => response.json()));
-        renderDashboard(overview, trend, ranking);
+        const [overview, trend] = await Promise.all(responses.map(response => response.json()));
+        renderDashboard(overview, trend);
         const dataWindow = overview.latest_reading_at ? ` · data window: ${monthYear(overview.latest_reading_at)}` : "";
         $("status").textContent = `API online${dataWindow} (historical snapshot)`;
       } catch (error) {
@@ -178,7 +176,6 @@
           $("status").textContent = "API unavailable";
           $("trend-window").textContent = "";
           $("trend-error").textContent = error.name === "AbortError" ? "The API did not respond in time." : error.message;
-          $("ranking-error").textContent = "The API may be waking up (free hosting sleeps when idle). Please reload in a minute.";
         }
       } finally {
         clearTimeout(timer);
@@ -343,6 +340,18 @@
       }
     }
 
+    // ---------- detector scorecard from the API ----------
+    async function loadDetection() {
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/detection-quality`);
+        if (!res.ok) throw new Error("The API returned an error.");
+        renderDetection(await res.json());
+      } catch (error) {
+        if (!$("detection").children.length)
+          $("det-error").textContent = "The scorecard could not be loaded from the API. It may be waking up; please reload in a minute.";
+      }
+    }
+
     // ---------- anomalies from the API ----------
     async function loadAnomalies() {
       try {
@@ -389,6 +398,7 @@
     loadGrid();
     loadValidation();
     loadAnomalies();
+    loadDetection();
   </script>
 </body>
 </html>

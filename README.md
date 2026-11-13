@@ -26,6 +26,7 @@ flowchart TD
     E --> F[outputs/*.csv]
     D -->|psycopg2| G[api.py<br/>FastAPI :8000]
     G --> H[GET /api/anomalies]
+    G --> I[GET /api/detection-quality]
 ```
 
 ---
@@ -118,7 +119,8 @@ energy-analytics-sql/
 │       ├── 05_facility_ranking.sql
 │       ├── 06_monthly_report.sql
 │       ├── 08_real_vs_synthetic_comparison.sql
-│       └── 09_top_readings_per_sensor.sql # Correlated LATERAL join queries
+│       ├── 09_top_readings_per_sensor.sql # Correlated LATERAL join queries
+│       └── 11_detection_quality.sql # Precision / recall of the z-score detector
 │
 ├── src/
 │   ├── setup_db.py             # Runs 01_create_tables.sql (fallback for non-Docker setups)
@@ -130,7 +132,7 @@ energy-analytics-sql/
 │   ├── ingest_grid_data.py     # Grid data PostgreSQL loader
 │   ├── run_quality_checks.py   # Runs 02_data_quality_checks.sql, prints results
 │   ├── run_report.py           # Runs all analysis SQL → timestamped CSVs
-│   └── api.py                  # FastAPI service (anomalies, rankings)
+│   └── api.py                  # FastAPI service (overview, trend, anomalies, detector scoring, rankings)
 │
 ├── tests/
 │   ├── test_data_quality.py    # pytest suite for post-ingestion assertions
@@ -303,7 +305,7 @@ smaller dataset, set `DAYS_EXPECTED` and `ROWS_EXPECTED` (CI uses 3 days and
 python src/run_report.py
 ```
 
-Executes the four analysis SQL files in order and writes timestamped
+Executes every analysis SQL file in `sql/analysis/` in order and writes timestamped
 CSVs to `outputs/`.
 
 ### 9 — Start the API
@@ -411,6 +413,29 @@ reading_id  sensor_id  recorded_at             value     z_score  was_flagged_in
 155912      19         2023-01-02 08:35:00+00    220.98     8.70  true                   WindFarm_East_07       power_output  MW
 501257      59         2023-01-01 11:20:00+00    105.00     6.22  true                   SolarPlant_West_20     temperature   Celsius
 ```
+
+## Sample Output — Detector Scorecard (11)
+
+Because the generator labels every fault it injects, the z-score detector can be
+scored against the truth (`11_detection_quality.sql`, served by
+`GET /api/detection-quality`). Output on the 30-day demo dataset:
+
+```
+sensor_type   injected  flagged  precision_pct  recall_pct  spikes_caught  drops_caught
+------------  --------  -------  -------------  ----------  -------------  ------------
+irradiance        1001      491          100.0        49.1  491 / 491      0 / 510
+power_output      3433     1696          100.0        49.4  1696 / 1696    0 / 1737
+temperature       3345     1700          100.0        50.8  1700 / 1700    0 / 1645
+voltage           1517     1517          100.0       100.0  757 / 757      760 / 760
+wind_speed         857      423          100.0        49.4  423 / 423      0 / 434
+```
+
+Every flag is a real fault (precision 100%), but only about half of the faults are
+found. Spikes (3× the normal maximum) are always caught. A zero value is caught only
+for bus voltage, where zero is far outside the normal 104.5 to 115.5 kV band; for
+power, temperature, irradiance and wind speed, zero lies inside the normal range, so
+a dropout to zero is statistically invisible and needs a different rule (for
+example, a value that stays identical for many intervals).
 
 ---
 

@@ -6,7 +6,7 @@ Rebuild the static data files used by the GitHub Pages dashboard (docs/data/).
   fingrid_2023_daily.json     Real Fingrid data (data/raw/grid_data.csv), daily means   [part: fingrid]
   wind_validation_2023.json   Real vs. synthetic wind, from the latest daily
                               outputs/08_real_vs_synthetic_comparison_*.csv           [part: validation]
-  api_snapshot.json           Overview, trend and ranking from the API, shown
+  api_snapshot.json           Overview, trend and detector scorecard from the API, shown
                               instantly while the free Render service wakes up        [part: snapshot]
   fingrid_recent_daily.json   Last 365 complete days fetched live from the Fingrid
                               API (needs FINGRID_API_KEY or config.yaml)              [part: fingrid-recent]
@@ -139,7 +139,7 @@ def export_snapshot(api_url: str) -> None:
         "api_url": api_url,
         "overview": get("/api/overview"),
         "trend": get("/api/output-trend?hours=24"),
-        "ranking": get("/api/facilities/ranking"),
+        "detection": get("/api/detection-quality"),
     })
 
 

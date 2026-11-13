@@ -11,6 +11,11 @@ GET /api/anomalies
     Returns statistical anomalies (z-score > threshold) detected in the
     readings table, with optional query parameters for filtering.
 
+GET /api/detection-quality
+    Scores the z-score detector against the faults injected by the data
+    generator: precision and recall per sensor type, split into spikes and
+    zero-value dropouts.
+
 GET /api/facilities/ranking
     Returns all facilities ranked by average output as a share of nameplate
     capacity (capacity factor) over the available data window.
@@ -247,6 +252,87 @@ def get_anomalies(
         "count"          : len(rows),
         "anomalies"      : rows,
     }
+
+
+@app.get("/api/detection-quality", tags=["analytics"])
+def get_detection_quality(
+    z_threshold: float = Query(
+        default=3.0,
+        ge=1.0,
+        le=10.0,
+        description="Z-score threshold used by the detector (same rule as /api/anomalies).",
+    ),
+):
+    """
+    Score the z-score detector against the injected faults (ground truth).
+
+    The synthetic generator labels every fault it injects (is_anomaly), and a
+    fault is either a zero-value dropout or a spike at three times the sensor's
+    normal maximum. The labels are used only to build a clean baseline (the
+    monthly mean and standard deviation of non-injected readings); a reading
+    is flagged when it lies more than *z_threshold* standard deviations from
+    that baseline. Comparing flags with labels gives precision (how many flags
+    are real faults) and recall (how many faults are flagged), per sensor type
+    and per fault kind. Same SQL as sql/analysis/11_detection_quality.sql.
+    """
+    sql = """
+        WITH sensor_monthly_stats AS (
+            SELECT
+                sensor_id,
+                DATE_TRUNC('month', recorded_at)  AS month,
+                AVG(value)                        AS mean_val,
+                STDDEV(value)                     AS stddev_val
+            FROM readings
+            WHERE is_anomaly = FALSE
+            GROUP BY sensor_id, DATE_TRUNC('month', recorded_at)
+        ),
+        scored AS (
+            SELECT
+                se.sensor_type,
+                r.is_anomaly                                   AS injected,
+                (s.stddev_val > 0
+                 AND ABS(r.value - s.mean_val) / s.stddev_val > %s) AS flagged,
+                r.value < s.mean_val                           AS below_baseline
+            FROM readings r
+            JOIN sensor_monthly_stats s
+              ON  r.sensor_id = s.sensor_id
+              AND DATE_TRUNC('month', r.recorded_at) = s.month
+            JOIN sensors se ON r.sensor_id = se.sensor_id
+        )
+        SELECT
+            sensor_type,
+            COUNT(*)                                                     AS readings,
+            COUNT(*) FILTER (WHERE injected)                             AS injected,
+            COUNT(*) FILTER (WHERE flagged)                              AS flagged,
+            COUNT(*) FILTER (WHERE injected AND flagged)                 AS true_positives,
+            COUNT(*) FILTER (WHERE injected AND NOT below_baseline)      AS spikes,
+            COUNT(*) FILTER (WHERE injected AND NOT below_baseline AND flagged) AS spikes_flagged,
+            COUNT(*) FILTER (WHERE injected AND below_baseline)          AS drops,
+            COUNT(*) FILTER (WHERE injected AND below_baseline AND flagged)     AS drops_flagged
+        FROM scored
+        GROUP BY sensor_type
+        ORDER BY sensor_type
+    """
+
+    try:
+        rows = _fetch_rows(sql, (z_threshold,))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+    def _pct(part: int, whole: int) -> Optional[float]:
+        return round(part / whole * 100, 1) if whole else None
+
+    totals = {key: 0 for key in ("readings", "injected", "flagged", "true_positives",
+                                 "spikes", "spikes_flagged", "drops", "drops_flagged")}
+    for row in rows:
+        for key in totals:
+            row[key] = int(row[key])
+            totals[key] += row[key]
+    for row in rows + [totals]:
+        row["precision_pct"] = _pct(row["true_positives"], row["flagged"])
+        row["recall_pct"] = _pct(row["true_positives"], row["injected"])
+
+    return {"z_threshold": z_threshold, "sensors": rows, "total": totals}
 
 
 @app.get("/api/facilities/ranking", tags=["analytics"])
