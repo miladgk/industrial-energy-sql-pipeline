@@ -3,6 +3,15 @@
 -- Create partitioned version of readings table
 -- =============================================================
 
+-- The whole file is skipped once `readings` is itself partitioned (i.e. after
+-- migrate_to_partitioned.py has swapped the tables). Without this guard, a
+-- repeated `setup_db.py` would create a stray, partition-less readings_partitioned.
+DO $partition_setup$
+BEGIN
+IF NOT EXISTS (SELECT 1 FROM pg_class
+               WHERE relname = 'readings' AND relkind = 'p'
+                 AND relnamespace = 'public'::regnamespace) THEN
+
 CREATE TABLE IF NOT EXISTS readings_partitioned (
     reading_id   BIGSERIAL,
     sensor_id    INT          NOT NULL,
@@ -43,3 +52,7 @@ CREATE TABLE IF NOT EXISTS readings_2024_01 PARTITION OF readings_partitioned
 
 -- Recreate the composite index on the parent table
 CREATE INDEX IF NOT EXISTS idx_readings_part_sensor_time ON readings_partitioned(sensor_id, recorded_at);
+
+END IF;
+END
+$partition_setup$;

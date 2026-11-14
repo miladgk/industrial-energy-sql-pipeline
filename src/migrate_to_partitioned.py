@@ -15,6 +15,20 @@ def main():
     conn.autocommit = True
     cur = conn.cursor()
 
+    # Idempotency: after a successful run `readings` IS the partitioned table.
+    # Running again would create a second, partition-less `readings_partitioned`
+    # and fail with "no partition of relation found for row".
+    cur.execute("""
+        SELECT relkind FROM pg_class
+        WHERE relname = 'readings' AND relnamespace = 'public'::regnamespace
+    """)
+    row = cur.fetchone()
+    if row and row[0] == "p":
+        print("`readings` is already partitioned: nothing to migrate.")
+        cur.close()
+        conn.close()
+        return
+
     print("Running schema definition...")
     schema_path = os.path.join(os.path.dirname(__file__), "..", "sql", "schema", "10_partition_readings.sql")
     with open(schema_path, "r") as f:
