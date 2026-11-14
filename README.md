@@ -135,6 +135,15 @@ energy-analytics-sql/
 │   └── api.py                  # FastAPI service (overview, trend, anomalies, detector scoring, rankings)
 │
 ├── tests/
+│   ├── conftest.py             # Shared fixtures (API TestClient, DB connection)
+│   ├── test_smoke.py           # Smoke: DB, API and dashboard files are alive
+│   ├── test_api.py             # API contract: shapes, validation, SQL-injection safety
+│   ├── test_integration.py     # SQL files, FK integrity, partitions, API <-> DB consistency
+│   ├── load/locustfile.py      # Locust load test (virtual dashboard users, pass/fail thresholds)
+│   ├── test_performance.py     # EXPLAIN plan checks (index, partition pruning) + latency budgets
+│   ├── test_security.py        # Injection, error-leak, secrets and read-only checks
+│   ├── test_regression.py      # Golden dataset with hand-computed expected values
+│   ├── test_detection_quality.py  # Detector scorecard consistency
 │   ├── test_data_quality.py    # pytest suite for post-ingestion assertions
 │   └── test_incremental.py     # Two-layer idempotency verification tests
 │
@@ -294,6 +303,39 @@ All six assertions should pass across both test suites (`test_data_quality.py` a
 - 365+ days of coverage
 - Row count within 5 % of 6,307,200
 - Strict idempotency on duplicate batch loads (Watermark & ON CONFLICT), with no reused `reading_id` values
+
+#### Test layers
+
+Tests are tagged with pytest markers, so each layer can run on its own:
+
+| Command | Layer | What it answers |
+|---|---|---|
+| `pytest -m smoke` | Smoke | Is the system alive at all? (seconds) |
+| `pytest -m api` | API contract | Do the endpoints keep their promises: shape, validation, safety? |
+| `pytest -m integration` | Integration | Do SQL files, schema, partitions and API agree with the real database? |
+| `pytest -m regression` | Regression | Do a hand-built dataset's results still match the written-down golden values? |
+| `pytest -m performance` | Performance | Does the composite index still exist and get used? Does a one-month query still touch one partition? Are endpoints within latency budgets? |
+| `pytest -m security` | Security | Are SQL-injection payloads rejected, DB errors hidden from clients, secrets untracked, the API read-only? |
+
+The regression suite builds a tiny dataset in a throw-away schema, points the API at it
+and checks z-scores, rankings and precision/recall against numbers worked out by hand,
+so any accidental change to the SQL fails loudly. The same layers run in CI, in this order.
+
+CI also runs a **compatibility matrix** (Python 3.11 / 3.12 on PostgreSQL 15, plus
+PostgreSQL 14 and 16 on Python 3.11) and a separate **security job**: `bandit` static analysis
+(fails on high-severity findings) and a `pip-audit` dependency CVE scan (informational). Run them locally with `make security`.
+
+**Performance tests** automate `benchmarks/index_benchmark.md`. Timing is noisy, so the core checks are
+deterministic query-plan assertions (composite index exists and is used; a one-month query prunes to one
+partition); latency budgets are generous and use the median of 5 runs. They are calibrated for the CI-sized
+dataset; on the full 6.3 M-row dataset run `PERF_BUDGET_FACTOR=10 pytest -m performance`.
+
+**Load test:** `tests/load/locustfile.py` simulates 20 dashboard users hitting every endpoint
+(heavy z-score queries less often than cheap ones). With the API running (`make api`), `make load-test`
+runs it headless and fails if the 95th-percentile latency exceeds 5 s or more than 1 % of requests fail
+(`LOAD_MAX_P95_MS` / `LOAD_MAX_FAIL_RATIO`). On the CI-sized dataset it measured p95 ≈ 190 ms, 0 failures.
+Use `locust -f tests/load/locustfile.py --host http://localhost:8000` for the live web UI.
+`make test-smoke`, `make test-api`, `make test-integration` and `make test-regression` are shortcuts.
 
 The coverage and row-count targets are the defaults for a full-year run. For a
 smaller dataset, set `DAYS_EXPECTED` and `ROWS_EXPECTED` (CI uses 3 days and

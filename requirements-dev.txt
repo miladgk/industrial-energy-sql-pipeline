@@ -1,2 +1,6 @@
 requests
 playwright
+httpx==0.28.1
+locust
+bandit
+pip-audit

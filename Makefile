@@ -1,4 +1,4 @@
-.PHONY: install install-pip up down db-reset generate-data ingest quality-checks test report api metabase setup-metabase pipeline clean
+.PHONY: install install-pip up down db-reset generate-data ingest quality-checks test test-smoke test-api test-integration test-regression report api metabase setup-metabase pipeline clean
 
 # Environment Setup
 install:
@@ -35,6 +35,34 @@ pipeline: generate-data ingest report
 # Testing
 test:
 	pytest tests/ -v
+
+# Test layers (see pytest.ini for what each marker means)
+test-smoke:
+	pytest -m smoke -v
+
+test-api:
+	pytest -m api -v
+
+test-integration:
+	pytest -m integration -v
+
+test-regression:
+	pytest -m regression -v
+
+test-performance:
+	pytest -m performance -v
+
+test-security:
+	pytest -m security -v
+
+# Load test: start the API first (`make api`), then run this. Needs `pip install locust`.
+load-test:
+	locust -f tests/load/locustfile.py --headless -u 20 -r 5 -t 30s --host http://localhost:8000
+
+# Static analysis + dependency CVE scan (pip install bandit pip-audit)
+security:
+	bandit -r src scripts -ll
+	pip-audit -r requirements.txt --no-deps --disable-pip
 
 # Reporting and API
 report:
