@@ -24,6 +24,7 @@ import json
 import math
 import os
 import sys
+import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
 
@@ -130,8 +131,12 @@ def export_validation() -> None:
 
 
 def export_snapshot(api_url: str) -> None:
+    # urlopen also understands file:// and ftp://; only plain HTTP(S) is acceptable here.
+    if urllib.parse.urlparse(api_url).scheme not in ("http", "https"):
+        raise ValueError(f"--api-url must start with http:// or https://, got {api_url!r}")
+
     def get(path: str) -> dict:
-        with urllib.request.urlopen(api_url + path, timeout=120) as resp:
+        with urllib.request.urlopen(api_url + path, timeout=120) as resp:  # nosec B310 (scheme validated above)
             return json.load(resp)
 
     _write("api_snapshot.json", {

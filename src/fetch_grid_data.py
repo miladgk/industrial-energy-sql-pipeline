@@ -131,6 +131,8 @@ def fetch_dataset_chunk(dataset_id: int, api_key: str, start_time: str, end_time
     query_string = urllib.parse.urlencode(params)
     url = f"{API_URL.format(dataset_id=dataset_id)}?{query_string}"
     
+    if not url.startswith("https://"):
+        raise ValueError("Fingrid API URL must use https")
     req = urllib.request.Request(url)
     req.add_header("Accept", "application/json")
     req.add_header("x-api-key", api_key)
@@ -141,7 +143,7 @@ def fetch_dataset_chunk(dataset_id: int, api_key: str, start_time: str, end_time
     for attempt in range(max_retries):
         time.sleep(2.0)
         try:
-            with urllib.request.urlopen(req, timeout=30) as response:
+            with urllib.request.urlopen(req, timeout=30) as response:  # nosec B310 (https enforced above)
                 if response.status == 200:
                     data = json.loads(response.read().decode("utf-8"))
                     return data.get("data", [])

@@ -20,6 +20,9 @@ def _load_config():
     return cfg
 
 _cfg = _load_config()
+# Every HTTP call gets a timeout so a hung Metabase can never block the script forever.
+REQUEST_TIMEOUT = 30
+
 METABASE_URL = os.environ.get("METABASE_URL", _cfg.get("url", "http://localhost:3000"))
 USER_EMAIL   = os.environ.get("METABASE_ADMIN_EMAIL", _cfg.get("admin_email", ""))
 USER_PASS    = os.environ.get("METABASE_ADMIN_PASSWORD", _cfg.get("admin_password", ""))
@@ -33,7 +36,7 @@ def wait_for_metabase():
     print("Waiting for Metabase to start up...")
     for _ in range(60):
         try:
-            r = requests.get(f"{METABASE_URL}/api/health")
+            r = requests.get(f"{METABASE_URL}/api/health", timeout=REQUEST_TIMEOUT)
             if r.status_code == 200:
                 print("Metabase is healthy!")
                 return
@@ -44,7 +47,7 @@ def wait_for_metabase():
     sys.exit(1)
 
 def get_setup_token():
-    r = requests.get(f"{METABASE_URL}/api/session/properties")
+    r = requests.get(f"{METABASE_URL}/api/session/properties", timeout=REQUEST_TIMEOUT)
     props = r.json()
     if not props.get("has_user_setup"):
         return props.get("setup-token")
@@ -75,7 +78,7 @@ def initial_setup(token):
             }
         }
     }
-    r = requests.post(f"{METABASE_URL}/api/setup", json=payload)
+    r = requests.post(f"{METABASE_URL}/api/setup", json=payload, timeout=REQUEST_TIMEOUT)
     if r.status_code == 200:
         return r.json().get("id") # session id
     else:
@@ -86,7 +89,7 @@ def login():
     r = requests.post(f"{METABASE_URL}/api/session", json={
         "username": USER_EMAIL,
         "password": USER_PASS
-    })
+    }, timeout=REQUEST_TIMEOUT)
     if r.status_code == 200:
         return r.json().get("id")
     return None
@@ -105,7 +108,7 @@ def create_card(session_id, db_id, name, query, display="line"):
         "display": display,
         "visualization_settings": {}
     }
-    r = requests.post(f"{METABASE_URL}/api/card", json=payload, headers=headers)
+    r = requests.post(f"{METABASE_URL}/api/card", json=payload, headers=headers, timeout=REQUEST_TIMEOUT)
     if r.status_code == 200:
         return r.json().get("id")
     print(f"Failed to create card '{name}': {r.text}")
@@ -114,7 +117,7 @@ def create_card(session_id, db_id, name, query, display="line"):
 def create_dashboard(session_id, name):
     headers = {"X-Metabase-Session": session_id}
     payload = {"name": name}
-    r = requests.post(f"{METABASE_URL}/api/dashboard", json=payload, headers=headers)
+    r = requests.post(f"{METABASE_URL}/api/dashboard", json=payload, headers=headers, timeout=REQUEST_TIMEOUT)
     if r.status_code == 200:
         return r.json().get("id")
     print("Failed to create dashboard:", r.text)
@@ -134,7 +137,7 @@ def set_dashboard_cards(session_id, dash_id, card_positions):
             "size_y": h
         })
         idx -= 1
-    r = requests.put(f"{METABASE_URL}/api/dashboard/{dash_id}/cards", json={"cards": cards_payload}, headers=headers)
+    r = requests.put(f"{METABASE_URL}/api/dashboard/{dash_id}/cards", json={"cards": cards_payload}, headers=headers, timeout=REQUEST_TIMEOUT)
     if r.status_code != 200:
         print("Failed to add cards to dashboard:", r.text)
         sys.exit(1)
@@ -157,7 +160,7 @@ def main():
     headers = {"X-Metabase-Session": session_id}
     
     # Get databases
-    r = requests.get(f"{METABASE_URL}/api/database", headers=headers)
+    r = requests.get(f"{METABASE_URL}/api/database", headers=headers, timeout=REQUEST_TIMEOUT)
     databases = r.json().get("data", [])
     db_id = next((db["id"] for db in databases if db.get("name") == "Energy Postgres"), None)
     if not db_id:
@@ -172,7 +175,7 @@ def main():
                 "user": "admin",
                 "password": "password"
             }
-        }, headers=headers)
+        }, headers=headers, timeout=REQUEST_TIMEOUT)
         if r_db.status_code == 200:
             db_id = r_db.json().get("id")
         else:
