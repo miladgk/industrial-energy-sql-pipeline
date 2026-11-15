@@ -399,7 +399,7 @@ python scripts/export_dashboard_data.py --parts fingrid-recent  # last 365 days 
 ```
 
 The last-12-months Fingrid view is refreshed automatically by
-`.github/workflows/refresh_fingrid.yml` every Monday (or on demand from the
+`.github/workflows/refresh_fingrid.yml` every day at 05:17 UTC (or on demand from the
 Actions tab). It needs the repository secret `FINGRID_API_KEY`
 (Settings → Secrets and variables → Actions). The key is read from the
 environment only inside that job; locally, `fingrid_api_key` in the git-ignored
