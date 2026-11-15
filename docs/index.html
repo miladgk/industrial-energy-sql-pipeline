@@ -1536,7 +1536,7 @@ make test</pre>
       renderOverview(snapshot.overview, snapshot.trend, `snapshot ${dayFmt(snapshot.generated_at)}`);
       renderDetection(snapshot.detection, `snapshot ${dayFmt(snapshot.generated_at)}`);
       renderHeroProof(snapshot.detection);
-      setStatus("cached", `Showing the bundled snapshot from ${dayFmt(snapshot.generated_at)} while the live API wakes up…`);
+      setStatus("cached", `Synthetic warehouse: showing the bundled snapshot from ${dayFmt(snapshot.generated_at)} while the live API wakes up…`);
     } else {
       setStatus("loading", "Waiting for the live API…");
     }
@@ -1554,10 +1554,10 @@ make test</pre>
       ]);
       renderOverview(ov, trend, "live API");
       const window_ = ov.latest_reading_at ? new Date(ov.latest_reading_at).toLocaleDateString("en-GB", {month: "long", year: "numeric", timeZone: "UTC"}) : "";
-      setStatus("live", `Live: FastAPI answered in ${fmt((performance.now() - started) / 1000, 1)} s · data window ${window_}`);
+      setStatus("live", `Synthetic warehouse live: FastAPI answered in ${fmt((performance.now() - started) / 1000, 1)} s · readings cover ${window_}`);
       safe(getJSON(`${API_BASE_URL}/api/detection-quality`)).then(det => { if (det) { renderDetection(det, "live API"); renderHeroProof(det); } });
     } catch (err) {
-      if (snapshot) setStatus("down", `API unavailable · showing the cached snapshot from ${dayFmt(snapshot.generated_at)}`);
+      if (snapshot) setStatus("down", `Synthetic warehouse: API unavailable · showing the cached snapshot from ${dayFmt(snapshot.generated_at)}`);
       else {
         setStatus("down", "API unavailable");
         $("trend-window").textContent = "";
