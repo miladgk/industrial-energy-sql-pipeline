@@ -149,6 +149,24 @@
       border: 1px solid var(--line); background: var(--surface); padding: 5px 10px; border-radius: 999px;
     }
     .chip i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+    .chip[tabindex] { position: relative; cursor: help; }
+    .chip[tabindex]:focus-visible { outline: 2px solid var(--accent, var(--ink)); outline-offset: 2px; }
+    .chip .info { font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 50%; width: 15px; height: 15px; display: inline-grid; place-items: center; line-height: 1; }
+    .chip .pop {
+      position: absolute; left: 0; top: calc(100% + 8px); z-index: 30; width: min(340px, calc(100vw - 32px));
+      background: var(--surface); color: var(--ink-2); border: 1px solid var(--line); border-radius: 10px;
+      padding: 10px 12px; font-size: 13px; line-height: 1.5; box-shadow: 0 8px 24px rgba(0,0,0,.12);
+      opacity: 0; visibility: hidden; transform: translateY(-4px); transition: opacity .15s, transform .15s, visibility .15s;
+      pointer-events: none; white-space: normal;
+    }
+    .chip .pop b { color: var(--ink); }
+    .chip:hover .pop, .chip:focus .pop, .chip:focus-within .pop { opacity: 1; visibility: visible; transform: none; }
+    @media (prefers-reduced-motion: reduce) { .chip .pop { transition: none; } }
+    @media (max-width: 640px) {
+      .chips { position: relative; }
+      .chip[tabindex] { position: static; }
+      .chip .pop { width: auto; right: 0; }
+    }
     .status-line { display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--ink-2); min-height: 22px; }
     .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
     .status-line[data-state="live"] .dot { background: var(--ok); box-shadow: 0 0 0 4px color-mix(in srgb, var(--ok) 20%, transparent); }
@@ -417,9 +435,12 @@
         <h1>Machines fail in two ways. They scream, <span class="serif">or they go silent.</span></h1>
         <p class="lede">This is a working data pipeline: real Finnish grid data, and 518,400 synthetic sensor readings in PostgreSQL with a known set of deliberately broken values. It was built to find out which failures SQL can hear, and to be honest about the ones it can't.</p>
         <div class="chips">
-          <span class="chip"><i style="background:var(--real)"></i>Real: Fingrid Open Data, CC BY 4.0</span>
-          <span class="chip"><i style="background:var(--syn)"></i>Synthetic: January 2023, seed 42</span>
-          <span class="chip"><i style="background:var(--fault)"></i>Injected faults, labelled</span>
+          <span class="chip" tabindex="0" aria-describedby="tip-real"><i style="background:var(--real)"></i>Real: Fingrid Open Data, CC BY 4.0<span class="info" aria-hidden="true">i</span>
+            <span class="pop" role="tooltip" id="tip-real"><b>Real measurements.</b> Fingrid is Finland's electricity transmission system operator. Its Open Data API publishes national wind power production and total electricity consumption; this page shows them as daily averages for the last 12 months (refreshed every day) and for the full year 2025. Licence: CC BY 4.0, free to reuse with attribution.</span></span>
+          <span class="chip" tabindex="0" aria-describedby="tip-syn"><i style="background:var(--syn)"></i>Synthetic: 30 days of sensor data, seed 42<span class="info" aria-hidden="true">i</span>
+            <span class="pop" role="tooltip" id="tip-syn"><b>Generated, not measured.</b> A Python script (src/generate_data.py) invents 20 facilities (wind farms, solar plants, substations) with 3 sensors each, one reading every 5 minutes for 30 days: 518,400 rows in PostgreSQL. Seed 42 makes every run identical. The timestamps start on 1 Jan 2023, a fixed label: the values are random, so the date carries no meaning.</span></span>
+          <span class="chip" tabindex="0" aria-describedby="tip-fault"><i style="background:var(--fault)"></i>Injected faults, labelled<span class="info" aria-hidden="true">i</span>
+            <span class="pop" role="tooltip" id="tip-fault"><b>Broken on purpose.</b> The generator deliberately breaks about 2% of the synthetic readings: each one becomes either 0 (a sensor that goes silent) or 3× the sensor's maximum (a spike). Every broken reading is marked <code>is_anomaly = true</code>. The detectors never see that label; it is only used afterwards to score how many faults they found.</span></span>
         </div>
         <div class="status-line" id="status-line" data-state="loading">
           <span class="dot" aria-hidden="true"></span>
@@ -448,7 +469,7 @@
 
         <div class="card glance reveal" aria-label="The project at a glance">
           <div><div class="eyebrow">What was built</div><p>Python ETL into <b>PostgreSQL 15</b> (monthly partitions, composite index, quality gate), analytics in plain <b>SQL</b>, served by <b>FastAPI</b> to this page.</p></div>
-          <div><div class="eyebrow">Data</div><p><b>Real:</b> Fingrid hourly wind and consumption for Finland, 2023 and the last 365 days. <b>Synthetic:</b> <span id="glance-syn">20 sites × 3 sensors, every 5 minutes, January 2023</span>, with about 2% labelled faults.</p></div>
+          <div><div class="eyebrow">Data</div><p><b>Real:</b> Fingrid hourly wind and consumption for Finland, the last 365 days and the full year 2025. <b>Synthetic:</b> <span id="glance-syn">20 sites × 3 sensors, every 5 minutes, January 2023</span>, with about 2% labelled faults.</p></div>
           <div><div class="eyebrow">Question</div><p>Can a SQL rule that flags readings more than 3 standard deviations from each sensor's monthly baseline find sensor faults?</p></div>
           <div><div class="eyebrow">Answer</div><p id="glance-answer">Loading…</p></div>
         </div>
@@ -474,7 +495,7 @@
             </div>
             <div class="seg" id="period-tabs" role="group" aria-label="Time period" hidden>
               <button type="button" data-period="recent" aria-pressed="true">Last 12 months</button>
-              <button type="button" data-period="2023" aria-pressed="false">2023</button>
+              <button type="button" data-period="year" aria-pressed="false" id="period-year">2025</button>
             </div>
           </div>
           <div class="kpis" id="grid-kpis"></div>
@@ -748,7 +769,7 @@
             </div>
           </div>
           <div class="legend"><span><i style="background:var(--real)"></i>Real Fingrid wind</span><span><i style="background:var(--syn)"></i>Synthetic wind</span></div>
-          <div class="chart-box"><svg id="val-chart" class="chart" role="img" aria-label="Real and synthetic daily wind z-scores, 2023"><desc>Two z-score lines, one value per day of 2023.</desc></svg></div>
+          <div class="chart-box"><svg id="val-chart" class="chart" role="img" aria-label="Real and synthetic daily wind z-scores, 2025"><desc id="val-desc">Two z-score lines, one value per day of 2025.</desc></svg></div>
           <p class="note" id="val-note"></p>
           <p id="val-error" class="error"></p>
           <details class="sql" id="sql-08"><summary>Inspect the SQL · sql/analysis/08_real_vs_synthetic_comparison.sql</summary><pre>Loading…</pre></details>
@@ -1059,9 +1080,9 @@ make test</pre>
     document.querySelectorAll("#period-tabs button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.period === period)));
     const labels = data.days.map(d => d.day);
     const first = dayFmt(`${labels[0]}T00:00:00Z`), last = dayFmt(`${labels[labels.length - 1]}T00:00:00Z`);
-    $("grid-chart-title").textContent = recent ? `Daily average power, ${first} to ${last} (MW)` : "Daily average power, 2023 (MW)";
+    $("grid-chart-title").textContent = recent ? `Daily average power, ${first} to ${last} (MW)` : `Daily average power, ${data.year} (MW)`;
     const prov = $("grid-prov");
-    prov.replaceChildren(el("span", {class: "badge b-real"}, recent ? `Fingrid API · daily refresh · ${dayFmt(data.generated_at)}` : "Fingrid · full year 2023, as ingested"));
+    prov.replaceChildren(el("span", {class: "badge b-real"}, recent ? `Fingrid API · daily refresh · ${dayFmt(data.generated_at)}` : `Fingrid API · full year ${data.year}`));
     prov.firstChild.prepend(el("i"));
     const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
     lineChart($("grid-chart"), {
@@ -1084,7 +1105,7 @@ make test</pre>
     const sm = data.summary;
     const monthName = ym => ym ? new Date(`${ym}-01T00:00:00Z`).toLocaleDateString("en-GB", {month: "short", year: "numeric", timeZone: "UTC"}) : "–";
     const k = $("grid-kpis");
-    const base = gridData["2023"] && gridData["2023"].summary;
+    const base = gridData.year && gridData.year.summary;
     // One plain-language sentence: what an energy analyst should take from the chart.
     const byWind = [...data.days].sort((x, y) => x.wind_mw - y.wind_mw);
     let jump = {mw: 0, day: null};
@@ -1097,11 +1118,11 @@ make test</pre>
       `consumption follows the seasons, from ${fmt(lowCons.consumption_mw)} MW (${d(lowCons.day)}) to ${fmt(peakCons.consumption_mw)} MW (${d(peakCons.day)}), ` +
       `while daily wind ranges from ${fmt(byWind[0].wind_mw)} MW to ${fmt(byWind[byWind.length - 1].wind_mw)} MW and can move ${fmt(jump.mw)} MW from one day to the next (${d(jump.day)}). ` +
       `Over this period, wind production equalled ${sm.wind_share_pct}% of consumption. ` +
-      (recent ? `Fetched from the Fingrid API by a scheduled GitHub Action, so the page never exposes the API key.` : `This is the year the pipeline ingested into PostgreSQL.`)));
+      (recent ? `Fetched from the Fingrid API by a scheduled GitHub Action, so the page never exposes the API key.` : `A complete calendar year, for comparison with the rolling 12 months.`)));
     k.replaceChildren(
       kpi(`${fmt(sm.wind_mean_mw)} MW`, "average wind production"),
       kpi(`${fmt(sm.consumption_mean_mw)} MW`, "average consumption"),
-      kpi(`${sm.wind_share_pct}%`, recent && base ? `wind share of consumption (2023: ${base.wind_share_pct}%)` : "wind share of consumption"),
+      kpi(`${sm.wind_share_pct}%`, recent && base ? `wind share of consumption (${gridData.year.year}: ${base.wind_share_pct}%)` : "wind share of consumption"),
       kpi(`${monthName(sm.windiest_month)}`, `windiest month · calmest ${monthName(sm.calmest_month)}`),
     );
   }
@@ -1390,7 +1411,7 @@ make test</pre>
         tipTitle: l => dayFmt(`${l}T00:00:00Z`),
         tipValue: x => `z ${fmt(x, 2)}`,
         yLabel: "Daily wind output (z-score, 0 = yearly mean)",
-        xLabel: "Day of 2023",
+        xLabel: `Day of ${v.year}`,
       });
       $("val-sub").textContent = k > 1
         ? "Daily wind output standardised as z-scores, then a centred 7-day mean for readability. The correlation is computed on the unsmoothed daily values."
@@ -1399,7 +1420,7 @@ make test</pre>
     $("val-mode").addEventListener("click", e => { const b = e.target.closest("button"); if (b) draw(+b.dataset.smooth); });
     draw(7);
     $("val-stats").textContent = `Pearson r = ${v.pearson_r.toFixed(3).replace("-", "−")} · p = ${v.p_value.toFixed(2)} · ${v.n_days} days`;
-    $("val-note").textContent = `No day-to-day relationship: the real and synthetic series move independently. The synthetic year comes from a separate full-year run of the generator, compared with Fingrid 2023 by sql/analysis/08. That is expected and fine: the generator exists to exercise the pipeline, not to forecast the wind.`;
+    $("val-note").textContent = `No day-to-day relationship: the real and synthetic series move independently. The synthetic series comes from a separate full-year run of the generator, dated ${v.year} to line up day by day with Fingrid ${v.year}, and both are compared by sql/analysis/08. That is expected and fine: the generator exists to exercise the pipeline, not to forecast the wind.`;
   }
 
   function renderRanking(rk) {
@@ -1510,17 +1531,17 @@ make test</pre>
 
   /* ───────── load everything ───────── */
   (async function main() {
-    const [snapshot, g2023, gRecent, validation, thresholds, ranking, ex, rules, sql, eng] = await Promise.all([
-      "data/api_snapshot.json", "data/fingrid_2023_daily.json", "data/fingrid_recent_daily.json", "data/wind_validation_2023.json",
+    const [snapshot, gYear, gRecent, validation, thresholds, ranking, ex, rules, sql, eng] = await Promise.all([
+      "data/api_snapshot.json", "data/fingrid_year_daily.json", "data/fingrid_recent_daily.json", "data/wind_validation.json",
       "data/detection_thresholds.json", "data/facility_ranking.json", "data/anomaly_examples.json", "data/zero_dropout_rules.json",
       "data/sql_sources.json", "data/engineering.json",
     ].map(u => safe(getJSON(u))));
 
     examples = ex ? ex.examples : [];
-    if (g2023) gridData["2023"] = g2023;
+    if (gYear) { gridData.year = gYear; $("period-year").textContent = String(gYear.year); }
     if (gRecent) gridData.recent = gRecent;
-    if (gridData.recent && gridData["2023"]) $("period-tabs").hidden = false;
-    if (gridData.recent || gridData["2023"]) renderGrid(gridData.recent ? "recent" : "2023");
+    if (gridData.recent && gridData.year) $("period-tabs").hidden = false;
+    if (gridData.recent || gridData.year) renderGrid(gridData.recent ? "recent" : "year");
     else $("grid-error").textContent = "Grid data files could not be loaded.";
 
     renderEngineering(eng);

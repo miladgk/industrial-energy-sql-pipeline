@@ -117,16 +117,34 @@ def test_hovering_a_chart_shows_a_tooltip(open_dashboard):
 
 def test_grid_period_tabs_switch_the_dataset(open_dashboard):
     page = open_dashboard()
-    tab_2023 = page.locator('#period-tabs [data-period="2023"]')
-    expect(tab_2023).to_be_visible(timeout=15000)
-    tab_2023.click()
-    expect(tab_2023).to_have_attribute("aria-pressed", "true")
+    tab_year = page.locator('#period-tabs [data-period="year"]')
+    expect(tab_year).to_be_visible(timeout=15000)
+    expect(tab_year).to_have_text("2025")
+    tab_year.click()
+    expect(tab_year).to_have_attribute("aria-pressed", "true")
     expect(page.locator('#period-tabs [data-period="recent"]')).to_have_attribute("aria-pressed", "false")
-    expect(page.locator("#grid-chart-title")).to_have_text("Daily average power, 2023 (MW)")
+    expect(page.locator("#grid-chart-title")).to_have_text("Daily average power, 2025 (MW)")
     expect(page.locator("#grid-kpis .kpi, #grid-kpis > *")).to_have_count(4)
 
     page.locator('#period-tabs [data-period="recent"]').click()
     expect(page.locator("#grid-chart-title")).to_contain_text(" to ")
+
+
+def test_header_chips_explain_themselves_on_hover_and_focus(open_dashboard):
+    page = open_dashboard()
+    chips = page.locator(".chips .chip")
+    expect(chips).to_have_count(3)
+    for i in range(3):
+        chip = chips.nth(i)
+        tip = page.locator("#" + chip.get_attribute("aria-describedby"))
+        expect(tip).to_be_hidden()
+        chip.hover()
+        expect(tip).to_be_visible()
+        page.mouse.move(0, 0)
+        expect(tip).to_be_hidden()
+    chips.nth(2).focus()                      # keyboard users get the same text
+    expect(page.locator("#tip-fault")).to_be_visible()
+    expect(page.locator("#tip-fault")).to_contain_text("is_anomaly")
 
 
 def test_navigation_links_jump_to_their_sections(open_dashboard):
@@ -237,3 +255,8 @@ def test_no_horizontal_scrolling_on_a_phone(open_dashboard):
     _wait_until_live(page)
     overflow = page.evaluate("document.documentElement.scrollWidth - window.innerWidth")
     assert overflow <= 0, f"page is {overflow}px wider than a 375px screen"
+    chip = page.locator(".chips .chip").nth(2)
+    chip.scroll_into_view_if_needed()
+    chip.focus()                              # what a tap does on a touch screen
+    box = page.locator("#tip-fault").bounding_box()
+    assert box and box["x"] >= 0 and box["x"] + box["width"] <= 375, box

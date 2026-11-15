@@ -21,9 +21,9 @@ pytestmark = pytest.mark.smoke
 CORE_TABLES = ("facilities", "sensors", "readings")
 DASHBOARD_DATA = (
     "api_snapshot.json",
-    "fingrid_2023_daily.json",
+    "fingrid_year_daily.json",
     "fingrid_recent_daily.json",
-    "wind_validation_2023.json",
+    "wind_validation.json",
     "detection_thresholds.json",
     "facility_ranking.json",
     "anomaly_examples.json",

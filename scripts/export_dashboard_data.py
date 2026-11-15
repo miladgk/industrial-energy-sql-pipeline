@@ -3,8 +3,9 @@ export_dashboard_data.py
 ~~~~~~~~~~~~~~~~~~~~~~~~
 Rebuild the static data files used by the GitHub Pages dashboard (docs/data/).
 
-  fingrid_2023_daily.json     Real Fingrid data (data/raw/grid_data.csv), daily means   [part: fingrid]
-  wind_validation_2023.json   Real vs. synthetic wind, from the latest daily
+  fingrid_year_daily.json     Real Fingrid data for one full calendar year
+                              (data/raw/grid_data_<year>.csv), daily means            [part: fingrid]
+  wind_validation.json        Real vs. synthetic wind, from the latest daily
                               outputs/08_real_vs_synthetic_comparison_*.csv           [part: validation]
   api_snapshot.json           Overview, trend and detector scorecard from the API, shown
                               instantly while the free Render service wakes up        [part: snapshot]
@@ -96,9 +97,12 @@ def _daily_grid_payload(grid: pd.DataFrame, extra: dict) -> dict:
     }
 
 
-def export_fingrid() -> None:
-    grid = pd.read_csv(os.path.join(ROOT, "data", "raw", "grid_data.csv"))
-    _write("fingrid_2023_daily.json", _daily_grid_payload(grid, {"file": "data/raw/grid_data.csv"}))
+def export_fingrid(year: int) -> None:
+    # Fetch the file first with:
+    #   python src/fetch_grid_data.py --start <year>-01-01 --end <year+1>-01-01 --output data/raw/grid_data_<year>.csv
+    name = f"grid_data_{year}.csv"
+    grid = pd.read_csv(os.path.join(ROOT, "data", "raw", name))
+    _write("fingrid_year_daily.json", _daily_grid_payload(grid, {"year": year, "file": f"data/raw/{name}"}))
 
 
 def export_fingrid_recent(days: int = 365) -> None:
@@ -134,9 +138,10 @@ def export_validation() -> None:
         p = float(2 * stats.t.sf(abs(t), n - 2))
     except ImportError:  # normal approximation is accurate for n of a few hundred
         p = math.erfc(abs(t) / math.sqrt(2))
-    _write("wind_validation_2023.json", {
+    _write("wind_validation.json", {
         "source": f"outputs/{os.path.basename(daily)} (sql/analysis/08_real_vs_synthetic_comparison.sql), "
                   "run on a full-year synthetic dataset",
+        "year": int(str(df.day_label.iloc[0])[:4]),
         "n_days": n,
         "pearson_r": round(r, 4),
         "p_value": round(p, 3),
@@ -432,6 +437,7 @@ def main() -> None:
                         choices=["fingrid", "validation", "snapshot", "fingrid-recent", "thresholds", "ranking",
                                  "anomalies", "blindspot", "sql", "engineering"],
                         help="Only build these files (default: fingrid validation snapshot)")
+    parser.add_argument("--year", type=int, default=2025, help="Calendar year for the fingrid part (default 2025)")
     parser.add_argument("--recent-days", type=int, default=365, help="Window for fingrid-recent (days)")
     args = parser.parse_args()
 
@@ -439,7 +445,7 @@ def main() -> None:
     os.makedirs(OUT_DIR, exist_ok=True)
     print(f"Writing dashboard data to {os.path.relpath(OUT_DIR, ROOT)}/ ({', '.join(parts)})")
     if "fingrid" in parts:
-        export_fingrid()
+        export_fingrid(args.year)
     if "validation" in parts:
         export_validation()
     if "snapshot" in parts:
