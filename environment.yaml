@@ -9,7 +9,7 @@ dependencies:
   - psycopg2=2.9.12
   - sqlalchemy=2.0.51
   - pyyaml=6.0.3
-  - pip=26.3
+  - pip=26.2.2
   - pip:
       - fastapi==0.163.0
       - pytest==9.2.0
