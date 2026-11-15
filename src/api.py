@@ -30,8 +30,11 @@ Usage
 Then open:  http://localhost:8000/docs  (auto-generated Swagger UI)
 """
 
+import logging
 import os
 import sys
+from datetime import date, datetime
+from decimal import Decimal
 from typing import Optional
 
 import psycopg2.extras
@@ -41,6 +44,10 @@ from fastapi.middleware.cors import CORSMiddleware
 sys.path.insert(0, os.path.dirname(__file__))
 from db_connection import get_connection
 
+logger = logging.getLogger("energy_api")
+
+# Allow-list for the facility_type filter: anything else is rejected with 422.
+FACILITY_TYPE_PATTERN = r"^(wind|solar|substation)$"
 
 app = FastAPI(
     title="Energy Facility Analytics API",
@@ -81,6 +88,28 @@ def _fetch_rows(sql: str, params: tuple = ()) -> list[dict]:
         conn.close()
 
 
+def _make_json_safe(row: dict) -> dict:
+    """
+    Convert database types JSON cannot carry, in place: datetimes become ISO
+    strings and Decimals (NUMERIC columns) become floats. Integers, strings,
+    booleans and None are left alone. (The old `hasattr(v, "__float__")` test
+    also matched ints, turning IDs and counts into 22501.0.)
+    """
+    for key, value in row.items():
+        if isinstance(value, (datetime, date)):
+            row[key] = value.isoformat()
+        elif isinstance(value, Decimal):
+            row[key] = float(value)
+    return row
+
+
+def _internal_error(exc: Exception) -> HTTPException:
+    """Log the real error server-side; give the client a generic message
+    (raw database errors can reveal table names, queries and host details)."""
+    logger.exception("Request failed: %s", exc)
+    return HTTPException(status_code=500, detail="Internal server error")
+
+
 # ──────────────────────────────────────────────────────────────
 # Routes
 # ──────────────────────────────────────────────────────────────
@@ -109,13 +138,9 @@ def get_overview():
     try:
         row = _fetch_rows(sql)[0]
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise _internal_error(exc)
 
-    for key, value in row.items():
-        if hasattr(value, "isoformat"):
-            row[key] = value.isoformat()
-        elif hasattr(value, "__float__"):
-            row[key] = float(value)
+    _make_json_safe(row)
     row["anomaly_rate_pct"] = (
         round(row["anomaly_count"] / row["reading_count"] * 100, 2)
         if row["reading_count"]
@@ -127,11 +152,12 @@ def get_overview():
 @app.get("/api/output-trend", tags=["analytics"])
 def get_output_trend(
     hours: int = Query(default=24, ge=1, le=168),
-    facility_type: Optional[str] = Query(default=None),
+    facility_type: Optional[str] = Query(default=None, pattern=FACILITY_TYPE_PATTERN),
 ):
     """Return hourly average power output for the dashboard trend chart."""
     type_filter = "AND f.facility_type = %s" if facility_type else ""
     params: tuple = (facility_type,) if facility_type else ()
+    # Only the constant type_filter fragment is interpolated; values are bound parameters.
     sql = f"""
         SELECT
             DATE_TRUNC('hour', r.recorded_at) AS recorded_at,
@@ -148,17 +174,13 @@ def get_output_trend(
           {type_filter}
         GROUP BY DATE_TRUNC('hour', r.recorded_at)
         ORDER BY recorded_at
-    """
+    """  # nosec B608
     try:
         rows = _fetch_rows(sql, (hours,) + params)
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise _internal_error(exc)
     for row in rows:
-        for key, value in row.items():
-            if hasattr(value, "isoformat"):
-                row[key] = value.isoformat()
-            elif hasattr(value, "__float__"):
-                row[key] = float(value)
+        _make_json_safe(row)
     return {"hours": hours, "facility_type": facility_type, "points": rows}
 
 
@@ -178,6 +200,7 @@ def get_anomalies(
     ),
     facility_type: Optional[str] = Query(
         default=None,
+        pattern=FACILITY_TYPE_PATTERN,
         description="Filter by facility type: 'wind', 'solar', or 'substation'.",
     ),
 ):
@@ -231,20 +254,16 @@ def get_anomalies(
         WHERE z_score > %s
         ORDER BY z_score DESC
         LIMIT %s
-    """
+    """  # nosec B608
 
     try:
         rows = _fetch_rows(sql, params + (z_threshold, limit))
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise _internal_error(exc)
 
     # Convert Decimal / datetime to JSON-serialisable types
     for row in rows:
-        for k, v in row.items():
-            if hasattr(v, "isoformat"):
-                row[k] = v.isoformat()
-            elif hasattr(v, "__float__"):
-                row[k] = float(v)
+        _make_json_safe(row)
 
     return {
         "z_threshold"    : z_threshold,
@@ -317,7 +336,7 @@ def get_detection_quality(
     try:
         rows = _fetch_rows(sql, (z_threshold,))
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise _internal_error(exc)
 
     def _pct(part: int, whole: int) -> Optional[float]:
         return round(part / whole * 100, 1) if whole else None
@@ -377,11 +396,9 @@ def get_facility_ranking():
     try:
         rows = _fetch_rows(sql)
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise _internal_error(exc)
 
     for row in rows:
-        for k, v in row.items():
-            if hasattr(v, "__float__"):
-                row[k] = float(v)
+        _make_json_safe(row)
 
     return {"count": len(rows), "facilities": rows}

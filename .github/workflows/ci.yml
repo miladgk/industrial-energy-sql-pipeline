@@ -7,15 +7,27 @@ on:
     branches: [ main ]
 
 jobs:
+  # Compatibility testing: the same suite on several Python and PostgreSQL versions.
+  # Python 3.11/3.12 on Postgres 15, plus Postgres 14 and 16 on Python 3.11.
+  # (3.10 is not tested: the pinned FastAPI requires Python >= 3.11.)
   test:
+    name: tests (py${{ matrix.python }} / pg${{ matrix.postgres }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { python: "3.11", postgres: "15" }
+          - { python: "3.12", postgres: "15" }
+          - { python: "3.11", postgres: "14" }
+          - { python: "3.11", postgres: "16" }
     env:
       ROWS_EXPECTED: "50000"
       DAYS_EXPECTED: "3"
 
     services:
       postgres:
-        image: postgres:15
+        image: postgres:${{ matrix.postgres }}
         env:
           POSTGRES_USER: admin
           POSTGRES_PASSWORD: password
@@ -33,15 +45,16 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
 
-      - name: Set up Python 3.11
+      - name: Set up Python ${{ matrix.python }}
         uses: actions/setup-python@v6
         with:
-          python-version: "3.11"
+          python-version: ${{ matrix.python }}
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+          pip install httpx==0.28.1  # needed by FastAPI's TestClient
 
       - name: Create local config for CI
         run: |
@@ -75,6 +88,58 @@ jobs:
         run: |
           python src/run_quality_checks.py
 
-      - name: Run Pytest Suite
+      - name: Smoke tests (is everything alive?)
+        run: pytest -m smoke -v
+
+      - name: API contract tests
+        run: pytest -m api -v
+
+      - name: Integration tests
+        run: pytest -m integration -v
+
+      - name: Regression tests (golden dataset)
+        run: pytest -m regression -v
+
+      - name: Performance tests (query plans + latency budgets)
+        run: pytest -m performance -v
+
+      - name: Security tests
+        run: pytest -m security -v
+
+      - name: Run Full Pytest Suite
         run: |
           pytest tests/ -v
+
+      # End-to-end: a real Chromium drives the dashboard against the real API + DB.
+      - name: E2E tests (Playwright + Chromium)
+        if: matrix.python == '3.11' && matrix.postgres == '15'
+        run: |
+          pip install playwright==1.61.0
+          playwright install --with-deps chromium
+          pytest -m e2e -v
+
+      # Load testing: once is enough, so only on the primary matrix entry.
+      - name: Load test (20 virtual users, 30 s)
+        if: matrix.python == '3.11' && matrix.postgres == '15'
+        run: |
+          pip install locust
+          uvicorn src.api:app --port 8000 &
+          for i in $(seq 1 30); do curl -sf localhost:8000/health && break; sleep 1; done
+          locust -f tests/load/locustfile.py --headless -u 20 -r 5 -t 30s --host http://localhost:8000
+
+  # Security testing: static analysis of our code + known-CVE scan of dependencies.
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Install security tools
+        run: pip install bandit pip-audit
+
+      - name: Bandit (fails on medium or high severity findings)
+        run: bandit -r src scripts -ll
+
+      - name: pip-audit (fails if a pinned dependency has a known CVE)
+        run: pip-audit -r requirements.txt --no-deps --disable-pip

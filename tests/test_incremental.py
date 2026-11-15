@@ -19,7 +19,20 @@ def db_conn():
     yield conn
     conn.close()
 
-def test_incremental_idempotency(db_conn):
+@pytest.fixture
+def remove_incremental_day_afterwards(db_conn):
+    """
+    Teardown only: delete the 2024-01-01 rows this test loads. Without it the test
+    leaves ~17k extra rows behind, which breaks the row-volume check in
+    test_data_quality.py on the next run (tests must not leak state).
+    """
+    yield
+    with db_conn.cursor() as cur:
+        cur.execute("DELETE FROM readings WHERE recorded_at >= '2024-01-01' AND recorded_at < '2024-01-02';")
+    db_conn.commit()
+
+
+def test_incremental_idempotency(db_conn, remove_incremental_day_afterwards):
     """
     Test that running incremental ingestion twice for the same date
     inserts exactly the correct number of rows on the first run, and 
