@@ -6,6 +6,10 @@
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
+**Live site:** [miladgk.github.io/industrial-energy-sql-pipeline](https://miladgk.github.io/industrial-energy-sql-pipeline/)
+· **API:** [industrial-energy-api.onrender.com/docs](https://industrial-energy-api.onrender.com/docs)
+(free tier: the first request after a quiet period can take up to a minute)
+
 A local data engineering project that ingests, transforms, and analyses
 operational time-series data from a fictional network of 20 industrial energy
 facilities (wind farms, solar plants, substations) across Scandinavia.
@@ -509,22 +513,14 @@ To make the SQL analytics accessible and actionable for executive decision-maker
 +------------------------------------------------------------------------+--------------------+
 |  [Bar Chart] Top 10 Facilities by Efficiency                           |  [Line Chart]      |
 |  Visualises ranking from 05_facility_ranking.sql                       |  Monthly Anomaly   |
-|  Identifies highest-performing solar & wind plants                     |  Rate Trend (04)   |
+|  (synthetic data: every site averages ~50%, so the order is noise)     |  Rate Trend (04)   |
 +------------------------------------------------------------------------+--------------------+
 |  [Line Chart] Rolling 24h Average Power by Type                                             |
 |  Demonstrates window functions (AVG OVER 23 PRECEDING) from 03                              |
-|  Compares solar vs wind diurnal generation curves                                           |
+|  Mostly flat: the synthetic generator has no daily (diurnal) cycle                          |
 +---------------------------------------------------------------------------------------------+
 ```
 
-### Full Dashboard Overview
-![Metabase Executive Dashboard](docs/screenshots/metabase_dashboard.png)
-
-### 1. Top 10 Facilities by Efficiency
-![Top 10 Facilities by Efficiency](docs/screenshots/facility_ranking.png)
-
-### 2. Monthly Anomaly Rate Trend
-![Monthly Anomaly Rate Trend](docs/screenshots/monthly_anomaly_rate.png)
-
-### 3. Rolling 24h Average Power by Facility Type
-![Rolling 24h Average Power by Facility Type](docs/screenshots/rolling_24h_average.png)
+Metabase runs only on your machine (step 10 above); there is no hosted copy.
+For the public, always-up-to-date view of the results, see the
+[live site](https://miladgk.github.io/industrial-energy-sql-pipeline/).
