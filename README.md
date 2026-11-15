@@ -268,8 +268,8 @@ The pipeline employs a **two-layered defense** against duplicate data insertion:
 Incremental batches continue the `reading_id` sequence after the base dataset (offset by the number of days after it), so a new day never reuses an existing ID, and regenerating the same day yields the same IDs. `test_incremental.py` checks this explicitly.
 
 ```bash
-# Generate one new day of data for Jan 1, 2024
-python src/generate_data.py --incremental --date 2024-01-01
+# Generate one new day of data for Jan 1, 2026
+python src/generate_data.py --incremental --date 2026-01-01
 
 # 1. First run: Ingests the 17,280 incremental rows normally
 python src/ingest.py --incremental
@@ -423,7 +423,7 @@ environment only inside that job; locally, `fingrid_api_key` in the git-ignored
 | **`FILTER` aggregation** | `02_data_quality_checks.sql`, `06_monthly_report.sql` — conditional counts without subqueries |
 | **`NULLIF` for safe division** | `05_facility_ranking.sql`, `06_monthly_report.sql` — prevents division-by-zero |
 | **`DATE_TRUNC` + `TO_CHAR`** | All analysis files — period aggregation and formatted output |
-| **Composite indexes** | Schema — `(sensor_id, recorded_at)` index cuts query execution time from 13.4ms to 0.36ms (97.3% reduction). See [index_benchmark.md](benchmarks/index_benchmark.md) for execution plans. |
+| **Composite indexes** | Schema — `(sensor_id, recorded_at)` index cuts query execution time from 12.8 ms to 0.22 ms (about 58× faster, 98.3% reduction). See [index_benchmark.md](benchmarks/index_benchmark.md) for execution plans. |
 | **`ON CONFLICT DO NOTHING`** | `ingest.py` — idempotent ingestion; safe to re-run the pipeline |
 | **LATERAL joins** | `09_top_readings_per_sensor.sql` — per-sensor top-N without a window function subquery |
 | **Range Partitioning** | `10_partition_readings.sql` — time-based declarative table partitioning. See [index_benchmark.md](benchmarks/index_benchmark.md) for partition pruning benefits. |
@@ -460,11 +460,11 @@ only ±5 %, so an injected fault there scores far higher.
 ```
 reading_id  sensor_id  recorded_at             value     z_score  was_flagged_in_source  facility_name          sensor_type   unit
 ----------  ---------  ----------------------  --------  -------  ---------------------  ---------------------  ------------  -------
-146886      18         2023-01-01 00:25:00+00    346.50    74.98  true                   Substation_West_06     voltage       kV
-95110       12         2023-01-01 05:45:00+00   3000.00     8.72  true                   SolarPlant_Central_04  irradiance    W/m2
-224650      27         2023-01-01 00:45:00+00     75.00     8.72  true                   WindFarm_East_09       wind_speed    m/s
-155912      19         2023-01-02 08:35:00+00    220.98     8.70  true                   WindFarm_East_07       power_output  MW
-501257      59         2023-01-01 11:20:00+00    105.00     6.22  true                   SolarPlant_West_20     temperature   Celsius
+146886      18         2025-01-01 00:25:00+00    346.50    74.98  true                   Substation_West_06     voltage       kV
+95110       12         2025-01-01 05:45:00+00   3000.00     8.72  true                   SolarPlant_Central_04  irradiance    W/m2
+224650      27         2025-01-01 00:45:00+00     75.00     8.72  true                   WindFarm_East_09       wind_speed    m/s
+155912      19         2025-01-02 08:35:00+00    220.98     8.70  true                   WindFarm_East_07       power_output  MW
+501257      59         2025-01-01 11:20:00+00    105.00     6.22  true                   SolarPlant_West_20     temperature   Celsius
 ```
 
 ## Sample Output — Detector Scorecard (11)

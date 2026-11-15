@@ -9,7 +9,7 @@ from pathlib import Path
 # the working directory or whether PYTHONPATH is set manually.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.generate_data import main as generate_data
+from src.generate_data import DEFAULT_START, main as generate_data
 from src.db_connection import get_connection
 from src.ingest import ingest_facilities, ingest_sensors
 
@@ -21,6 +21,48 @@ RAW_DIR = ROOT / "data" / "raw"
 # 50 k rows ≈ 7–8 MB per chunk — fast round-trips on Render's free tier
 # and keeps the GitHub Actions log updating every few seconds.
 CHUNK_SIZE = 50_000
+
+
+def target_partitions(start: str = DEFAULT_START) -> list:
+    """Monthly partitions the data needs: every month of the start year plus
+    January of the next year (the same layout as sql/schema/10_partition_readings.sql)."""
+    import pandas as pd
+
+    months = pd.date_range(f"{pd.Timestamp(start).year}-01-01", periods=13, freq="MS")
+    return [(f"readings_{m:%Y_%m}", f"{m:%Y-%m-%d}", f"{m + pd.offsets.MonthBegin(1):%Y-%m-%d}") for m in months]
+
+
+def align_partitions(connection) -> None:
+    """If `readings` is partitioned, make its monthly partitions match the data year.
+
+    Runs right after TRUNCATE, so every existing partition is empty: partitions
+    for other years (e.g. 2023 from an earlier load) are dropped and the ones the
+    new data needs are created. A plain, unpartitioned `readings` is left alone.
+    """
+    from psycopg2 import sql as pgsql
+
+    with connection.cursor() as cur:
+        cur.execute("SELECT relkind FROM pg_class WHERE relname = 'readings' "
+                    "AND relnamespace = 'public'::regnamespace")
+        row = cur.fetchone()
+        if not row or row[0] != "p":
+            return
+        wanted = target_partitions()
+        cur.execute("SELECT c.relname FROM pg_inherits i JOIN pg_class c ON c.oid = i.inhrelid "
+                    "WHERE i.inhparent = 'readings'::regclass")
+        existing = {r[0] for r in cur.fetchall()}
+        for name in sorted(existing - {w[0] for w in wanted}):
+            cur.execute(pgsql.SQL("SELECT EXISTS (SELECT 1 FROM {})").format(pgsql.Identifier(name)))
+            if cur.fetchone()[0]:
+                raise RuntimeError(f"Partition {name} still holds rows; refusing to drop it.")
+            cur.execute(pgsql.SQL("DROP TABLE {}").format(pgsql.Identifier(name)))
+            print(f"  dropped empty partition {name}")
+        for name, lo, hi in wanted:
+            if name not in existing:
+                cur.execute(pgsql.SQL("CREATE TABLE {} PARTITION OF readings FOR VALUES FROM (%s) TO (%s)")
+                            .format(pgsql.Identifier(name)), (f"{lo} 00:00:00+00", f"{hi} 00:00:00+00"))
+                print(f"  created partition {name}")
+    connection.commit()
 
 
 def load_readings_fast(connection) -> None:
@@ -54,6 +96,7 @@ def load_readings_fast(connection) -> None:
     with connection.cursor() as cur:
         cur.execute("TRUNCATE TABLE readings RESTART IDENTITY CASCADE;")
     connection.commit()
+    align_partitions(connection)
     print("Table truncated — starting chunked COPY …")
 
     # ── 2. chunked COPY ──────────────────────────────────────────────────────
@@ -107,7 +150,8 @@ def main() -> None:
 
     RAW_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Generate 30 days of data: 60 sensors × 30 days × 288 readings/day ≈ 518,400 rows.
+    # Generate 30 days of data from DEFAULT_START (1 Jan 2025):
+    # 60 sensors × 30 days × 288 readings/day ≈ 518,400 rows.
     # This keeps the Render free-tier database well under the 1 GB disk limit
     # (~75–80 MB on disk) while preserving all facility / sensor relationships
     # and the full anomaly-detection logic.

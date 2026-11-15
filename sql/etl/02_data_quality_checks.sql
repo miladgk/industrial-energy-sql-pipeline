@@ -45,7 +45,7 @@ ORDER BY anomaly_pct DESC;
 
 
 -- ---------------------------------------------------------------
--- Check 4: Timestamp coverage — confirm data spans full year 2023
+-- Check 4: Timestamp coverage — confirm data spans full year 2025
 -- ---------------------------------------------------------------
 SELECT
     MIN(recorded_at)                                          AS earliest_reading,

@@ -107,12 +107,12 @@ def test_anomaly_rate_within_expected_range(conn):
 
 
 # ──────────────────────────────────────────────────────────────
-# Check 4: Data covers expected days (default 365 days of 2023)
+# Check 4: Data covers expected days (default 365 days of 2025)
 # ──────────────────────────────────────────────────────────────
 
 def test_full_year_coverage(conn):
     """
-    Readings should span the expected number of days (default 365 days of 2023).
+    Readings should span the expected number of days (default 365 days of 2025).
     A gap indicates that a portion of the data file was not ingested.
     """
     import os
