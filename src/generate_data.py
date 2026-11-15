@@ -84,7 +84,7 @@ def generate_sensors(facilities: pd.DataFrame) -> pd.DataFrame:
 
 
 # ──────────────────────────────────────────────────────────────
-# 3. Readings  (every 5 minutes, full year 2023)
+# 3. Readings  (every 5 minutes, default: full year 2023, see --start)
 # ──────────────────────────────────────────────────────────────
 
 ANOMALY_RATE    = 0.02   # 2 % of readings are anomalous
@@ -112,15 +112,16 @@ def generate_readings(
     target_date: str = None,
     days: int = None,
     id_start: int = 1,
+    start_date: str = "2023-01-01",
 ) -> pd.DataFrame:
     """
     Generate time-series readings at *interval_minutes* resolution.
 
     Priority of mode selection (first match wins):
       1. ``target_date`` — single day, used for incremental loads.
-      2. ``days``        — explicit window starting 2023-01-01 (e.g. 30 days).
+      2. ``days``        — explicit window starting at ``start_date`` (e.g. 30 days).
       3. ``rows_limit``  — back-calculates the number of timestamps per sensor.
-      4. default         — full calendar year 2023.
+      4. default         — the full calendar year of ``start_date`` (2023 by default).
 
     ``id_start`` sets the first reading_id. Incremental batches must not reuse
     IDs from the base dataset (see ``incremental_id_start``).
@@ -134,11 +135,10 @@ def generate_readings(
         timestamps = pd.date_range(start=start_ts, end=end_ts, freq=f"{interval_minutes}min")
         n_timestamps = len(timestamps)
     elif days is not None:
-        # Build a clean date-range window: 2023-01-01 00:00 … 2023-01-<days> 23:55
-        from datetime import timedelta, date
-        end_date = date(2023, 1, 1) + timedelta(days=days - 1)
+        # Build a clean date-range window: start_date 00:00 … start_date + days - 1 23:55
+        end_date = (pd.Timestamp(start_date) + pd.Timedelta(days=days - 1)).date()
         timestamps = pd.date_range(
-            start="2023-01-01 00:00",
+            start=f"{start_date} 00:00",
             end=f"{end_date} 23:55",
             freq=f"{interval_minutes}min",
         )
@@ -146,14 +146,15 @@ def generate_readings(
     elif rows_limit is not None:
         n_timestamps = max(1, rows_limit // len(sensors))
         timestamps = pd.date_range(
-            start="2023-01-01 00:00",
+            start=f"{start_date} 00:00",
             periods=n_timestamps,
             freq=f"{interval_minutes}min",
         )
     else:
+        year = pd.Timestamp(start_date).year
         timestamps = pd.date_range(
-            start="2023-01-01 00:00",
-            end  ="2023-12-31 23:55",
+            start=f"{year}-01-01 00:00",
+            end  =f"{year}-12-31 23:55",
             freq =f"{interval_minutes}min",
         )
         n_timestamps = len(timestamps)
@@ -236,10 +237,15 @@ def main():
     parser.add_argument("--interval", type=int, default=INTERVAL_MINS, help="Interval in minutes (default: 5)")
     parser.add_argument("--incremental", action="store_true", help="Generate incremental batch for a specific date")
     parser.add_argument("--date", type=str, default="2024-01-01", help="Target date for incremental mode (YYYY-MM-DD)")
+    parser.add_argument("--start", type=str, default="2023-01-01",
+                        help="First day of the generated window (YYYY-MM-DD); the default full-year run covers its calendar year")
+    parser.add_argument("--out-dir", type=str, default=RAW_DIR, help="Directory for the CSV files (default data/raw)")
     args = parser.parse_args()
+    out_dir = args.out_dir
+    os.makedirs(out_dir, exist_ok=True)
 
-    fac_path = os.path.join(RAW_DIR, "facilities.csv")
-    sen_path = os.path.join(RAW_DIR, "sensors.csv")
+    fac_path = os.path.join(out_dir, "facilities.csv")
+    sen_path = os.path.join(out_dir, "sensors.csv")
 
     if args.incremental:
         if not os.path.exists(fac_path) or not os.path.exists(sen_path):
@@ -251,12 +257,12 @@ def main():
         
         print(f"Generating incremental readings for {args.date} ...")
         rows_per_day = len(sensors) * (24 * 60 // args.interval)
-        id_start = incremental_id_start(os.path.join(RAW_DIR, "readings.csv"), args.date, rows_per_day)
+        id_start = incremental_id_start(os.path.join(out_dir, "readings.csv"), args.date, rows_per_day)
         readings = generate_readings(
             sensors, facilities, interval_minutes=args.interval,
             target_date=args.date, id_start=id_start,
         )
-        red_path = os.path.join(RAW_DIR, "readings_incremental.csv")
+        red_path = os.path.join(out_dir, "readings_incremental.csv")
         readings.to_csv(red_path, index=False)
         print(f"  ✓ {len(readings):,} rows → {red_path}")
         
@@ -284,8 +290,9 @@ def main():
             interval_minutes=args.interval,
             rows_limit=rows_limit,
             days=days_window,
+            start_date=args.start,
         )
-        red_path = os.path.join(RAW_DIR, "readings.csv")
+        red_path = os.path.join(out_dir, "readings.csv")
         readings.to_csv(red_path, index=False)
         print(f"  ✓ {len(readings):,} rows → {red_path}")
 
