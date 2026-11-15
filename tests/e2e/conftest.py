@@ -91,16 +91,17 @@ def browser():
 @pytest.fixture
 def open_dashboard(browser, static_url, api_url):
     """
-    Factory: open_dashboard(api="live" | "down", viewport=None) -> Page
+    Factory: open_dashboard(api="live" | "down", viewport=None, block_data=False) -> Page
 
     * "live": requests to the production API host are forwarded to the local FastAPI.
     * "down": the API is unreachable, so the page must fall back to its bundled snapshot.
+    * block_data=True also blocks docs/data/*.json, to see what the bare HTML shows.
 
     The returned page has `page.problems`, a list of console errors / uncaught JS exceptions.
     """
     contexts = []
 
-    def _open(api="live", viewport=None):
+    def _open(api="live", viewport=None, block_data=False):
         context = browser.new_context(viewport=viewport or {"width": 1400, "height": 900})
         contexts.append(context)
         page = context.new_page()
@@ -118,6 +119,8 @@ def open_dashboard(browser, static_url, api_url):
             page.route(PRODUCTION_API + "/**", forward)
         else:
             page.route(PRODUCTION_API + "/**", lambda route: route.abort())
+        if block_data:
+            page.route("**/data/*.json", lambda route: route.abort())
         page.goto(static_url + "/index.html")
         return page
 

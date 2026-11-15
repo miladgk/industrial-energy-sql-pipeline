@@ -3,402 +3,1570 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Industrial Energy Analytics</title>
-  <meta name="description" content="Data engineering demo: chunked ingestion into a partitioned PostgreSQL warehouse, SQL quality gates and z-score anomaly detection, served by FastAPI. Synthetic facility telemetry plus real Fingrid grid data for Finland (2023).">
+  <title>Screams &amp; Silence · Industrial Energy SQL Pipeline</title>
+  <meta name="description" content="A working data pipeline (real Finnish grid data and 518,400 synthetic sensor readings in PostgreSQL) built to find out which machine failures SQL can hear, and honest about the ones it cannot.">
   <link rel="canonical" href="https://miladgk.github.io/industrial-energy-sql-pipeline/">
   <meta property="og:type" content="website">
-  <meta property="og:title" content="Industrial Energy Analytics · SQL data pipeline">
-  <meta property="og:description" content="PostgreSQL warehouse, SQL quality gates and anomaly detection served by FastAPI, with real Fingrid grid data for Finland (2023).">
+  <meta property="og:title" content="Screams & Silence · Industrial Energy SQL Pipeline">
+  <meta property="og:description" content="Which machine failures can SQL hear? A PostgreSQL + FastAPI pipeline on real Fingrid data and labelled synthetic telemetry.">
   <meta property="og:url" content="https://miladgk.github.io/industrial-energy-sql-pipeline/">
-  <meta property="og:image" content="https://miladgk.github.io/industrial-energy-sql-pipeline/assets/og-image.png">
-  <meta property="og:image:width" content="1200">
-  <meta property="og:image:height" content="630">
-  <meta property="og:image:alt" content="Industrial Energy Analytics: SQL data pipeline dashboard with real Fingrid grid data for Finland">
-  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:card" content="summary">
   <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500&display=swap">
+  <script>
+    // Apply the saved or system theme before first paint (no flash).
+    (function () {
+      var t = null;
+      try { t = localStorage.getItem("theme"); } catch (e) { /* storage blocked */ }
+      if (t !== "light" && t !== "dark") {
+        t = window.matchMedia && matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+      }
+      document.documentElement.setAttribute("data-theme", t);
+      document.documentElement.classList.add("js");
+    })();
+  </script>
   <style>
-    :root{--bg:#071211;--surface:#102a25;--surface-2:#0b1d1a;--ink:#ecf7f2;--muted:#91aaa2;--line:rgba(147,201,187,.2);--accent:#65e1bd;--warn:#f4bd73;--sans:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;--mono:"DM Mono",ui-monospace,monospace}
-    *{box-sizing:border-box}[hidden]{display:none!important}body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.5}body:before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.35;background-image:linear-gradient(rgba(101,225,189,.04) 1px,transparent 1px),linear-gradient(90deg,rgba(101,225,189,.04) 1px,transparent 1px);background-size:42px 42px}.shell{width:min(1180px,calc(100% - 32px));margin:auto;position:relative}.topbar{display:flex;justify-content:space-between;align-items:center;padding:24px 0;border-bottom:1px solid var(--line)}.brand{font-weight:800;letter-spacing:-.03em}.back{color:var(--accent);font:500 .72rem var(--mono);text-decoration:none}.eyebrow{color:var(--accent);font:500 .68rem var(--mono);letter-spacing:.12em;text-transform:uppercase}.hero{padding:44px 0 6px}.hero h1{font-size:clamp(2.1rem,4.6vw,3.7rem);line-height:1;letter-spacing:-.05em;margin:14px 0;background:linear-gradient(100deg,#e9fff7,var(--accent),#a994ff);-webkit-background-clip:text;background-clip:text;color:transparent}.hero p{max-width:760px;color:var(--muted);font-size:1.02rem}.status{display:inline-flex;align-items:center;gap:8px;color:var(--muted);font:500 .7rem var(--mono)}.dot{width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 14px var(--accent)}.kpis{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1.5fr);gap:12px;margin:26px 0}.kpi,.panel{border:1px solid var(--line);border-radius:12px;background:linear-gradient(145deg,rgba(18,54,46,.8),rgba(7,22,19,.9))}.kpi{padding:18px}.kpi strong{display:block;color:var(--accent);font-size:1.7rem;letter-spacing:-.06em;line-height:1.2}.kpi span{color:var(--muted);font:400 .78rem var(--mono)}.kpi:last-child strong{font-size:1.45rem}.grid{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(0,.8fr);gap:14px}.panel{padding:22px}.panel h2{font-size:1rem;margin:0 0 18px}.chart-wrap{height:360px}.chart{width:100%;height:100%}.table-wrap{overflow:auto}.table{width:100%;border-collapse:collapse;font-size:.78rem}.table th,.table td{text-align:left;padding:11px 8px;border-bottom:1px solid var(--line);white-space:nowrap}.table th{color:var(--accent);font:500 .62rem var(--mono)}.table td{color:var(--muted)}.data-note{max-width:680px;margin:10px 0 0;color:var(--muted);font:400 .74rem var(--mono);line-height:1.6}.data-note b{color:var(--warn);font-weight:500}.panel-sub{margin:-12px 0 16px;color:var(--muted);font:400 .7rem var(--mono)}.type-tabs{display:flex;gap:6px;margin:-6px 0 14px;flex-wrap:wrap}.type-tab{font:500 .68rem var(--mono);color:var(--muted);background:transparent;border:1px solid var(--line);border-radius:999px;padding:5px 12px;cursor:pointer}.type-tab[aria-pressed="true"]{color:var(--bg);background:var(--accent);border-color:var(--accent)}.type-tab:focus-visible{outline:2px solid var(--accent);outline-offset:2px}.note{margin:12px 0 0;color:var(--muted);font:400 .66rem var(--mono);line-height:1.55}code{font:400 .86em var(--mono);color:var(--ink);overflow-wrap:anywhere}.section-head{margin:56px 0 18px}#grid .section-head{margin-top:34px}.section-head h2{font-size:clamp(1.4rem,3vw,2rem);letter-spacing:-.04em;margin:8px 0 6px}.section-head p{color:var(--muted);max-width:700px;margin:0;font-size:.92rem}.mini-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:0 0 14px}.mini-kpis .kpi strong{font-size:1.25rem}.legend{display:flex;gap:16px;flex-wrap:wrap;margin:-8px 0 12px;color:var(--muted);font:400 .68rem var(--mono)}.legend i{display:inline-block;width:14px;height:3px;border-radius:2px;margin-right:6px;vertical-align:middle}.wide{margin-top:14px}.pipeline{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:10px;counter-reset:step}.step{position:relative;border:1px solid var(--line);border-radius:12px;padding:14px 12px;background:linear-gradient(145deg,rgba(18,54,46,.8),rgba(7,22,19,.9))}.step b{display:block;font-size:.82rem;margin-bottom:6px}.step span{display:block;color:var(--muted);font:400 .66rem var(--mono);line-height:1.5}.step:before{counter-increment:step;content:"0" counter(step);display:block;color:var(--accent);font:500 .62rem var(--mono);margin-bottom:6px}.step:not(:last-child):after{content:"→";position:absolute;right:-10px;top:50%;transform:translateY(-50%);color:var(--accent);font-size:.8rem}.links{display:flex;gap:18px;flex-wrap:wrap;margin-top:16px}.links a{color:var(--accent);font:500 .74rem var(--mono);text-decoration:none}.links a:hover{text-decoration:underline}.tag{display:inline-block;padding:1px 7px;border-radius:999px;font:500 .6rem var(--mono);border:1px solid var(--line)}.tag.inj{color:var(--warn);border-color:rgba(244,189,115,.4)}@media(max-width:1000px){.pipeline{grid-template-columns:repeat(2,minmax(0,1fr))}.step:not(:last-child):after{display:none}}@media(max-width:800px){.mini-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}.subnav{position:sticky;top:0;z-index:20;background:rgba(7,18,17,.88);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}.subnav-inner{display:flex;gap:22px;overflow-x:auto;scrollbar-width:none;padding:12px 0}.subnav-inner::-webkit-scrollbar{display:none}.subnav a{color:var(--muted);font:500 .72rem var(--mono);text-decoration:none;white-space:nowrap}.subnav a:hover,.subnav a:focus-visible{color:var(--accent)}main section[id]{scroll-margin-top:64px}.src{display:inline-block;margin-left:8px;padding:1px 8px;border-radius:999px;font:500 .6rem var(--mono);letter-spacing:.04em;text-transform:none;vertical-align:1px}.src-real{color:var(--accent);border:1px solid rgba(101,225,189,.45)}.src-syn{color:var(--warn);border:1px solid rgba(244,189,115,.45)}.legend-chips{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;margin-top:14px;color:var(--muted);font:400 .74rem var(--mono)}.legend-chips .src{margin-left:0}.legend-chips .src-syn{margin-left:10px}#demo .section-head .status{margin-top:12px}.error{color:var(--warn);font:500 .76rem var(--mono);min-height:1.2em}.footer{padding:48px 0;color:var(--muted);font:400 .68rem var(--mono)}@media(max-width:800px){.kpis{grid-template-columns:repeat(2,1fr)}.grid{grid-template-columns:minmax(0,1fr)}}@media(max-width:520px){.hero{padding-top:34px}.kpis{grid-template-columns:1fr}.kpi{padding:13px}.kpi strong{font-size:1.35rem}.kpi:last-child strong{font-size:1.3rem}}@media(max-width:600px){.shell{width:calc(100% - 28px)}.topbar{padding:17px 0;gap:14px}.brand{font-size:.9rem}.back{font-size:.6rem;white-space:nowrap}.hero{padding:30px 0 4px}.hero h1{font-size:clamp(1.9rem,8.6vw,2.6rem)}.hero p{font-size:.9rem}.kpis{gap:8px}.kpi{padding:13px 11px}.kpi strong{font-size:1.2rem}.kpi span{font-size:.66rem}.panel{padding:15px}.panel h2{font-size:.86rem}.chart-wrap{height:260px}.footer{padding:34px 0;font-size:.58rem}}
+    /* ───────────── tokens ───────────── */
+    :root {
+      color-scheme: dark;
+      --bg: #0b0d11;
+      --surface: #12151c;
+      --surface-2: #181c25;
+      --line: rgba(255, 255, 255, .07);
+      --line-strong: rgba(255, 255, 255, .13);
+      --ink: #eceef2;
+      --ink-2: #b6bbc6;
+      --muted: #8b919d;
+      --grid: #232833;
+      --axis: #383e4a;
+      --real: #199e70;
+      --cons: #9085e9;
+      --syn: #c98500;
+      --fault: #e5484d;
+      --ok: #0ca30c;
+      --rec: #3987e5;
+      --prec: #d55181;
+      --band: rgba(255, 255, 255, .06);
+      --focus: #34d399;
+      --glow-a: rgba(25, 158, 112, .16);
+      --glow-b: rgba(201, 133, 0, .10);
+      --shadow: 0 1px 0 rgba(255, 255, 255, .05) inset, 0 20px 40px -24px rgba(0, 0, 0, .6);
+    }
+    :root[data-theme="light"] {
+      color-scheme: light;
+      --bg: #faf8f5;
+      --surface: #ffffff;
+      --surface-2: #f4f1ec;
+      --line: #e7e2da;
+      --line-strong: #d6cfc4;
+      --ink: #111827;
+      --ink-2: #3f4654;
+      --muted: #646b78;
+      --grid: #ece8e1;
+      --axis: #cfc8bc;
+      --real: #1baf7a;
+      --cons: #6250d6;
+      --syn: #eda100;
+      --fault: #d03b3b;
+      --ok: #0a7f0a;
+      --rec: #2a78d6;
+      --prec: #e87ba4;
+      --band: rgba(17, 24, 39, .05);
+      --focus: #0f766e;
+      --glow-a: rgba(27, 175, 122, .10);
+      --glow-b: rgba(237, 161, 0, .08);
+      --shadow: 0 1px 2px rgba(17, 24, 39, .04), 0 16px 32px -24px rgba(17, 24, 39, .18);
+    }
+
+    /* ───────────── base ───────────── */
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+    body {
+      margin: 0; background: var(--bg); color: var(--ink);
+      font: 400 16px/1.6 Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+      overflow-x: hidden;
+    }
+    body::before {
+      content: ""; position: fixed; inset: 0; pointer-events: none; z-index: -1;
+      background:
+        radial-gradient(900px 500px at 12% -10%, var(--glow-a), transparent 60%),
+        radial-gradient(800px 500px at 100% 0%, var(--glow-b), transparent 60%);
+    }
+    a { color: inherit; text-underline-offset: 3px; text-decoration-color: var(--line-strong); }
+    a:hover { text-decoration-color: currentColor; }
+    :focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; border-radius: 6px; }
+    body, .mono, code, pre, .num, svg text { font-variant-ligatures: none; font-feature-settings: "liga" 0, "calt" 0; }
+    .mono, code, pre, .num { font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .num, td, .kpi strong, .tile strong { font-variant-numeric: tabular-nums; }
+    em.serif, .serif { font-family: "Instrument Serif", Georgia, serif; font-style: italic; font-weight: 400; }
+    code { font-size: .86em; background: var(--surface-2); border: 1px solid var(--line); padding: .05em .35em; border-radius: 6px; }
+    .wrap { width: min(1120px, 100% - 32px); margin-inline: auto; }
+    .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+    section[id], header[id] { scroll-margin-top: 76px; }
+
+    /* ───────────── top bar ───────────── */
+    .topbar {
+      position: sticky; top: 0; z-index: 20;
+      backdrop-filter: saturate(140%) blur(14px); -webkit-backdrop-filter: saturate(140%) blur(14px);
+      background: color-mix(in srgb, var(--bg) 78%, transparent);
+      border-bottom: 1px solid var(--line);
+    }
+    .topbar .wrap { display: flex; align-items: center; gap: 16px; height: 60px; }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 600; letter-spacing: -.01em; white-space: nowrap; text-decoration: none; }
+    .brand-mark { width: 22px; height: 22px; }
+    .nav { display: flex; gap: 2px; margin-left: auto; overflow-x: auto; scrollbar-width: none; }
+    .nav::-webkit-scrollbar { display: none; }
+    .nav a {
+      text-decoration: none; color: var(--ink-2); font-size: 14px; padding: 6px 10px; border-radius: 8px; white-space: nowrap;
+    }
+    .nav a:hover, .nav a[aria-current="true"] { color: var(--ink); background: var(--surface-2); }
+    .nav .idx { font-family: "JetBrains Mono", monospace; font-size: 11px; color: var(--muted); margin-right: 4px; }
+    .icon-btn {
+      flex: none; display: inline-grid; place-items: center; width: 36px; height: 36px; border-radius: 10px;
+      border: 1px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer;
+    }
+    .icon-btn svg { width: 18px; height: 18px; }
+    @media (max-width: 860px) { .nav { display: none; } .topbar .actions { margin-left: auto; } }
+    .actions { display: flex; gap: 8px; }
+
+    /* ───────────── hero ───────────── */
+    .hero { padding: 72px 0 40px; }
+    .eyebrow {
+      font: 500 12px/1.4 "JetBrains Mono", monospace; letter-spacing: .08em; text-transform: uppercase; color: var(--muted);
+    }
+    h1 {
+      font-size: clamp(28px, 3.25vw, 44px); line-height: 1.12; letter-spacing: -.03em; font-weight: 700;
+      margin: 14px 0 18px; text-wrap: balance;
+    }
+    @media (min-width: 900px) { h1 { white-space: nowrap; } }
+    h1 .serif { font-weight: 400; letter-spacing: -.01em; }
+    .lede { font-size: clamp(17px, 2vw, 20px); color: var(--ink-2); max-width: 60ch; margin: 0 0 22px; }
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 26px; }
+    .chip {
+      display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-2);
+      border: 1px solid var(--line); background: var(--surface); padding: 5px 10px; border-radius: 999px;
+    }
+    .chip i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+    .status-line { display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--ink-2); min-height: 22px; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
+    .status-line[data-state="live"] .dot { background: var(--ok); box-shadow: 0 0 0 4px color-mix(in srgb, var(--ok) 20%, transparent); }
+    .status-line[data-state="cached"] .dot { background: var(--syn); }
+    .status-line[data-state="down"] .dot { background: var(--fault); }
+    .status-line[data-state="loading"] .dot { animation: pulse 1.4s ease-in-out infinite; }
+    @keyframes pulse { 50% { opacity: .3; } }
+
+    .duel { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 36px; }
+    .duel .card { padding: 18px 18px 10px; }
+    .duel h3 { margin: 0 0 2px; font-size: 15px; font-weight: 600; letter-spacing: -.01em; }
+    .duel .verdict { font: 500 12px/1.4 "JetBrains Mono", monospace; letter-spacing: .04em; margin-bottom: 8px; }
+    .verdict.caught { color: var(--ok); }
+    .verdict.missed { color: var(--muted); }
+    .tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-top: 14px; }
+    .tile { padding: 18px; }
+    .tile strong { display: block; font-size: clamp(26px, 3.4vw, 36px); line-height: 1.1; letter-spacing: -.03em; font-weight: 650; }
+    .tile span { color: var(--ink-2); font-size: 14px; }
+    .tile small { display: block; color: var(--muted); font-size: 12px; margin-top: 6px; }
+    @media (max-width: 860px) { .tiles { grid-template-columns: 1fr 1fr; } .duel { grid-template-columns: 1fr; } }
+    .glance { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; margin-top: 14px; }
+    .glance > div { padding: 18px; border-left: 1px solid var(--line); min-width: 0; }
+    .glance > div:first-child { border-left: 0; }
+    .glance p { margin: 6px 0 0; font-size: 14px; color: var(--ink-2); }
+    .glance b { color: var(--ink); font-weight: 600; }
+    @media (max-width: 860px) { .glance { grid-template-columns: 1fr 1fr; } .glance > div:nth-child(3) { border-left: 0; } .glance > div:nth-child(n+3) { border-top: 1px solid var(--line); } }
+    @media (max-width: 520px) { .glance { grid-template-columns: 1fr; } .glance > div { border-left: 0; } .glance > div + div { border-top: 1px solid var(--line); } }
+    .trend-mini { display: grid; grid-template-columns: minmax(200px, 300px) 1fr; gap: 20px; align-items: center; }
+    .mini-title { margin: 0 0 4px; font-size: 15px; font-weight: 600; letter-spacing: -.01em; }
+    @media (max-width: 760px) { .trend-mini { grid-template-columns: 1fr; gap: 6px; } }
+    .takeaway { margin: 14px 0 0; padding: 12px 16px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--line); font-size: 14.5px; color: var(--ink-2); }
+    .takeaway b { color: var(--ink); }
+
+    /* ───────────── chapters ───────────── */
+    .chapter { padding: 64px 0 24px; border-top: 1px solid var(--line); }
+    .chapter-head { display: grid; grid-template-columns: 120px 1fr; gap: 24px; margin-bottom: 28px; }
+    .chapter-no { font-family: "Instrument Serif", serif; font-style: italic; font-size: 64px; line-height: .9; color: var(--muted); }
+    h2 { font-size: clamp(28px, 3.6vw, 42px); line-height: 1.08; letter-spacing: -.03em; margin: 6px 0 14px; font-weight: 700; max-width: 22ch; }
+    h2 .serif { font-weight: 400; }
+    .chapter-head p { color: var(--ink-2); max-width: 66ch; margin: 0 0 10px; }
+    @media (max-width: 760px) { .chapter-head { grid-template-columns: 1fr; gap: 0; } .chapter-no { font-size: 44px; } }
+    h3 { font-size: 18px; letter-spacing: -.015em; margin: 0 0 6px; }
+    .sub { color: var(--muted); font-size: 14px; margin: 0 0 14px; }
+
+    .card {
+      background: var(--surface); border: 1px solid var(--line); border-top-color: var(--line-strong);
+      border-radius: 16px; box-shadow: var(--shadow); min-width: 0;
+    }
+    .panel { padding: 22px; margin-bottom: 16px; }
+    .panel-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; margin-bottom: 6px; }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .grid-2 > .panel { margin-bottom: 0; }
+    .stack { display: grid; gap: 16px; margin-bottom: 16px; }
+    @media (max-width: 860px) { .grid-2 { grid-template-columns: 1fr; } .panel { padding: 18px; } }
+
+    .prov { display: inline-flex; flex-wrap: wrap; gap: 6px; }
+    .badge {
+      display: inline-flex; align-items: center; gap: 6px; font: 500 11px/1 "JetBrains Mono", monospace; letter-spacing: .03em;
+      padding: 5px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--ink-2); background: var(--surface-2); max-width: 100%; line-height: 1.35;
+    }
+    .badge i { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+    .b-real i { background: var(--real); } .b-syn i { background: var(--syn); } .b-fault i { background: var(--fault); }
+
+    .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--line); border-radius: 12px; overflow: hidden; border: 1px solid var(--line); margin: 14px 0 18px; }
+    .kpi { background: var(--surface); padding: 14px 16px; min-width: 0; }
+    .kpi strong { display: block; font-size: 22px; letter-spacing: -.02em; font-weight: 650; overflow-wrap: anywhere; }
+    .kpi span { color: var(--muted); font-size: 13px; }
+    @media (max-width: 640px) { .kpis { grid-template-columns: 1fr 1fr; } }
+
+    .seg { display: inline-flex; padding: 3px; gap: 2px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); flex-wrap: wrap; }
+    .seg button {
+      font: 500 13px/1 Inter, sans-serif; color: var(--ink-2); background: transparent; border: 0; border-radius: 7px; padding: 8px 12px; cursor: pointer;
+    }
+    .seg button[aria-pressed="true"] { background: var(--surface); color: var(--ink); box-shadow: 0 1px 2px rgba(0, 0, 0, .2); }
+    .btn {
+      font: 500 13px/1 Inter, sans-serif; color: var(--ink); background: var(--surface-2); border: 1px solid var(--line);
+      border-radius: 9px; padding: 9px 12px; cursor: pointer; text-decoration: none; display: inline-flex; gap: 6px; align-items: center;
+    }
+    .btn:hover { border-color: var(--line-strong); }
+
+    /* charts */
+    .chart-box { position: relative; margin-top: 8px; }
+    svg.chart { display: block; width: 100%; height: auto; overflow: visible; }
+    svg.chart text { font: 12px Inter, sans-serif; fill: var(--muted); }
+    svg.chart .lbl { fill: var(--ink-2); font-weight: 500; }
+    svg.chart .axis-title { fill: var(--ink-2); font: 500 11.5px Inter, sans-serif; letter-spacing: .01em; }
+    svg.chart .tip-text { fill: var(--ink); font: 12px "JetBrains Mono", monospace; }
+    svg.chart .tip-text .t0 { fill: var(--muted); }
+    svg.chart .tip-hit { fill: transparent; cursor: crosshair; outline: none; }
+    svg.chart .tip-hit:focus-visible { stroke: var(--focus); stroke-width: 2; }
+    .legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 13px; color: var(--ink-2); margin: 4px 0 0; }
+    .legend span { display: inline-flex; align-items: center; gap: 6px; }
+    .legend i { width: 14px; height: 3px; border-radius: 2px; display: inline-block; }
+    .legend i.band { height: 10px; background: var(--band); border: 1px dashed var(--axis); }
+    .legend i.pt { width: 9px; height: 9px; border-radius: 50%; }
+    .error { color: var(--fault); font-size: 14px; margin: 8px 0 0; }
+    .error:empty { display: none; }
+    .note { color: var(--muted); font-size: 13.5px; margin: 12px 0 0; }
+    .loading { color: var(--muted); font-size: 14px; }
+
+    /* tables */
+    .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th, td { padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--line); white-space: nowrap; }
+    th { font: 500 11.5px/1.3 "JetBrains Mono", monospace; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); background: var(--surface-2); }
+    tbody tr:last-child td { border-bottom: 0; }
+    td.r, th.r { text-align: right; }
+    tbody tr.pick { cursor: pointer; }
+    tbody tr.pick:hover { background: var(--surface-2); }
+    tbody tr[aria-selected="true"] { background: color-mix(in srgb, var(--fault) 10%, var(--surface)); }
+    .tag { font: 500 11px/1 "JetBrains Mono", monospace; padding: 4px 7px; border-radius: 6px; border: 1px solid var(--line); color: var(--ink-2); }
+    .tag.inj { color: var(--fault); border-color: color-mix(in srgb, var(--fault) 40%, transparent); }
+
+    /* bars (HTML) */
+    .bars { display: grid; gap: 14px; }
+    .bar-row { display: grid; grid-template-columns: minmax(110px, 190px) 1fr; gap: 14px; align-items: center; }
+    .bar-row .name { font-size: 14px; color: var(--ink-2); }
+    .bar-row .name b { color: var(--ink); font-weight: 600; display: block; }
+    .track { display: grid; gap: 5px; }
+    .bar { display: flex; align-items: center; gap: 8px; min-width: 0; }
+    .bar > i { display: block; height: 10px; border-radius: 0 4px 4px 0; min-width: 2px; transition: width .6s cubic-bezier(.2, .7, .2, 1); }
+    .bar > span { font: 12.5px "JetBrains Mono", monospace; color: var(--ink-2); white-space: nowrap; }
+    @media (max-width: 560px) { .bar-row { grid-template-columns: 1fr; gap: 6px; } }
+
+    /* threshold */
+    .thr { display: grid; grid-template-columns: 300px 1fr; gap: 24px; align-items: start; }
+    .thr input[type=range] { width: 100%; accent-color: var(--rec); }
+    .readout { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 14px 0; }
+    .readout div { background: var(--surface-2); border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
+    .readout strong { display: block; font-size: 26px; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+    .readout span { font-size: 13px; color: var(--ink-2); display: inline-flex; align-items: center; gap: 6px; }
+    .readout i { width: 10px; height: 3px; border-radius: 2px; display: inline-block; }
+    .zval { font: 600 40px/1 "JetBrains Mono", monospace; letter-spacing: -.03em; }
+    @media (max-width: 860px) { .thr { grid-template-columns: 1fr; } }
+
+    /* pipeline + ERD */
+    .pipeline { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; }
+    .step {
+      text-align: center; font: inherit; color: var(--ink-2); background: var(--surface-2); border: 1px solid var(--line);
+      border-radius: 12px; padding: 14px 10px; cursor: pointer; min-width: 0; position: relative;
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+    }
+    .step b { display: block; color: var(--ink); font-size: 14px; font-weight: 600; }
+    .step small { font: 11px "JetBrains Mono", monospace; color: var(--muted); }
+    .step[aria-current="step"] { border-color: var(--real); background: color-mix(in srgb, var(--real) 10%, var(--surface)); }
+    .inspector { margin-top: 12px; padding: 14px 16px; border-radius: 12px; border: 1px dashed var(--line-strong); color: var(--ink-2); font-size: 14.5px; min-height: 70px; }
+    .inspector b { color: var(--ink); }
+    @media (max-width: 860px) { .pipeline { grid-template-columns: repeat(2, 1fr); } }
+    .erd-box { overflow-x: auto; }
+    .erd { min-width: 420px; max-width: 520px; width: 100%; height: auto; display: block; }
+    .erd-v { display: none; }
+    @media (max-width: 560px) {
+      .erd-h { display: none; }
+      .erd-v { display: block; min-width: 0; max-width: 300px; margin: 0 auto; }
+    }
+    .notes { list-style: none; padding: 0; margin: 18px 0 0; display: grid; gap: 10px; }
+    .notes li { font-size: 14px; color: var(--ink-2); padding-left: 14px; border-left: 2px solid var(--line-strong); }
+    .notes b { color: var(--ink); font-weight: 600; }
+    .erd .tbl rect.h { fill: var(--surface-2); }
+    .erd rect.b { fill: var(--surface); stroke: var(--line-strong); }
+    .erd text { font: 12px "JetBrains Mono", monospace; fill: var(--ink-2); }
+    .erd text.t { font: 600 13px Inter, sans-serif; fill: var(--ink); }
+    .erd text.k { fill: var(--muted); }
+    .erd path { stroke: var(--axis); fill: none; stroke-width: 1.5; }
+    .query { margin: 12px 0 10px; padding: 10px 12px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 10px; font-size: 12px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ink-2); }
+    .parts-summary { font-size: 14px; color: var(--ink-2); margin: 0 0 8px; min-height: 22px; }
+    .parts-summary b { color: var(--ink); }
+    .plist { display: grid; gap: 3px; }
+    .prow {
+      display: grid; grid-template-columns: 76px 1fr auto; align-items: center; gap: 10px; width: 100%;
+      padding: 5px 8px; border-radius: 8px; border: 1px solid transparent; background: none;
+      font: inherit; color: var(--ink-2); text-align: left; cursor: pointer;
+    }
+    .prow:hover { background: var(--surface-2); }
+    .prow .m { font: 500 12.5px "JetBrains Mono", monospace; }
+    .prow .fill { display: flex; align-items: center; gap: 8px; min-width: 0; }
+    .prow .fill i { display: block; height: 8px; border-radius: 0 4px 4px 0; background: var(--syn); }
+    .prow .fill span { font: 11.5px "JetBrains Mono", monospace; color: var(--muted); white-space: nowrap; }
+    .prow .st { font: 500 11px "JetBrains Mono", monospace; letter-spacing: .03em; text-transform: uppercase; }
+    .prow.scan { border-color: color-mix(in srgb, var(--real) 45%, transparent); background: color-mix(in srgb, var(--real) 9%, var(--surface)); color: var(--ink); }
+    .prow.scan .st { color: var(--real); }
+    .prow.pruned { opacity: .5; }
+    .prow.pruned .st { color: var(--muted); }
+
+    /* SQL drawers */
+    details.sql { border: 1px solid var(--line); border-radius: 12px; background: var(--surface); margin-top: 12px; }
+    details.sql summary { cursor: pointer; padding: 12px 16px; font: 500 13px "JetBrains Mono", monospace; color: var(--ink-2); list-style: none; display: flex; gap: 10px; align-items: baseline; overflow-wrap: anywhere; min-width: 0; }
+    details.sql summary::-webkit-details-marker { display: none; }
+    details.sql summary::before { content: "▸"; color: var(--muted); transition: transform .2s; }
+    details.sql[open] summary::before { transform: rotate(90deg); }
+    details.sql pre { margin: 0; padding: 14px 16px; border-top: 1px solid var(--line); overflow-x: auto; font-size: 12.5px; line-height: 1.55; color: var(--ink-2); max-height: 460px; }
+    details.sql .links { padding: 0 16px 14px; font-size: 13px; }
+
+    /* honesty */
+    .callout {
+      border-left: 3px solid var(--syn); padding: 14px 18px; background: var(--surface-2); border-radius: 0 12px 12px 0; color: var(--ink-2); margin: 14px 0 0;
+    }
+    .callout b { color: var(--ink); }
+    .big-stat { font: 600 clamp(34px, 5vw, 52px)/1 "JetBrains Mono", monospace; letter-spacing: -.04em; }
+
+    /* craft */
+    .cmd { position: relative; }
+    .cmd pre { margin: 0; padding: 16px; padding-right: 76px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 12px; overflow-x: auto; font-size: 13px; line-height: 1.7; color: var(--ink-2); }
+    .cmd .btn { position: absolute; top: 10px; right: 10px; }
+    .layers { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+    .layer { border: 1px solid var(--line); background: var(--surface-2); border-radius: 10px; padding: 8px 12px; font-size: 13.5px; }
+    .layer b { font-family: "JetBrains Mono", monospace; margin-right: 6px; }
+
+    footer { border-top: 1px solid var(--line); margin-top: 48px; padding: 32px 0 48px; color: var(--muted); font-size: 13.5px; }
+    footer .wrap { display: flex; flex-wrap: wrap; gap: 12px 28px; justify-content: space-between; }
+
+    .noscript { background: var(--fault); color: #fff; padding: 10px 16px; text-align: center; font-size: 14px; }
+
+    /* reveal on scroll (only when JS runs and motion is welcome) */
+    @media (prefers-reduced-motion: no-preference) {
+      .js .reveal { opacity: 0; transform: translateY(22px); transition: opacity .6s ease, transform .7s cubic-bezier(.2, .7, .2, 1); }
+      .js .reveal.above { transform: translateY(-22px); }
+      .js .reveal.in { opacity: 1; transform: none; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      *, *::before, *::after { animation: none !important; transition: none !important; }
+    }
+    @media print {
+      .topbar, .actions, .seg, .btn, .icon-btn, details.sql summary::before { display: none !important; }
+      body { background: #fff; color: #000; }
+      body::before { display: none; }
+      .card { box-shadow: none; break-inside: avoid; }
+      details.sql pre { max-height: none; }
+    }
   </style>
 </head>
 <body>
-  <header class="shell topbar"><strong class="brand">Industrial Energy Analytics</strong><a class="back" href="https://miladgk.github.io/" target="_blank" rel="noopener noreferrer">Milad Ghaemi ↗</a></header>
-  <nav class="subnav" aria-label="Sections"><div class="shell subnav-inner"><a href="#grid">Real grid</a><a href="#pipeline">Pipeline</a><a href="#demo">Warehouse demo</a><a href="#anomaly-detection">Anomalies</a><a href="#validation">Validation</a></div></nav>
-  <main class="shell">
-    <section class="hero">
-      <div class="eyebrow">DATA ENGINEERING PROJECT / ENERGY SYSTEMS</div>
-      <h1>From telemetry to operational insight.</h1>
-      <p>An end-to-end SQL data pipeline: real Fingrid grid data and synthetic facility telemetry are loaded into a partitioned PostgreSQL warehouse, quality-checked, analysed in SQL and served by a FastAPI service.</p>
-      <div class="legend-chips"><span class="src src-real">Real data</span> Fingrid open data for Finland <span class="src src-syn">Synthetic data</span> demo facility telemetry</div>
-    </section>
+  <noscript><div class="noscript">This page draws its charts with JavaScript. The text below still explains every result; enable JavaScript to see the data.</div></noscript>
 
-    <section id="grid" aria-labelledby="grid-title">
-      <div class="section-head"><div class="eyebrow">FINGRID OPEN DATA <span class="src src-real">Real data</span></div><h2 id="grid-title">Finland's grid: wind vs. consumption</h2><p id="grid-desc">Real hourly data from Fingrid, the Finnish transmission system operator (dataset 75: wind power production, dataset 124: electricity consumption), averaged per day.</p></div>
-      <div class="type-tabs" id="period-tabs" role="group" aria-label="Time period" hidden><button class="type-tab" type="button" data-period="recent" aria-pressed="true">Last 12 months</button><button class="type-tab" type="button" data-period="2023" aria-pressed="false">2023</button></div>
-      <div class="mini-kpis" id="grid-kpis"></div>
-      <section class="panel"><h2 id="grid-chart-title">Daily average power (MW)</h2><div class="legend"><span><i style="background:#65e1bd"></i>Wind production</span><span><i style="background:#a994ff"></i>Electricity consumption</span></div><div class="chart-wrap"><svg id="grid-chart" class="chart" viewBox="0 0 800 360" role="img" aria-label="Daily average wind production and electricity consumption in Finland"></svg></div><p id="grid-error" class="error"></p></section>
-    </section>
-
-    <section id="pipeline" aria-labelledby="how-title">
-      <div class="section-head"><div class="eyebrow">HOW IT WORKS / PIPELINE</div><h2 id="how-title">From raw files to this page</h2></div>
-      <div class="pipeline">
-        <div class="step"><b>Sources</b><span>Synthetic telemetry (20 facilities, 3 sensors each, 5-min) and the Fingrid Open Data API</span></div>
-        <div class="step"><b>Landing</b><span>Raw CSV files in data/raw</span></div>
-        <div class="step"><b>Ingestion</b><span>Chunked loads (5,000 rows), high-watermark incremental mode, upsert for grid data</span></div>
-        <div class="step"><b>Warehouse</b><span>PostgreSQL 15, readings range-partitioned by month (13 partitions)</span></div>
-        <div class="step"><b>Quality gate</b><span>Checks orphans, nulls, anomaly rate and date coverage; fails the run on error</span></div>
-        <div class="step"><b>Analytics SQL</b><span>z-score anomalies, detector scoring, rolling averages, real vs. synthetic</span></div>
-        <div class="step"><b>Serving</b><span>FastAPI on Render feeds this page; Metabase for local BI</span></div>
+  <header class="topbar">
+    <div class="wrap">
+      <a class="brand" href="#top" aria-label="Back to top">
+        <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true"><rect x="1" y="1" width="22" height="22" rx="6" fill="none" stroke="currentColor" stroke-opacity=".35"/><path d="M4 14h4l2-7 3 11 2-6 1 2h4" fill="none" stroke="var(--real)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span>Screams &amp; Silence</span>
+      </a>
+      <nav class="nav" aria-label="Chapters">
+        <a href="#grid"><span class="idx">01</span>World</a>
+        <a href="#demo"><span class="idx">02</span>Machine</a>
+        <a href="#anomaly-detection"><span class="idx">03</span>Scream</a>
+        <a href="#blind-spot"><span class="idx">04</span>Silence</a>
+        <a href="#validation"><span class="idx">05</span>Honesty</a>
+        <a href="#engineering"><span class="idx">06</span>Craft</a>
+      </nav>
+      <div class="actions">
+        <a class="icon-btn" href="https://github.com/miladgk/industrial-energy-sql-pipeline" target="_blank" rel="noopener noreferrer" aria-label="Source code on GitHub">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48v-1.7c-2.78.6-3.37-1.34-3.37-1.34-.46-1.16-1.11-1.47-1.11-1.47-.9-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.89 1.53 2.34 1.09 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.55-1.11-4.55-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.65 0 0 .84-.27 2.75 1.02a9.56 9.56 0 0 1 5 0c1.91-1.29 2.75-1.02 2.75-1.02.55 1.38.2 2.4.1 2.65.64.7 1.03 1.59 1.03 2.68 0 3.84-2.34 4.68-4.57 4.93.36.31.68.92.68 1.85v2.74c0 .27.18.58.69.48A10 10 0 0 0 12 2Z"/></svg>
+        </a>
+        <button class="icon-btn" type="button" id="theme-toggle" aria-label="Switch colour theme" aria-pressed="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M12 3v2M12 19v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M3 12h2M19 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"/><circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>
+        </button>
       </div>
-      <div class="links"><a href="https://github.com/miladgk/industrial-energy-sql-pipeline" target="_blank" rel="noopener noreferrer">Source code on GitHub ↗</a><a href="https://industrial-energy-api.onrender.com/docs" target="_blank" rel="noopener noreferrer">Interactive API docs ↗</a></div>
+    </div>
+  </header>
+
+  <main id="top">
+    <!-- ───────────── HERO ───────────── -->
+    <section class="hero">
+      <div class="wrap">
+        <div class="eyebrow">A data engineering case study · PostgreSQL · FastAPI · Python</div>
+        <h1>Machines fail in two ways. They scream, <span class="serif">or they go silent.</span></h1>
+        <p class="lede">This is a working data pipeline: real Finnish grid data, and 518,400 synthetic sensor readings in PostgreSQL with a known set of deliberately broken values. It was built to find out which failures SQL can hear, and to be honest about the ones it can't.</p>
+        <div class="chips">
+          <span class="chip"><i style="background:var(--real)"></i>Real: Fingrid Open Data, CC BY 4.0</span>
+          <span class="chip"><i style="background:var(--syn)"></i>Synthetic: January 2023, seed 42</span>
+          <span class="chip"><i style="background:var(--fault)"></i>Injected faults, labelled</span>
+        </div>
+        <div class="status-line" id="status-line" data-state="loading">
+          <span class="dot" aria-hidden="true"></span>
+          <span id="status" role="status" data-api-state="loading">Loading data…</span>
+        </div>
+
+        <div class="duel reveal" aria-label="Two real readings from the dataset">
+          <div class="card">
+            <h3>A scream</h3>
+            <div class="verdict caught" id="duel-scream-verdict">–</div>
+            <svg class="chart" id="duel-scream" role="img" aria-label="A voltage spike and the readings around it"><desc>Readings of one 110 kV bus-voltage sensor for an hour either side of an injected spike.</desc></svg>
+          </div>
+          <div class="card">
+            <h3>A silence</h3>
+            <div class="verdict missed" id="duel-silence-verdict">–</div>
+            <svg class="chart" id="duel-silence" role="img" aria-label="A power reading that dropped to zero and the readings around it"><desc>Readings of one power-output sensor for an hour either side of an injected zero.</desc></svg>
+          </div>
+        </div>
+
+        <div class="tiles">
+          <div class="card tile reveal"><strong id="proof-scream">–</strong><span>of spikes caught by SQL</span><small id="proof-scream-sub">z-score rule, |z| &gt; 3</small></div>
+          <div class="card tile reveal"><strong id="proof-silence">–</strong><span>of zero-dropouts caught</span><small id="proof-silence-sub">same rule</small></div>
+          <div class="card tile reveal"><strong id="proof-speed">–</strong><span>faster sensor lookups</span><small>composite index (sensor_id, recorded_at)</small></div>
+          <div class="card tile reveal"><strong id="proof-tests">–</strong><span>automated tests</span><small id="proof-tests-sub">across test layers</small></div>
+        </div>
+
+        <div class="card glance reveal" aria-label="The project at a glance">
+          <div><div class="eyebrow">What was built</div><p>Python ETL into <b>PostgreSQL 15</b> (monthly partitions, composite index, quality gate), analytics in plain <b>SQL</b>, served by <b>FastAPI</b> to this page.</p></div>
+          <div><div class="eyebrow">Data</div><p><b>Real:</b> Fingrid hourly wind and consumption for Finland, 2023 and the last 365 days. <b>Synthetic:</b> <span id="glance-syn">20 sites × 3 sensors, every 5 minutes, January 2023</span>, with about 2% labelled faults.</p></div>
+          <div><div class="eyebrow">Question</div><p>Can a SQL rule that flags readings more than 3 standard deviations from each sensor's monthly baseline find sensor faults?</p></div>
+          <div><div class="eyebrow">Answer</div><p id="glance-answer">Loading…</p></div>
+        </div>
+      </div>
     </section>
 
-    <section id="demo" aria-labelledby="demo-title">
-      <div class="section-head"><div class="eyebrow">WAREHOUSE DEMO / SERVED BY THE API <span class="src src-syn">Synthetic data</span></div><h2 id="demo-title">Facility telemetry warehouse</h2><p>Twenty wind, solar and substation sites with three sensors each, at 5-minute resolution. The telemetry is <b>synthetic</b> (reproducible generator, seed 42) and covers January 2023; it is a fixed demo dataset, not a real-time feed. Every value below is queried from the FastAPI service when the page loads.</p>
-        <div class="status"><span class="dot"></span><span id="status">Connecting to the API...</span></div></div>
-    <section class="kpis">
-      <div class="kpi"><strong id="facility-count">-</strong><span>facilities</span></div>
-      <div class="kpi"><strong id="reading-count">-</strong><span>readings</span></div>
-      <div class="kpi"><strong id="anomaly-rate">-</strong><span>anomaly rate</span></div>
-      <div class="kpi"><strong id="latest-reading">-</strong><span>last reading in dataset</span></div>
-    </section>
-    <section class="panel"><h2>Average power output / final 24 hours of the dataset</h2><p class="panel-sub" id="trend-window">Loading data window...</p><div class="chart-wrap"><svg id="trend-chart" class="chart" viewBox="0 0 800 320" role="img" aria-label="Average power output trend"></svg></div><p id="trend-error" class="error"></p></section>
+    <!-- ───────────── 01 WORLD ───────────── -->
+    <section id="grid" class="chapter" aria-labelledby="grid-title">
+      <div class="wrap">
+        <div class="chapter-head reveal">
+          <div class="chapter-no">01</div>
+          <div>
+            <div class="eyebrow">The world · <span class="badge b-real"><i></i>Real data</span></div>
+            <h2 id="grid-title">Start with something <span class="serif">real.</span></h2>
+            <p id="grid-desc">Finland's electricity grid, from Fingrid, the national transmission operator: hourly wind production (dataset 75) and consumption (dataset 124), averaged per day. The pipeline ingests this into the same PostgreSQL warehouse.</p>
+          </div>
+        </div>
+        <div class="card panel reveal">
+          <div class="panel-top">
+            <div>
+              <h3 id="grid-chart-title">Daily average power (MW)</h3>
+              <div class="prov" id="grid-prov"></div>
+            </div>
+            <div class="seg" id="period-tabs" role="group" aria-label="Time period" hidden>
+              <button type="button" data-period="recent" aria-pressed="true">Last 12 months</button>
+              <button type="button" data-period="2023" aria-pressed="false">2023</button>
+            </div>
+          </div>
+          <div class="kpis" id="grid-kpis"></div>
+          <div class="legend"><span><i style="background:var(--real)"></i>Wind production</span><span><i style="background:var(--cons)"></i>Electricity consumption</span></div>
+          <div class="chart-box"><svg id="grid-chart" class="chart" role="img" aria-label="Daily average wind production and electricity consumption in Finland"><desc>Two lines in megawatts, one value per day.</desc></svg></div>
+          <p class="takeaway" id="grid-takeaway"></p>
+          <p id="grid-error" class="error"></p>
+        </div>
+      </div>
     </section>
 
-    <section id="anomaly-detection" aria-labelledby="anom-title">
-      <div class="section-head"><div class="eyebrow">ANOMALY DETECTION / Z-SCORE SQL <span class="src src-syn">Synthetic data</span></div><h2 id="anom-title">How well does the z-score detector work?</h2><p>The generator injects sensor-fault values (zero, or three times the sensor's normal maximum) into about 2% of readings and labels them. A SQL query computes each sensor's monthly mean and standard deviation from the normal (non-injected) readings, then flags every reading more than 3 standard deviations away (z &gt; 3). Because every injected fault is labelled, the detector can be scored against the truth.</p></div>
-      <section class="panel"><h2>Detector scorecard</h2><p class="panel-sub" id="det-sub">Flags (z &gt; 3) compared with the injected faults</p><div class="mini-kpis" id="det-kpis"></div><div class="table-wrap"><table class="table"><thead><tr><th>Sensor</th><th>Injected faults</th><th>Spikes caught</th><th>Zero values caught</th><th>Recall</th></tr></thead><tbody id="detection"></tbody></table></div><p class="note">Every flag is a real fault, but only about half of the faults are flagged. Spikes sit far outside the normal spread, so all of them are caught. A zero value is caught only where zero is far outside the normal range, as for the 110 kV bus voltage (normal range 104.5 to 115.5 kV). For power, temperature, irradiance and wind speed, zero is an ordinary reading, so a dropout to zero is invisible to a z-score; catching it needs a different rule, such as flagging a value that stays identical for many intervals. Source: <code>sql/analysis/11_detection_quality.sql</code>, served by <code>/api/detection-quality</code>.</p><p id="det-error" class="error"></p></section>
-      <section class="panel wide"><h2>Strongest anomaly per facility type and sensor</h2><div class="table-wrap"><table class="table"><thead><tr><th>Time (UTC)</th><th>Facility</th><th>Sensor</th><th>Value</th><th>z-score</th><th>Label</th></tr></thead><tbody id="anomalies"></tbody></table></div><p class="note">The <span class="tag inj">injected</span> tag marks detections that match an injected value. From the 300 highest z-scores per facility type returned by <code>/api/anomalies</code>. z-scores depend on each sensor's normal spread, so they are comparable within a sensor, not across sensors.</p><p id="anom-error" class="error"></p></section>
+    <!-- ───────────── 02 MACHINE ───────────── -->
+    <section id="demo" class="chapter" aria-labelledby="demo-title">
+      <div class="wrap">
+        <div class="chapter-head reveal">
+          <div class="chapter-no">02</div>
+          <div>
+            <div class="eyebrow">The machine · <span class="badge b-syn"><i></i>Synthetic data</span></div>
+            <h2 id="demo-title">Then build a machine you can <span class="serif">interrogate.</span></h2>
+            <p>Twenty facilities (wind farms, solar plants and substations) with three sensors each, reporting every five minutes through January 2023. About 2% of readings are deliberately broken and labelled, so every detector can be scored against the truth.</p>
+          </div>
+        </div>
+
+        <div class="card panel reveal">
+          <h3>Seven stages, from raw files to this page</h3>
+          <p class="sub">Select a stage to inspect it.</p>
+          <div class="pipeline" id="pipeline" role="list"></div>
+          <div class="inspector" id="inspector" aria-live="polite"></div>
+        </div>
+
+        <div class="grid-2 reveal">
+          <div class="card panel">
+            <h3>Data model</h3>
+            <p class="sub">Three normalised tables for the telemetry, one standalone table for the national grid.</p>
+            <div class="erd-box">
+              <svg class="erd erd-h" viewBox="0 0 470 372" role="img" aria-labelledby="erd-t erd-d">
+                <title id="erd-t">Entity-relationship diagram</title>
+                <desc id="erd-d">facilities has many sensors; sensors has many readings; readings is partitioned by month. grid_data stores national Fingrid measurements and is not linked to the others.</desc>
+                <g class="tbl" transform="translate(4,4)">
+                  <rect class="b" width="196" height="128" rx="10"/><rect class="h" x="1" y="1" width="194" height="28" rx="9"/>
+                  <text class="t" x="12" y="20">facilities</text>
+                  <text x="12" y="50">facility_id <tspan class="k">PK</tspan></text><text x="12" y="68">facility_name</text><text x="12" y="86">facility_type</text><text x="12" y="104">country · capacity_mw</text><text x="12" y="122">commissioned_year</text>
+                </g>
+                <g class="tbl" transform="translate(266,4)">
+                  <rect class="b" width="200" height="110" rx="10"/><rect class="h" x="1" y="1" width="198" height="28" rx="9"/>
+                  <text class="t" x="12" y="20">sensors</text>
+                  <text x="12" y="50">sensor_id <tspan class="k">PK</tspan></text><text x="12" y="68">facility_id <tspan class="k">FK</tspan></text><text x="12" y="86">sensor_type</text><text x="12" y="104">unit</text>
+                </g>
+                <g class="tbl" transform="translate(266,170)">
+                  <rect class="b" width="200" height="198" rx="10"/><rect class="h" x="1" y="1" width="198" height="28" rx="9"/>
+                  <text class="t" x="12" y="20">readings</text>
+                  <text x="12" y="50">reading_id <tspan class="k">PK</tspan></text><text x="12" y="68">sensor_id <tspan class="k">FK</tspan></text><text x="12" y="86">recorded_at <tspan class="k">PK</tspan></text><text x="12" y="104">value</text><text x="12" y="122">is_anomaly</text>
+                  <text class="k" x="12" y="152">partitioned by month</text><text class="k" x="12" y="170">index (sensor_id,</text><text class="k" x="12" y="186">       recorded_at)</text>
+                </g>
+                <g class="tbl" transform="translate(4,170)">
+                  <rect class="b" width="226" height="128" rx="10"/><rect class="h" x="1" y="1" width="224" height="28" rx="9"/>
+                  <text class="t" x="12" y="20">grid_data <tspan class="k" style="font:12px 'JetBrains Mono'">standalone</tspan></text>
+                  <text x="12" y="50">id <tspan class="k">PK</tspan></text><text x="12" y="68">dataset_id · metric</text><text x="12" y="86">recorded_at · value</text><text x="12" y="104">country · source</text><text class="k" x="12" y="122">unique (dataset_id, time)</text>
+                </g>
+                <path d="M200 58 H266"/><text class="k" x="220" y="50">1:N</text>
+                <path d="M366 114 V170"/><text class="k" x="374" y="146">1:N</text>
+              </svg>
+              <svg class="erd erd-v" viewBox="0 0 252 676" role="img" aria-labelledby="erdv-t">
+                <title id="erdv-t">Entity-relationship diagram: facilities, sensors, readings, and the standalone grid_data table</title>
+                <g class="tbl" transform="translate(4,4)">
+                  <rect class="b" width="244" height="128" rx="10"/><rect class="h" x="1" y="1" width="242" height="28" rx="9"/>
+                  <text class="t" x="12" y="20">facilities</text>
+                  <text x="12" y="50">facility_id <tspan class="k">PK</tspan></text><text x="12" y="68">facility_name</text><text x="12" y="86">facility_type</text><text x="12" y="104">country · capacity_mw</text><text x="12" y="122">commissioned_year</text>
+                </g>
+                <path d="M126 132 V164"/><text class="k" x="134" y="152">1:N</text>
+                <g class="tbl" transform="translate(4,164)">
+                  <rect class="b" width="244" height="110" rx="10"/><rect class="h" x="1" y="1" width="242" height="28" rx="9"/>
+                  <text class="t" x="12" y="20">sensors</text>
+                  <text x="12" y="50">sensor_id <tspan class="k">PK</tspan></text><text x="12" y="68">facility_id <tspan class="k">FK</tspan></text><text x="12" y="86">sensor_type</text><text x="12" y="104">unit</text>
+                </g>
+                <path d="M126 274 V306"/><text class="k" x="134" y="294">1:N</text>
+                <g class="tbl" transform="translate(4,306)">
+                  <rect class="b" width="244" height="186" rx="10"/><rect class="h" x="1" y="1" width="242" height="28" rx="9"/>
+                  <text class="t" x="12" y="20">readings</text>
+                  <text x="12" y="50">reading_id <tspan class="k">PK</tspan></text><text x="12" y="68">sensor_id <tspan class="k">FK</tspan></text><text x="12" y="86">recorded_at <tspan class="k">PK</tspan></text><text x="12" y="104">value</text><text x="12" y="122">is_anomaly</text>
+                  <text class="k" x="12" y="152">partitioned by month</text><text class="k" x="12" y="170">index (sensor_id, recorded_at)</text>
+                </g>
+                <g class="tbl" transform="translate(4,520)">
+                  <rect class="b" width="244" height="146" rx="10"/><rect class="h" x="1" y="1" width="242" height="28" rx="9"/>
+                  <text class="t" x="12" y="20">grid_data <tspan class="k" style="font:12px 'JetBrains Mono'">standalone</tspan></text>
+                  <text x="12" y="50">id <tspan class="k">PK</tspan></text><text x="12" y="68">dataset_id · metric</text><text x="12" y="86">recorded_at · value</text><text x="12" y="104">country · source</text><text class="k" x="12" y="122">unique (dataset_id,</text><text class="k" x="12" y="138">        recorded_at)</text>
+                </g>
+              </svg>
+            </div>
+            <ul class="notes">
+              <li><b>Why <code>recorded_at</code> is in the primary key.</b> PostgreSQL requires a partitioned table's unique keys to include the partition column, so readings is keyed on (reading_id, recorded_at).</li>
+              <li><b>Loading twice changes nothing.</b> Every insert uses <code>ON CONFLICT</code>: existing readings are skipped, and Fingrid rows are updated in place through the unique (dataset_id, recorded_at).</li>
+              <li><b>grid_data stands alone.</b> It holds national totals, not facility sensors, so it has no foreign key to them.</li>
+            </ul>
+          </div>
+          <div class="card panel">
+            <div class="panel-top">
+              <div><h3>Partition pruning</h3></div>
+              <div class="seg" id="parts-mode" role="group" aria-label="Query shape">
+                <button type="button" data-mode="month" aria-pressed="true">One month</button>
+                <button type="button" data-mode="all" aria-pressed="false">No time filter</button>
+              </div>
+            </div>
+            <p class="sub" id="parts-sub"><code>readings</code> is stored as one table per month. Pick a month: PostgreSQL reads that partition and skips the rest.</p>
+            <pre class="query" id="parts-query" aria-label="Example query"></pre>
+            <p class="parts-summary" id="parts-summary" aria-live="polite"></p>
+            <div class="plist" id="parts" role="group" aria-label="Partitions of the readings table"></div>
+            <p class="note" id="parts-note"></p>
+          </div>
+        </div>
+
+        <div class="card panel reveal" style="margin-top:16px">
+          <div class="panel-top">
+            <div>
+              <h3>The warehouse, live</h3>
+              <div class="prov"><span class="badge b-syn"><i></i>Synthetic · Jan 2023 · seed 42</span><span class="badge" id="demo-src">source: –</span></div>
+            </div>
+          </div>
+          <section class="kpis" aria-label="Warehouse figures">
+            <div class="kpi"><strong id="facility-count">–</strong><span>facilities</span></div>
+            <div class="kpi"><strong id="reading-count">–</strong><span>readings</span></div>
+            <div class="kpi"><strong id="anomaly-rate">–</strong><span>injected fault rate</span></div>
+            <div class="kpi"><strong id="latest-reading">–</strong><span>last reading (UTC)</span></div>
+          </section>
+          <div class="trend-mini">
+            <div>
+              <h4 class="mini-title">Last 24 hours of the dataset</h4>
+              <p class="sub" id="trend-window">Loading data window…</p>
+              <p class="note" style="margin-top:4px">Hourly average of all power sensors. The generator draws values uniformly at random, so the line stays flat: this is a liveness check of the API, not a finding.</p>
+            </div>
+            <div class="chart-box"><svg id="trend-chart" class="chart" role="img" aria-label="Average power output trend"><desc>Hourly average of all power-output sensors, excluding injected faults.</desc></svg></div>
+          </div>
+          <p id="trend-error" class="error"></p>
+        </div>
+      </div>
     </section>
 
-    <section id="validation" aria-labelledby="val-title">
-      <div class="section-head"><div class="eyebrow">VALIDATION <span class="src src-real">Real</span><span class="src src-syn">Synthetic</span></div><h2 id="val-title">Does the synthetic generator behave like real wind?</h2><p>Daily wind output from the synthetic generator compared with real Fingrid wind production, both standardized as z-scores. Computed by <code>sql/analysis/08_real_vs_synthetic_comparison.sql</code> on an earlier full-year synthetic run (the demo dataset above covers one month).</p></div>
-      <section class="panel"><h2 id="val-stats">Pearson correlation</h2><div class="legend"><span><i style="background:#65e1bd"></i>Real wind (z-score)</span><span><i style="background:#f4bd73"></i>Synthetic wind (z-score)</span></div><div class="chart-wrap"><svg id="val-chart" class="chart" viewBox="0 0 800 360" role="img" aria-label="Real and synthetic daily wind z-scores, 2023"></svg></div><p class="note" id="val-note"></p><p id="val-error" class="error"></p></section>
+    <!-- ───────────── 03 SCREAM ───────────── -->
+    <section id="anomaly-detection" class="chapter" aria-labelledby="anom-title">
+      <div class="wrap">
+        <div class="chapter-head reveal">
+          <div class="chapter-no">03</div>
+          <div>
+            <div class="eyebrow">The scream · <span class="badge b-syn"><i></i>Synthetic data</span> <span class="badge b-fault"><i></i>Injected faults</span></div>
+            <h2 id="anom-title">A spike is a scream. <span class="serif">SQL hears every one.</span></h2>
+            <p>For each sensor and month, a SQL query computes the mean and standard deviation of the clean readings. Any reading more than three standard deviations away (|z|&nbsp;&gt;&nbsp;3) is flagged. An injected spike is three times the sensor's normal maximum, so it is never subtle.</p>
+          </div>
+        </div>
+
+        <div class="card panel reveal">
+          <div class="panel-top">
+            <div><h3>Detector scorecard at |z| &gt; 3</h3><p class="sub" id="det-sub">Flags compared with the injected faults</p></div>
+            <div class="prov" id="det-prov"></div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th scope="col">Sensor</th><th scope="col" class="r">Injected faults</th><th scope="col" class="r">Spikes caught</th><th scope="col" class="r">Zeros caught</th><th scope="col" class="r">Recall</th></tr></thead>
+              <tbody id="detection"><tr><td colspan="5" class="loading">Loading…</td></tr></tbody>
+            </table>
+          </div>
+          <p id="det-error" class="error"></p>
+          <details class="sql" id="sql-11"><summary>Inspect the SQL · sql/analysis/11_detection_quality.sql</summary><pre>Loading…</pre></details>
+        </div>
+
+        <div class="card panel reveal">
+          <h3>Move the threshold. Watch what breaks.</h3>
+          <p class="sub">Every position was computed by the real API on the full dataset and saved, so this control works offline and never waits.</p>
+          <div class="thr">
+            <div>
+              <label for="thr-input" class="eyebrow">Threshold |z| &gt;</label>
+              <div class="zval" id="thr-z" aria-hidden="true">3.0</div>
+              <input type="range" id="thr-input" min="1" max="10" step="0.5" value="3" aria-describedby="thr-text">
+              <div class="readout">
+                <div><strong id="thr-precision">–</strong><span><i style="background:var(--prec)"></i>precision</span></div>
+                <div><strong id="thr-recall">–</strong><span><i style="background:var(--rec)"></i>recall</span></div>
+              </div>
+              <p class="note" id="thr-text" aria-live="polite"></p>
+            </div>
+            <div>
+              <div class="legend"><span><i style="background:var(--prec)"></i>Precision: flags that are real faults</span><span><i style="background:var(--rec)"></i>Recall: faults that are flagged</span></div>
+              <div class="chart-box"><svg id="thr-chart" class="chart" role="img" aria-label="Precision and recall for every threshold from 1 to 10"><desc>Two lines in percent against the z threshold.</desc></svg></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card panel reveal">
+          <div class="panel-top">
+            <div><h3>The loudest screams</h3><p class="sub">The strongest flag for every facility type and sensor, exported from the database with the hour around it. Select a row.</p></div>
+            <div class="seg" id="anom-filter" role="group" aria-label="Facility type">
+              <button type="button" data-type="all" aria-pressed="true">All</button>
+              <button type="button" data-type="wind" aria-pressed="false">Wind</button>
+              <button type="button" data-type="solar" aria-pressed="false">Solar</button>
+              <button type="button" data-type="substation" aria-pressed="false">Substation</button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th scope="col">Time (UTC)</th><th scope="col">Facility</th><th scope="col">Sensor</th><th scope="col" class="r">Value</th><th scope="col" class="r">z-score</th><th scope="col">Label</th></tr></thead>
+              <tbody id="anomalies"><tr><td colspan="6" class="loading">Loading…</td></tr></tbody>
+            </table>
+          </div>
+          <p id="anom-error" class="error"></p>
+          <div style="margin-top:16px">
+            <h3 id="spark-title">–</h3>
+            <div class="legend"><span><i style="background:var(--syn)"></i>Readings</span><span><i class="band"></i>Normal band (mean ± 3σ)</span><span><i class="pt" style="background:var(--fault)"></i>Injected fault</span></div>
+            <div class="chart-box"><svg id="anom-spark" class="chart" role="img" aria-label="Readings one hour either side of the selected anomaly"><desc>Line of readings at five-minute intervals with the normal band shaded.</desc></svg></div>
+            <p class="note" id="spark-note"></p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ───────────── 04 SILENCE ───────────── -->
+    <section id="blind-spot" class="chapter" aria-labelledby="silence-title">
+      <div class="wrap">
+        <div class="chapter-head reveal">
+          <div class="chapter-no">04</div>
+          <div>
+            <div class="eyebrow">The silence · <span class="badge b-syn"><i></i>Synthetic data</span></div>
+            <h2 id="silence-title">A dead sensor reads zero. <span class="serif">Usually, zero sounds normal.</span></h2>
+            <p id="silence-lede">Half of the injected faults are a sudden drop to zero. On a 110 kV bus, zero volts is impossible, and SQL catches every one. For power, wind, sunlight and temperature, zero sits inside the normal range, so the same rule hears nothing.</p>
+          </div>
+        </div>
+
+        <div class="grid-2 reveal">
+          <div class="card panel">
+            <h3 id="sil-a-title">–</h3>
+            <div class="verdict caught mono" id="sil-a-verdict" style="font-size:12px">–</div>
+            <svg class="chart" id="sil-a" role="img" aria-label="Voltage readings around an injected zero"><desc>The zero sits far below the normal band.</desc></svg>
+          </div>
+          <div class="card panel">
+            <h3 id="sil-b-title">–</h3>
+            <div class="verdict missed mono" id="sil-b-verdict" style="font-size:12px">–</div>
+            <svg class="chart" id="sil-b" role="img" aria-label="Power readings around an injected zero"><desc>The zero sits inside the normal band.</desc></svg>
+          </div>
+        </div>
+
+        <div class="card panel reveal" style="margin-top:16px">
+          <div class="panel-top">
+            <div><h3>Can another rule hear the silence?</h3><p class="sub">Three rules, each run as real SQL on all 518,400 readings and scored against the injected zeros.</p></div>
+            <div class="legend"><span><i style="background:var(--rec)"></i>Recall</span><span><i style="background:var(--prec)"></i>Precision</span></div>
+          </div>
+          <div class="bars" id="rules"></div>
+          <div class="callout" id="rules-callout"></div>
+          <details class="sql" id="sql-12"><summary>Inspect the SQL · sql/analysis/12_zero_dropout_rules.sql</summary><pre>Loading…</pre></details>
+        </div>
+      </div>
+    </section>
+
+    <!-- ───────────── 05 HONESTY ───────────── -->
+    <section id="validation" class="chapter" aria-labelledby="val-title">
+      <div class="wrap">
+        <div class="chapter-head reveal">
+          <div class="chapter-no">05</div>
+          <div>
+            <div class="eyebrow">Honesty · <span class="badge b-real"><i></i>Real</span> <span class="badge b-syn"><i></i>Synthetic</span></div>
+            <h2 id="val-title">The generator is <span class="serif">not the weather.</span></h2>
+            <p>Synthetic data is useful for testing a pipeline: partitions, quality gates, detectors. It is not a model of the world. Two results on this page say so plainly.</p>
+          </div>
+        </div>
+
+        <div class="card panel reveal">
+          <div class="panel-top">
+            <div>
+              <h3 id="val-stats">Pearson correlation</h3>
+              <p class="sub" id="val-sub">Daily wind output, both series standardised as z-scores.</p>
+            </div>
+            <div class="seg" id="val-mode" role="group" aria-label="Smoothing">
+              <button type="button" data-smooth="7" aria-pressed="true">7-day mean</button>
+              <button type="button" data-smooth="1" aria-pressed="false">Daily</button>
+            </div>
+          </div>
+          <div class="legend"><span><i style="background:var(--real)"></i>Real Fingrid wind</span><span><i style="background:var(--syn)"></i>Synthetic wind</span></div>
+          <div class="chart-box"><svg id="val-chart" class="chart" role="img" aria-label="Real and synthetic daily wind z-scores, 2023"><desc>Two z-score lines, one value per day of 2023.</desc></svg></div>
+          <p class="note" id="val-note"></p>
+          <p id="val-error" class="error"></p>
+          <details class="sql" id="sql-08"><summary>Inspect the SQL · sql/analysis/08_real_vs_synthetic_comparison.sql</summary><pre>Loading…</pre></details>
+        </div>
+
+        <div class="card panel reveal">
+          <div class="panel-top">
+            <div><h3>Twenty facilities. <span class="serif" style="font-size:1.1em">Nothing to rank.</span></h3><p class="sub" id="rank-sub">Capacity factor: mean power output ÷ nameplate capacity.</p></div>
+            <div class="prov"><span class="badge b-syn"><i></i>Synthetic · Jan 2023</span></div>
+          </div>
+          <div class="chart-box"><svg id="rank-chart" class="chart" role="img" aria-label="Capacity factor of all twenty facilities on a 0 to 100 percent scale"><desc>Twenty dots, all close to 50 percent.</desc></svg></div>
+          <div class="callout" id="rank-callout"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ───────────── 06 CRAFT ───────────── -->
+    <section id="engineering" class="chapter" aria-labelledby="eng-title">
+      <div class="wrap">
+        <div class="chapter-head reveal">
+          <div class="chapter-no">06</div>
+          <div>
+            <div class="eyebrow">The craft</div>
+            <h2 id="eng-title">Fast, tested, <span class="serif">and reproducible.</span></h2>
+            <p>The parts nobody sees on a dashboard: the index that makes lookups fast, the tests that keep the numbers true, and the commands to rebuild all of it yourself.</p>
+          </div>
+        </div>
+
+        <div class="grid-2 reveal">
+          <div class="card panel">
+            <h3>One index, 37 times faster</h3>
+            <p class="sub" id="bench-sub">One sensor, one week, on the full-year dataset.</p>
+            <div class="bars" id="bench"></div>
+            <p class="note" id="bench-note"></p>
+          </div>
+          <div class="card panel">
+            <h3 id="tests-title">Automated tests</h3>
+            <p class="sub">Each layer answers a different question. All run in CI on every pull request.</p>
+            <div class="bars" id="tests"></div>
+            <p class="note" id="tests-note"></p>
+          </div>
+        </div>
+
+        <div class="card panel reveal" style="margin-top:16px">
+          <h3>Run it yourself</h3>
+          <p class="sub">Rebuilds the same 30-day dataset shown on this page (seed 42), then serves it.</p>
+          <div class="cmd">
+            <pre id="cmd-text">git clone https://github.com/miladgk/industrial-energy-sql-pipeline.git
+cd industrial-energy-sql-pipeline
+cp config_template.yaml config.yaml
+pip install -r requirements.txt
+docker compose up -d postgres_db
+python src/setup_db.py
+python src/generate_data.py --days 30
+python src/migrate_to_partitioned.py
+DAYS_EXPECTED=30 python src/ingest.py
+make api        # http://localhost:8000/docs
+make test</pre>
+            <button class="btn" type="button" id="copy-cmd">Copy</button>
+          </div>
+        </div>
+      </div>
     </section>
   </main>
-  <footer class="shell footer">Real grid data: Fingrid Open Data (CC BY 4.0) · Synthetic facility data: reproducible generator · Industrial Energy SQL Pipeline</footer>
+
+  <footer>
+    <div class="wrap">
+      <span>Real grid data: Fingrid Open Data (CC BY 4.0). Synthetic telemetry: seeded generator in this repository.</span>
+      <span id="foot-gen"></span>
+      <span><a href="https://github.com/miladgk/industrial-energy-sql-pipeline" target="_blank" rel="noopener noreferrer">Source on GitHub</a> · <a href="https://industrial-energy-api.onrender.com/docs" target="_blank" rel="noopener noreferrer">API docs</a> · <a href="https://miladgk.github.io/" target="_blank" rel="noopener noreferrer">Milad Ghaemi</a></span>
+    </div>
+  </footer>
+
   <script>
-    const API_BASE_URL = "https://industrial-energy-api.onrender.com";
-    const $ = id => document.getElementById(id);
-    const formatNumber = value => new Intl.NumberFormat().format(value ?? 0);
-    function drawTrend(points) {
-      points = points.slice();
-      const svg = $("trend-chart");
-      if (!points.length) { svg.replaceChildren(); $("trend-error").textContent = "No trend data is available yet."; return; }
-      // Drop partial hours at the edges of the window: an hour with far fewer readings
-      // than usual gives a misleading average (e.g. the first bucket of the window).
-      const counts = points.map(point => Number(point.reading_count) || 0).sort((a, b) => a - b);
-      const typical = counts[Math.floor(counts.length / 2)] || 0;
-      points = points.filter(point => (Number(point.reading_count) || 0) >= typical * 0.5);
-      if (!points.length) { svg.replaceChildren(); $("trend-error").textContent = "No trend data is available yet."; return; }
-      const times = points.map(point => point.recorded_at);
-      const hhmm = iso => new Date(iso).toLocaleTimeString("en-GB", {hour: "2-digit", minute: "2-digit", timeZone: "UTC"});
-      const step = Math.max(1, Math.ceil(points.length / 6));
-      lineChart(svg, [{name: "Avg output", values: points.map(point => Number(point.avg_output_mw) || 0), color: "#65e1bd", width: 3.5}], times, {
-        yLabel: "Average output (MW)",
-        xTicks: (i, label) => i % step === 0 ? hhmm(label) : null,
-        tipTitle: label => `${shortDate(label)}, ${hhmm(label)} UTC`,
-        tipValue: v => `${v.toFixed(1)} MW`
-      });
-    }
-    const monthYear = iso => new Date(iso).toLocaleDateString("en-GB", {month: "long", year: "numeric", timeZone: "UTC"});
-    const shortDate = iso => new Date(iso).toLocaleDateString("en-GB", {day: "numeric", month: "short", year: "numeric", timeZone: "UTC"});
-    const SENSOR_NAMES = {power_output: "Power output", temperature: "Temperature", wind_speed: "Wind speed", irradiance: "Irradiance", voltage: "Bus voltage"};
-    const pct = value => value == null ? "-" : `${Number(value).toFixed(1)}%`;
-    function renderDetection(data) {
-      if (!data || !data.sensors || !data.total) return;
-      const t = data.total;
-      const kpis = $("det-kpis");
-      kpis.replaceChildren();
-      addKpi(kpis, pct(t.precision_pct), "precision (flags that are real faults)");
-      addKpi(kpis, pct(t.recall_pct), "recall (faults that are flagged)");
-      addKpi(kpis, `${formatNumber(t.spikes_flagged)} / ${formatNumber(t.spikes)}`, "spikes caught");
-      addKpi(kpis, `${formatNumber(t.drops_flagged)} / ${formatNumber(t.drops)}`, "zero values caught");
-      const body = $("detection");
-      body.replaceChildren();
-      data.sensors.forEach(row => {
-        const tr = document.createElement("tr");
-        // textContent, not innerHTML: values come from the API
-        [SENSOR_NAMES[row.sensor_type] || row.sensor_type, formatNumber(row.injected),
-         `${formatNumber(row.spikes_flagged)} / ${formatNumber(row.spikes)}`,
-         `${formatNumber(row.drops_flagged)} / ${formatNumber(row.drops)}`, pct(row.recall_pct)].forEach(value => {
-          const td = document.createElement("td");
-          td.textContent = value;
-          tr.appendChild(td);
-        });
-        body.appendChild(tr);
-      });
-      $("det-sub").textContent = `Flags (z > ${data.z_threshold}) compared with the injected faults, ${formatNumber(t.readings)} readings`;
-      $("det-error").textContent = "";
-    }
-    function renderDashboard(overview, trend) {
-      $("facility-count").textContent = formatNumber(overview.facility_count);
-      $("reading-count").textContent = formatNumber(overview.reading_count);
-      $("anomaly-rate").textContent = `${overview.anomaly_rate_pct}%`;
-      $("latest-reading").textContent = overview.latest_reading_at ? shortDate(overview.latest_reading_at) : "-";
-      drawTrend(trend.points || []);
-      const pts = trend.points || [];
-      if (pts.length) $("trend-window").textContent = `${shortDate(pts[0].recorded_at)} to ${shortDate(pts[pts.length - 1].recorded_at)} (UTC)`;
-      $("trend-error").textContent = "";
-    }
+  "use strict";
+  const API_BASE_URL = "https://industrial-energy-api.onrender.com";
+  const $ = id => document.getElementById(id);
+  const fmt = (v, d = 0) => (v == null || !isFinite(v)) ? "–"
+    : Number(v).toLocaleString("en-US", {minimumFractionDigits: d, maximumFractionDigits: d});
+  const pct = (v, d = 1) => v == null ? "–" : `${fmt(v, d)}%`;
+  const dayFmt = iso => new Date(iso).toLocaleDateString("en-GB", {day: "numeric", month: "short", year: "numeric", timeZone: "UTC"});
+  const hhmm = iso => new Date(iso).toLocaleTimeString("en-GB", {hour: "2-digit", minute: "2-digit", timeZone: "UTC"});
+  const SENSOR = {power_output: "Power output", temperature: "Temperature", wind_speed: "Wind speed", irradiance: "Irradiance", voltage: "Bus voltage"};
+  const UNIT = {Celsius: "°C", "W/m2": "W/m²"};
+  const unitOf = u => UNIT[u] || u;
+  const UNIT_RANGE = {temperature: "−20 to 35 °C", wind_speed: "0 to 25 m/s", irradiance: "0 to 1,000 W/m²", voltage: "104.5 to 115.5 kV", power_output: "0 to capacity MW"};
+  const el = (tag, attrs = {}, text) => { const n = document.createElement(tag); for (const k in attrs) n.setAttribute(k, attrs[k]); if (text != null) n.textContent = text; return n; };
+  async function getJSON(url, opts) {
+    const res = await fetch(url, opts);
+    if (!res.ok) throw new Error(`${url} returned HTTP ${res.status}`);
+    return res.json();
+  }
+  const safe = p => p.catch(() => null);
 
-    // The free Render service sleeps when idle and can take up to a minute to wake.
-    // Show the bundled snapshot immediately, then replace it with the live API response.
-    async function loadDashboard() {
-      let snapshot = null;
-      try {
-        const res = await fetch("data/api_snapshot.json");
-        if (res.ok) {
-          snapshot = await res.json();
-          renderDashboard(snapshot.overview, snapshot.trend);
-          renderDetection(snapshot.detection);
-          $("status").textContent = `Showing a cached snapshot (${shortDate(snapshot.generated_at)}) while the API wakes up...`;
-        }
-      } catch (error) { /* no snapshot: wait for the API */ }
-      if (!snapshot) $("status").textContent = "Loading data from the API...";
-
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 90000);
-      try {
-        const responses = await Promise.all([
-          fetch(`${API_BASE_URL}/api/overview`, {signal: controller.signal}),
-          fetch(`${API_BASE_URL}/api/output-trend?hours=24`, {signal: controller.signal})
-        ]);
-        if (!responses.every(response => response.ok)) throw new Error("The API returned an error.");
-        const [overview, trend] = await Promise.all(responses.map(response => response.json()));
-        renderDashboard(overview, trend);
-        const dataWindow = overview.latest_reading_at ? ` · data window: ${monthYear(overview.latest_reading_at)}` : "";
-        $("status").textContent = `API online${dataWindow} (historical snapshot)`;
-      } catch (error) {
-        if (snapshot) {
-          $("status").textContent = `API unavailable · showing the cached snapshot from ${shortDate(snapshot.generated_at)}`;
-        } else {
-          $("status").textContent = "API unavailable";
-          $("trend-window").textContent = "";
-          $("trend-error").textContent = error.name === "AbortError" ? "The API did not respond in time." : error.message;
-        }
-      } finally {
-        clearTimeout(timer);
-      }
-    }
-
-    // ---------- shared SVG line chart ----------
-    const chartArgs = new Map();
-    function lineChart(svg, series, labels, opts = {}) {
-      chartArgs.set(svg, [series, labels, opts]);
-      const {yLabel = "", zeroLine = false, tickFmt = v => v.toFixed(0), xTicks = null,
-             tipTitle = label => label, tipValue = v => v.toFixed(1)} = opts;
-      // Match the viewBox to the element's aspect ratio so the chart fills the panel without distortion
-      const height = 360;
-      const aspect = svg.clientWidth && svg.clientHeight ? svg.clientWidth / svg.clientHeight : 800 / 360;
-      const width = Math.max(420, Math.round(height * aspect));
-      svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
-      const plot = {left: 92, right: 16, top: 16, bottom: 52};
-      const all = series.flatMap(s => s.values);
-      let min = Math.min(...all), max = Math.max(...all);
-      if (!zeroLine) min = Math.min(0, min);
-      const range = (max - min) || 1;
-      const n = labels.length;
-      const x = i => plot.left + i * (width - plot.left - plot.right) / Math.max(n - 1, 1);
-      const y = v => height - plot.bottom - (v - min) * (height - plot.top - plot.bottom) / range;
-      let out = "";
-      for (let t = 0; t <= 4; t++) {
-        const v = min + range * t / 4, ty = y(v);
-        out += `<line x1="${plot.left}" y1="${ty}" x2="${width - plot.right}" y2="${ty}" stroke="rgba(147,201,187,.14)"/><text x="${plot.left - 10}" y="${ty + 6}" text-anchor="end" fill="#91aaa2" font-size="18">${tickFmt(v)}</text>`;
-      }
-      if (zeroLine && min < 0 && max > 0) out += `<line x1="${plot.left}" y1="${y(0)}" x2="${width - plot.right}" y2="${y(0)}" stroke="rgba(147,201,187,.45)"/>`;
-      series.forEach(s => {
-        const d = s.values.map((v, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
-        out += `<path d="${d}" fill="none" stroke="${s.color}" stroke-width="${s.width || 2.5}" stroke-opacity="${s.opacity || 1}" stroke-linejoin="round"/>`;
-      });
-      const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-      const monthStep = width < 700 ? 2 : 1; // narrow charts: label every other month
-      labels.forEach((label, i) => {
-        const text = xTicks ? xTicks(i, label)
-          : (label.endsWith("-01") && (Number(label.slice(5, 7)) - 1) % monthStep === 0 ? months[Number(label.slice(5, 7)) - 1] : null);
-        if (text) out += `<text x="${x(i)}" y="${height - 22}" text-anchor="middle" fill="#91aaa2" font-size="17">${text}</text>`;
-      });
-      if (yLabel) out += `<text x="18" y="${(height - plot.bottom) / 2}" transform="rotate(-90 18 ${(height - plot.bottom) / 2})" text-anchor="middle" fill="#91aaa2" font-size="17">${yLabel}</text>`;
-      // Tooltip layer (hover or touch): vertical guide, a dot per series and a label box
-      out += `<g class="tip" visibility="hidden" pointer-events="none"><line class="tip-line" y1="${plot.top}" y2="${height - plot.bottom}" stroke="rgba(236,247,242,.35)" stroke-dasharray="4 4"/>${series.map(s => `<circle class="tip-dot" r="5" fill="${s.color}" stroke="#071211" stroke-width="2"/>`).join("")}<rect class="tip-box" rx="8" fill="#0b1d1a" stroke="rgba(147,201,187,.45)"/><text class="tip-text" font-size="16" fill="#ecf7f2"></text></g>`;
-      out += `<rect class="tip-hit" x="${plot.left}" y="${plot.top}" width="${width - plot.left - plot.right}" height="${height - plot.top - plot.bottom}" fill="transparent"/>`;
-      svg.innerHTML = out;
-
-      const tip = svg.querySelector(".tip"), box = svg.querySelector(".tip-box"), text = svg.querySelector(".tip-text");
-      const guide = svg.querySelector(".tip-line");
-      const dots = [...svg.querySelectorAll(".tip-dot")];
-      const show = event => {
-        const rect = svg.getBoundingClientRect();
-        const px = (event.clientX - rect.left) * width / rect.width;
-        const i = Math.max(0, Math.min(n - 1, Math.round((px - plot.left) / ((width - plot.left - plot.right) / Math.max(n - 1, 1)))));
-        const gx = x(i);
-        guide.setAttribute("x1", gx);
-        guide.setAttribute("x2", gx);
-        dots.forEach((dot, k) => { dot.setAttribute("cx", gx); dot.setAttribute("cy", y(series[k].values[i])); });
-        const lines = [tipTitle(labels[i]), ...series.map(s => `${s.name}: ${tipValue(s.values[i])}`)];
-        text.replaceChildren(...lines.map((line, k) => {
-          const t = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
-          t.setAttribute("dy", k ? "21" : "0");
-          if (k === 0) t.setAttribute("fill", "#91aaa2");
-          t.textContent = line;
-          return t;
-        }));
-        tip.setAttribute("visibility", "visible");
-        const by = plot.top + 6;
-        text.setAttribute("y", by + 22);
-        text.querySelectorAll("tspan").forEach(t => t.setAttribute("x", 0));
-        const bb = text.getBBox();
-        const bw = bb.width + 24, bh = bb.height + 16;
-        const bx = gx + 14 + bw > width - plot.right ? gx - 14 - bw : gx + 14;
-        box.setAttribute("x", bx); box.setAttribute("y", by); box.setAttribute("width", bw); box.setAttribute("height", bh);
-        text.querySelectorAll("tspan").forEach(t => t.setAttribute("x", bx + 12));
-      };
-      const hit = svg.querySelector(".tip-hit");
-      hit.addEventListener("pointermove", show);
-      hit.addEventListener("pointerdown", show);
-      // Mouse: hide when the cursor leaves. Touch: pointerleave fires as soon as the finger
-      // lifts, so keep the tooltip until the next tap elsewhere on the page.
-      hit.addEventListener("pointerleave", event => { if (event.pointerType === "mouse") tip.setAttribute("visibility", "hidden"); });
-      document.addEventListener("pointerdown", event => { if (!svg.contains(event.target)) tip.setAttribute("visibility", "hidden"); });
-    }
-    // Centred moving average: avoids the one-day "window" at the start of a trailing average
-    const rolling = (values, k) => values.map((_, i) => {
-      const half = Math.floor(k / 2);
-      const part = values.slice(Math.max(0, i - half), i + half + 1);
-      return part.reduce((a, b) => a + b, 0) / part.length;
+  /* ───────── theme ───────── */
+  (function theme() {
+    const btn = $("theme-toggle");
+    const sync = () => btn.setAttribute("aria-pressed", String(document.documentElement.dataset.theme === "light"));
+    sync();
+    btn.addEventListener("click", () => {
+      const next = document.documentElement.dataset.theme === "light" ? "dark" : "light";
+      document.documentElement.dataset.theme = next;
+      try { localStorage.setItem("theme", next); } catch (e) { /* storage blocked */ }
+      sync();
     });
-    let resizeTimer = null;
-    window.addEventListener("resize", () => {
-      clearTimeout(resizeTimer);
-      resizeTimer = setTimeout(() => chartArgs.forEach((args, svg) => lineChart(svg, ...args)), 150);
+  })();
+
+  /* ───────── line chart (SVG, crosshair tooltip, keyboard scrubbing) ───────── */
+  const NS = "http://www.w3.org/2000/svg";
+  const charts = new Map();
+  const svgEl = (tag, attrs = {}) => { const n = document.createElementNS(NS, tag); for (const k in attrs) n.setAttribute(k, attrs[k]); return n; };
+
+  function lineChart(svg, cfg) { charts.set(svg, cfg); drawLine(svg, cfg); }
+  function niceStep(span, count) {
+    const raw = span / count, p = Math.pow(10, Math.floor(Math.log10(raw))), f = raw / p;
+    return (f < 1.5 ? 1 : f < 3 ? 2 : f < 7 ? 5 : 10) * p;
+  }
+
+  function drawLine(svg, cfg) {
+    const {series, labels, height = 300, yFmt = null, xTick = () => null, tipTitle = l => l, tipValue = v => fmt(v, 1),
+           band = null, points = [], forceZero = true, yMin, yMax, directLabels = series.length > 1, vline = null,
+           yLabel = null, xLabel = null} = cfg;
+    const keep = Array.from(svg.childNodes).filter(n => n.nodeName === "desc" || n.nodeName === "title");
+    svg.replaceChildren(...keep);
+    const W = Math.max(280, Math.round(svg.getBoundingClientRect().width || svg.parentNode.clientWidth || 800));
+    const H = height;
+    svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+    const narrow = W < 520;
+    const m = {l: narrow ? 46 : 58, r: directLabels ? (narrow ? 70 : 104) : 14, t: yLabel ? 30 : 12, b: xLabel ? 50 : 30};
+    const vals = series.flatMap(s => s.values).filter(v => Number.isFinite(v));
+    if (band) vals.push(band.lo, band.hi);
+    let lo = yMin ?? Math.min(...vals), hi = yMax ?? Math.max(...vals);
+    if (yMin == null && forceZero) lo = Math.min(lo, 0);
+    const step = niceStep((hi - lo) || 1, narrow ? 3 : 4);
+    if (yMin == null) lo = Math.floor(lo / step + 1e-9) * step;
+    if (yMax == null) hi = Math.ceil(hi / step - 1e-9) * step;
+    if (hi <= lo) hi = lo + step;
+    const dec = Math.max(0, Math.ceil(-Math.log10(step) - 1e-9));
+    const tickFmt = yFmt || (v => fmt(Math.abs(v) < step / 1e6 ? 0 : v, dec));
+    const n = labels.length;
+    const x = i => m.l + (n <= 1 ? 0 : i * (W - m.l - m.r) / (n - 1));
+    const y = v => H - m.b - (v - lo) * (H - m.t - m.b) / ((hi - lo) || 1);
+    const g = svgEl("g");
+    svg.appendChild(g);
+
+    const tickStep = (yMin != null && yMax != null) ? niceStep(hi - lo, 4) : step;
+    for (let v = lo, t = 0; v <= hi + tickStep * 1e-6; v += tickStep, t++) {
+      const ty = y(v);
+      g.appendChild(svgEl("line", {x1: m.l, x2: W - m.r, y1: ty, y2: ty, style: `stroke:var(${t === 0 ? "--axis" : "--grid"})`, "stroke-width": 1}));
+      const tx = svgEl("text", {x: m.l - 8, y: ty + 4, "text-anchor": "end"}); tx.textContent = tickFmt(v); g.appendChild(tx);
+    }
+    if (yLabel) { const tx = svgEl("text", {x: 0, y: 13, class: "axis-title"}); tx.textContent = yLabel; g.appendChild(tx); }
+    if (xLabel) { const tx = svgEl("text", {x: (m.l + W - m.r) / 2, y: H - 8, "text-anchor": "middle", class: "axis-title"}); tx.textContent = xLabel; g.appendChild(tx); }
+    if (!forceZero && lo < 0 && hi > 0) g.appendChild(svgEl("line", {x1: m.l, x2: W - m.r, y1: y(0), y2: y(0), style: "stroke:var(--axis)", "stroke-width": 1}));
+    labels.forEach((l, i) => {
+      const t = xTick(i, l, narrow);
+      if (t == null) return;
+      const tx = svgEl("text", {x: x(i), y: H - m.b + 19, "text-anchor": "middle"}); tx.textContent = t; g.appendChild(tx);
     });
-    function addKpi(container, value, label) {
-      const box = document.createElement("div"); box.className = "kpi";
-      const strong = document.createElement("strong"); strong.textContent = value;
-      const span = document.createElement("span"); span.textContent = label;
-      box.append(strong, span); container.appendChild(box);
+    if (band) {
+      const top = y(Math.min(band.hi, hi)), bot = y(Math.max(band.lo, lo));
+      g.appendChild(svgEl("rect", {x: m.l, width: W - m.l - m.r, y: top, height: Math.max(0, bot - top), style: "fill:var(--band)"}));
+      [band.lo, band.hi].forEach(v => { if (v > lo && v < hi) g.appendChild(svgEl("line", {x1: m.l, x2: W - m.r, y1: y(v), y2: y(v), style: "stroke:var(--axis)", "stroke-dasharray": "3 4"})); });
     }
+    if (vline != null) g.appendChild(svgEl("line", {x1: x(vline), x2: x(vline), y1: m.t, y2: H - m.b, style: "stroke:var(--ink-2)", "stroke-dasharray": "2 3"}));
 
-    // ---------- real Fingrid data (static export, no API needed) ----------
-    // Two views of the same real data: the full year 2023 that the pipeline ingested,
-    // and the last 365 days refreshed weekly from the Fingrid API by a GitHub Action.
-    const gridData = {};
-    function renderGrid(period) {
-      const data = gridData[period];
-      if (!data) return;
-      const recent = period === "recent";
-      document.querySelectorAll("#period-tabs .type-tab").forEach(t => t.setAttribute("aria-pressed", String(t.dataset.period === period)));
-      const labels = data.days.map(d => d.day);
-      const first = shortDate(`${labels[0]}T00:00:00Z`), last = shortDate(`${labels[labels.length - 1]}T00:00:00Z`);
-      $("grid-chart-title").textContent = recent ? `Daily average power, ${first} to ${last} (MW)` : "Daily average power, 2023 (MW)";
-      $("grid-desc").textContent = "Real hourly data from Fingrid, the Finnish transmission system operator (dataset 75: wind power production, dataset 124: electricity consumption), averaged per day. " + (recent
-        ? `Last 365 complete days, fetched from the Fingrid API every Monday by a GitHub Action (last update ${shortDate(data.generated_at)}).`
-        : "The full year 2023, as ingested by the pipeline into PostgreSQL.");
-      lineChart($("grid-chart"), [
-        {name: "Consumption", values: data.days.map(d => d.consumption_mw), color: "#a994ff", width: 2},
-        {name: "Wind", values: data.days.map(d => d.wind_mw), color: "#65e1bd", width: 2.2}
-      ], labels, {yLabel: "MW", tickFmt: v => formatNumber(Math.round(v)),
-                  tipTitle: day => shortDate(`${day}T00:00:00Z`), tipValue: v => `${formatNumber(Math.round(v))} MW`});
-      const sm = data.summary;
-      const monthName = ym => ym ? new Date(`${ym}-01T00:00:00Z`).toLocaleDateString("en-GB", recent ? {month: "short", year: "numeric", timeZone: "UTC"} : {month: "long", timeZone: "UTC"}) : "-";
-      const k = $("grid-kpis");
-      k.replaceChildren();
-      addKpi(k, `${formatNumber(Math.round(sm.wind_mean_mw))} MW`, "avg wind production");
-      addKpi(k, `${formatNumber(Math.round(sm.consumption_mean_mw))} MW`, "avg consumption");
-      const base = gridData["2023"]?.summary;
-      addKpi(k, `${sm.wind_share_pct}%`, recent && base ? `wind share of consumption (2023: ${base.wind_share_pct}%)` : "wind share of consumption");
-      addKpi(k, `${monthName(sm.windiest_month)} / ${monthName(sm.calmest_month)}`, "windiest / calmest month");
-    }
-    document.querySelectorAll("#period-tabs .type-tab").forEach(tab => tab.addEventListener("click", () => renderGrid(tab.dataset.period)));
-
-    async function loadGrid() {
-      const get = async file => { try { const r = await fetch(file); return r.ok ? await r.json() : null; } catch (e) { return null; } };
-      const [full, recent] = await Promise.all([get("data/fingrid_2023_daily.json"), get("data/fingrid_recent_daily.json")]);
-      if (full) gridData["2023"] = full;
-      if (recent && recent.days && recent.days.length) gridData.recent = recent;
-      if (!full && !gridData.recent) { $("grid-error").textContent = "Grid data file not found."; return; }
-      $("period-tabs").hidden = !(full && gridData.recent);   // the switch only makes sense with both views
-      renderGrid(gridData.recent ? "recent" : "2023");
-    }
-
-    // ---------- validation: real vs synthetic ----------
-    async function loadValidation() {
-      try {
-        const res = await fetch("data/wind_validation_2023.json");
-        if (!res.ok) throw new Error("Validation file not found.");
-        const data = await res.json();
-        const labels = data.days.map(d => d.day);
-        lineChart($("val-chart"), [
-          {name: "Synthetic", values: rolling(data.days.map(d => d.synthetic_z), 7), color: "#f4bd73", width: 2.2},
-          {name: "Real", values: rolling(data.days.map(d => d.real_z), 7), color: "#65e1bd", width: 2.4}
-        ], labels, {yLabel: "z-score (7-day mean)", zeroLine: true, tickFmt: v => v.toFixed(1),
-                    tipTitle: day => `${shortDate(`${day}T00:00:00Z`)} (7-day mean)`, tipValue: v => v.toFixed(2)});
-        $("val-stats").textContent = `Pearson r = ${data.pearson_r.toFixed(3)} · n = ${data.n_days} days · p ≈ ${data.p_value.toFixed(2)}`;
-        $("val-note").textContent = "No statistically significant relationship. Real Nordic wind is strongly seasonal (windy winters, calm summers), while the generator draws each value independently with no seasonal model, so its curve is day-to-day noise with no winter or summer pattern. Surfacing this gap is the point of the check: it shows what the synthetic data can and cannot be used for.";
-      } catch (error) {
-        $("val-error").textContent = error.message;
+    series.forEach(s => {
+      let d = "", pen = false;
+      s.values.forEach((v, i) => {
+        if (!Number.isFinite(v)) { pen = false; return; }
+        d += `${pen ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`; pen = true;
+      });
+      g.appendChild(svgEl("path", {d, fill: "none", style: `stroke:${s.color}`, "stroke-width": s.width || 2, "stroke-linejoin": "round", "stroke-linecap": "round"}));
+      if (s.dots) s.values.forEach((v, i) => Number.isFinite(v) && g.appendChild(svgEl("circle", {cx: x(i), cy: y(v), r: 3, style: `fill:${s.color}`})));
+    });
+    points.forEach(p => {
+      g.appendChild(svgEl("circle", {cx: x(p.i), cy: y(p.v), r: p.r || 6, style: `fill:${p.color}; stroke:var(--surface)`, "stroke-width": 2}));
+      if (p.label) {
+        const right = x(p.i) > W * .7;
+        const tx = svgEl("text", {x: x(p.i) + (right ? -10 : 10), y: y(p.v) + (p.dy || 4), "text-anchor": right ? "end" : "start", class: "lbl"});
+        tx.textContent = p.label; g.appendChild(tx);
       }
+    });
+    if (directLabels) {
+      const ends = series.map(s => { let i = s.values.length - 1; while (i > 0 && !Number.isFinite(s.values[i])) i--; return {s, yy: y(s.values[i])}; })
+        .sort((a, b) => a.yy - b.yy);
+      for (let k = 1; k < ends.length; k++) if (ends[k].yy - ends[k - 1].yy < 16) ends[k].yy = ends[k - 1].yy + 16;
+      ends.forEach(({s, yy}) => {
+        g.appendChild(svgEl("line", {x1: W - m.r + 6, x2: W - m.r + 16, y1: yy, y2: yy, style: `stroke:${s.color}`, "stroke-width": 3, "stroke-linecap": "round"}));
+        const tx = svgEl("text", {x: W - m.r + 21, y: yy + 4, class: "lbl"}); tx.textContent = s.short || s.name; g.appendChild(tx);
+      });
     }
 
-    // ---------- detector scorecard from the API ----------
-    async function loadDetection() {
-      try {
-        const res = await fetch(`${API_BASE_URL}/api/detection-quality`);
-        if (!res.ok) throw new Error("The API returned an error.");
-        renderDetection(await res.json());
-      } catch (error) {
-        if (!$("detection").children.length)
-          $("det-error").textContent = "The scorecard could not be loaded from the API. It may be waking up; please reload in a minute.";
+    // tooltip layer
+    const tip = svgEl("g", {visibility: "hidden", "pointer-events": "none"});
+    const guide = svgEl("line", {y1: m.t, y2: H - m.b, style: "stroke:var(--ink-2)", "stroke-opacity": .5});
+    const dots = series.map(s => svgEl("circle", {r: 4.5, style: `fill:${s.color}; stroke:var(--surface)`, "stroke-width": 2}));
+    const box = svgEl("rect", {rx: 8, style: "fill:var(--surface); stroke:var(--line-strong)"});
+    const text = svgEl("text", {class: "tip-text"});
+    tip.append(guide, ...dots, box, text);
+    const hit = svgEl("rect", {class: "tip-hit", x: m.l, y: m.t, width: W - m.l - m.r, height: H - m.t - m.b, tabindex: 0, role: "slider",
+      "aria-label": svg.getAttribute("aria-label") + ": use left and right arrow keys to read values", "aria-valuemin": 0, "aria-valuemax": n - 1});
+    g.append(hit, tip);
+    let cur = n - 1;
+    const show = i => {
+      cur = Math.max(0, Math.min(n - 1, i));
+      const gx = x(cur);
+      guide.setAttribute("x1", gx); guide.setAttribute("x2", gx);
+      series.forEach((s, k) => {
+        const v = s.values[cur];
+        dots[k].setAttribute("visibility", Number.isFinite(v) ? "visible" : "hidden");
+        if (Number.isFinite(v)) { dots[k].setAttribute("cx", gx); dots[k].setAttribute("cy", y(v)); }
+      });
+      const lines = [tipTitle(labels[cur], cur), ...series.map(s => `${s.name}: ${Number.isFinite(s.values[cur]) ? tipValue(s.values[cur], s) : "–"}`)];
+      text.replaceChildren(...lines.map((line, k) => { const t = svgEl("tspan", {dy: k ? 18 : 0, class: k ? "" : "t0"}); t.textContent = line; return t; }));
+      tip.setAttribute("visibility", "visible");
+      text.setAttribute("y", m.t + 22);
+      text.querySelectorAll("tspan").forEach(t => t.setAttribute("x", 0));
+      const bb = text.getBBox();
+      const bw = bb.width + 22, bh = bb.height + 14;
+      const bx = gx + 14 + bw > W - 4 ? Math.max(4, gx - 14 - bw) : gx + 14;
+      box.setAttribute("x", bx); box.setAttribute("y", m.t + 4); box.setAttribute("width", bw); box.setAttribute("height", bh);
+      text.querySelectorAll("tspan").forEach(t => t.setAttribute("x", bx + 11));
+      hit.setAttribute("aria-valuenow", cur);
+      hit.setAttribute("aria-valuetext", lines.join(", "));
+    };
+    const toIndex = e => {
+      const pt = svg.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY;
+      const p = pt.matrixTransform(svg.getScreenCTM().inverse());
+      return Math.round((p.x - m.l) / ((W - m.l - m.r) || 1) * (n - 1));
+    };
+    hit.addEventListener("pointermove", e => show(toIndex(e)));
+    hit.addEventListener("pointerdown", e => show(toIndex(e)));
+    hit.addEventListener("pointerleave", e => { if (e.pointerType === "mouse") tip.setAttribute("visibility", "hidden"); });
+    hit.addEventListener("focus", () => show(cur));
+    hit.addEventListener("blur", () => tip.setAttribute("visibility", "hidden"));
+    hit.addEventListener("keydown", e => {
+      const step = {ArrowLeft: -1, ArrowRight: 1, PageUp: -10, PageDown: 10}[e.key];
+      if (step) { show(cur + step); e.preventDefault(); }
+      if (e.key === "Home") { show(0); e.preventDefault(); }
+      if (e.key === "End") { show(n - 1); e.preventDefault(); }
+    });
+  }
+
+  let resizeTimer;
+  window.addEventListener("resize", () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => charts.forEach((cfg, svg) => drawLine(svg, cfg)), 150);
+  });
+
+  /* ───────── sparkline around one reading ───────── */
+  function neighbourhoodChart(svg, ex, height = 240) {
+    const unit = unitOf(ex.unit);
+    const pts = ex.neighbourhood;
+    const idx = pts.findIndex(p => p.recorded_at === ex.recorded_at);
+    const lo = ex.mean_val - 3 * ex.stddev_val, hi = ex.mean_val + 3 * ex.stddev_val;
+    lineChart(svg, {
+      height,
+      series: [{name: SENSOR[ex.sensor_type] || ex.sensor_type, values: pts.map(p => p.value), color: "var(--syn)", width: 2}],
+      labels: pts.map(p => p.recorded_at),
+      band: {lo, hi},
+      directLabels: false,
+      forceZero: true,
+      points: pts.map((p, i) => p.is_anomaly ? {i, v: p.value, color: "var(--fault)", r: i === idx ? 6 : 4,
+        label: i === idx ? `${fmt(p.value, p.value % 1 ? 2 : 0)} ${unit}${ex.flagged ? "" : " · inside the band"}` : null} : null).filter(Boolean),
+      yLabel: `${SENSOR[ex.sensor_type] || ex.sensor_type} (${unit})`,
+      xLabel: "Time (UTC), one reading every 5 minutes",
+      xTick: (i, l, narrow) => (i % (narrow ? 12 : 6) === 0) ? hhmm(l) : null,
+      tipTitle: l => `${dayFmt(l)}, ${hhmm(l)} UTC`,
+      tipValue: v => `${fmt(v, 2)} ${unit}`,
+    });
+  }
+
+  /* ───────── reveal on scroll + active nav ───────── */
+  (function scrollFx() {
+    const items = document.querySelectorAll(".reveal");
+    if (!("IntersectionObserver" in window)) { items.forEach(i => i.classList.add("in")); return; }
+    // Animate every time a block enters the viewport, in either direction. When a block
+    // leaves through the top it is marked "above", so scrolling back up slides it in from above.
+    const io = new IntersectionObserver(es => es.forEach(e => {
+      if (e.isIntersecting) e.target.classList.add("in");
+      else {
+        e.target.classList.remove("in");
+        e.target.classList.toggle("above", e.boundingClientRect.top < 0);
       }
-    }
+    }), {threshold: 0.06});
+    items.forEach(i => io.observe(i));
+    const links = [...document.querySelectorAll(".nav a")];
+    const spy = new IntersectionObserver(es => es.forEach(e => {
+      if (e.isIntersecting) links.forEach(a => a.setAttribute("aria-current", String(a.getAttribute("href") === "#" + e.target.id)));
+    }), {rootMargin: "-45% 0px -50% 0px"});
+    document.querySelectorAll("section.chapter").forEach(s => spy.observe(s));
+  })();
 
-    // ---------- anomalies from the API ----------
-    async function loadAnomalies() {
-      try {
-        // One request per facility type: z-scores are not comparable across sensors with
-        // very different spreads (e.g. bus voltage), so a single global top-N would show
-        // only one sensor.
-        const types = ["wind", "solar", "substation"];
-        const responses = await Promise.all(types.map(t => fetch(`${API_BASE_URL}/api/anomalies?limit=300&z_threshold=3&facility_type=${t}`)));
-        if (!responses.every(r => r.ok)) throw new Error("The API returned an error.");
-        const results = await Promise.all(responses.map(r => r.json()));
-        const best = new Map();
-        results.flatMap(d => d.anomalies || []).forEach(a => {
-          const key = `${a.facility_type}|${a.sensor_type}`;
-          if (!best.has(key) || a.z_score > best.get(key).z_score) best.set(key, a);
-        });
-        const rows = [...best.values()].sort((a, b) => b.z_score - a.z_score);
-        const body = $("anomalies");
-        body.replaceChildren();
-        rows.forEach(a => {
-          const tr = document.createElement("tr");
-          const cells = [
-            new Date(a.recorded_at).toISOString().slice(0, 16).replace("T", " "),
-            a.facility_name,
-            a.sensor_type.replace("_", " "),
-            `${Number(a.value).toLocaleString(undefined, {maximumFractionDigits: 1})} ${a.unit}`,
-            Number(a.z_score).toFixed(2)
-          ];
-          cells.forEach(value => { const td = document.createElement("td"); td.textContent = value; tr.appendChild(td); });
-          const tag = document.createElement("td");
-          const span = document.createElement("span");
-          span.className = Number(a.pre_labelled) ? "tag inj" : "tag";
-          span.textContent = Number(a.pre_labelled) ? "injected" : "natural";
-          tag.appendChild(span); tr.appendChild(tag);
-          body.appendChild(tr);
-        });
-        if (!rows.length) $("anom-error").textContent = "No anomalies above the threshold.";
-      } catch (error) {
-        $("anom-error").textContent = "Anomalies could not be loaded from the API. It may be waking up; please reload in a minute.";
+  /* ───────── status ───────── */
+  function setStatus(state, message) {
+    $("status").setAttribute("data-api-state", state);
+    $("status-line").setAttribute("data-state", state);
+    $("status").textContent = message;
+  }
+
+  /* ───────── 01 world ───────── */
+  const gridData = {};
+  function renderGrid(period) {
+    const data = gridData[period];
+    if (!data) return;
+    const recent = period === "recent";
+    document.querySelectorAll("#period-tabs button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.period === period)));
+    const labels = data.days.map(d => d.day);
+    const first = dayFmt(`${labels[0]}T00:00:00Z`), last = dayFmt(`${labels[labels.length - 1]}T00:00:00Z`);
+    $("grid-chart-title").textContent = recent ? `Daily average power, ${first} to ${last} (MW)` : "Daily average power, 2023 (MW)";
+    const prov = $("grid-prov");
+    prov.replaceChildren(el("span", {class: "badge b-real"}, recent ? `Fingrid API · daily refresh · ${dayFmt(data.generated_at)}` : "Fingrid · full year 2023, as ingested"));
+    prov.firstChild.prepend(el("i"));
+    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    lineChart($("grid-chart"), {
+      height: 350,
+      series: [
+        {name: "Consumption", short: "Consumption", values: data.days.map(d => d.consumption_mw), color: "var(--cons)", width: 1.6},
+        {name: "Wind", short: "Wind", values: data.days.map(d => d.wind_mw), color: "var(--real)", width: 1.8},
+      ],
+      labels,
+      xTick: (i, l, narrow) => {
+        if (l.slice(8) !== "01" && !(i === 0 && l.slice(8) < "08")) return null;
+        const mo = +l.slice(5, 7) - 1;
+        return narrow && mo % 2 ? null : months[mo] + (mo === 0 ? ` ${l.slice(2, 4)}` : "");
+      },
+      tipTitle: l => dayFmt(`${l}T00:00:00Z`),
+      tipValue: v => `${fmt(Math.round(v))} MW`,
+      yLabel: "Average power (MW)",
+      xLabel: "Date (one value per day)",
+    });
+    const sm = data.summary;
+    const monthName = ym => ym ? new Date(`${ym}-01T00:00:00Z`).toLocaleDateString("en-GB", {month: "short", year: "numeric", timeZone: "UTC"}) : "–";
+    const k = $("grid-kpis");
+    const base = gridData["2023"] && gridData["2023"].summary;
+    // One plain-language sentence: what an energy analyst should take from the chart.
+    const byWind = [...data.days].sort((x, y) => x.wind_mw - y.wind_mw);
+    let jump = {mw: 0, day: null};
+    data.days.forEach((dd, i) => { if (i && Math.abs(dd.wind_mw - data.days[i - 1].wind_mw) > jump.mw) jump = {mw: Math.abs(dd.wind_mw - data.days[i - 1].wind_mw), day: dd.day}; });
+    const peakCons = data.days.reduce((x, y) => y.consumption_mw > x.consumption_mw ? y : x);
+    const lowCons = data.days.reduce((x, y) => y.consumption_mw < x.consumption_mw ? y : x);
+    const d = iso => dayFmt(`${iso}T00:00:00Z`);
+    const tk = $("grid-takeaway");
+    tk.replaceChildren(el("b", {}, "Reading the chart: "), document.createTextNode(
+      `consumption follows the seasons, from ${fmt(lowCons.consumption_mw)} MW (${d(lowCons.day)}) to ${fmt(peakCons.consumption_mw)} MW (${d(peakCons.day)}), ` +
+      `while daily wind ranges from ${fmt(byWind[0].wind_mw)} MW to ${fmt(byWind[byWind.length - 1].wind_mw)} MW and can move ${fmt(jump.mw)} MW from one day to the next (${d(jump.day)}). ` +
+      `Over this period, wind production equalled ${sm.wind_share_pct}% of consumption. ` +
+      (recent ? `Fetched from the Fingrid API by a scheduled GitHub Action, so the page never exposes the API key.` : `This is the year the pipeline ingested into PostgreSQL.`)));
+    k.replaceChildren(
+      kpi(`${fmt(sm.wind_mean_mw)} MW`, "average wind production"),
+      kpi(`${fmt(sm.consumption_mean_mw)} MW`, "average consumption"),
+      kpi(`${sm.wind_share_pct}%`, recent && base ? `wind share of consumption (2023: ${base.wind_share_pct}%)` : "wind share of consumption"),
+      kpi(`${monthName(sm.windiest_month)}`, `windiest month · calmest ${monthName(sm.calmest_month)}`),
+    );
+  }
+  function kpi(value, label) { const d = el("div", {class: "kpi"}); d.append(el("strong", {}, value), el("span", {}, label)); return d; }
+  $("period-tabs").addEventListener("click", e => { const b = e.target.closest("button"); if (b) renderGrid(b.dataset.period); });
+
+  /* ───────── 02 machine ───────── */
+  const STAGES = [
+    ["Sources", "generator + Fingrid", "<b>Two sources.</b> A seeded Python generator (NumPy, seed 42) writes 5-minute readings for 60 sensors, and a fetcher pulls hourly wind and consumption from the Fingrid Open Data API (datasets 75 and 124)."],
+    ["Landing", "CSV in data/raw", "<b>Plain files first.</b> Everything lands as CSV in <code>data/raw/</code>, so a load can be replayed or inspected without touching the database."],
+    ["Ingestion", "chunks of 5,000", "<b>Chunked, idempotent loading.</b> <code>ingest.py</code> streams rows in chunks of 5,000. Incremental mode skips anything older than the high-water mark, and <code>ON CONFLICT DO NOTHING</code> makes a repeated load add nothing."],
+    ["Warehouse", "PostgreSQL 15", "<b>A partitioned warehouse.</b> <code>readings</code> is range-partitioned by month, with a composite index on <code>(sensor_id, recorded_at)</code>. Foreign keys tie readings to sensors and sensors to facilities."],
+    ["Quality gate", "4 checks", "<b>Stop bad data early.</b> After every load: sensors without readings, NULL values, the anomaly rate per facility, and date coverage. A failing check fails the run."],
+    ["Analytics SQL", "sql/analysis", "<b>The logic lives in SQL.</b> Rolling averages, z-score detection, detector scoring, zero-dropout rules and the real-versus-synthetic comparison are plain <code>.sql</code> files, reused by the reports and the API."],
+    ["Serving", "FastAPI + this page", "<b>Served, not screenshotted.</b> A FastAPI service on Render answers this page. A bundled snapshot keeps the page instant while the free service wakes up, and Metabase covers local BI."],
+  ];
+  (function pipeline() {
+    const wrap = $("pipeline");
+    STAGES.forEach(([name, meta], i) => {
+      const b = el("button", {type: "button", class: "step", role: "listitem", "aria-controls": "inspector"});
+      b.append(el("small", {}, `0${i + 1}`), el("b", {}, name), el("small", {}, meta));
+      b.addEventListener("click", () => pick(i));
+      wrap.appendChild(b);
+    });
+    const pick = i => {
+      wrap.querySelectorAll(".step").forEach((b, k) => k === i ? b.setAttribute("aria-current", "step") : b.removeAttribute("aria-current"));
+      $("inspector").innerHTML = STAGES[i][2];  // static, trusted strings defined above
+    };
+    pick(0);
+  })();
+
+  function renderOverview(ov, trend, sourceLabel) {
+    $("glance-syn").textContent = `${fmt(ov.facility_count)} sites × ${fmt(ov.sensor_count / ov.facility_count)} sensors, every 5 minutes, January 2023 (${fmt(ov.reading_count)} readings)`;
+    $("facility-count").textContent = fmt(ov.facility_count);
+    $("reading-count").textContent = fmt(ov.reading_count);
+    $("anomaly-rate").textContent = `${ov.anomaly_rate_pct}%`;
+    $("latest-reading").textContent = ov.latest_reading_at ? `${dayFmt(ov.latest_reading_at)} ${hhmm(ov.latest_reading_at)}` : "–";
+    $("demo-src").textContent = `source: ${sourceLabel}`;
+    const pts = trend.points || [];
+    if (!pts.length) { $("trend-error").textContent = "No trend data returned."; return; }
+    $("trend-window").textContent = `${dayFmt(pts[0].recorded_at)}, ${hhmm(pts[0].recorded_at)} to ${dayFmt(pts[pts.length - 1].recorded_at)}, ${hhmm(pts[pts.length - 1].recorded_at)} (UTC)`;
+    lineChart($("trend-chart"), {
+      height: 170,
+      series: [{name: "Avg output", values: pts.map(p => Number(p.avg_output_mw)), color: "var(--syn)", width: 2.2}],
+      labels: pts.map(p => p.recorded_at),
+      directLabels: false,
+      xTick: (i, l, narrow) => i % (narrow ? 6 : 3) === 0 ? hhmm(l) : null,
+      tipTitle: l => `${dayFmt(l)}, ${hhmm(l)} UTC`,
+      tipValue: v => `${fmt(v, 1)} MW`,
+      yLabel: "MW",
+      xLabel: "Hour (UTC)",
+    });
+    $("trend-error").textContent = "";
+  }
+
+  function renderPartitions(eng) {
+    if (!eng) return;
+    const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const parts = eng.partitioning.partitions.map(p => {
+      const m = /FROM \('(\d{4}-\d{2}-\d{2})[^']*'\) TO \('(\d{4}-\d{2}-\d{2})/.exec(p.bounds || "");
+      return {...p, from: m ? m[1] : null, to: m ? m[2] : null,
+              label: m ? `${MON[+m[1].slice(5, 7) - 1]} ${m[1].slice(0, 4)}` : p.partition};
+    });
+    const total = parts.length;
+    const maxRows = Math.max(1, ...parts.map(p => p.rows || 0));
+    let mode = "month";
+    let pick = Math.max(0, parts.findIndex(p => p.rows > 0));
+    const list = $("parts");
+    const draw = () => {
+      document.querySelectorAll("#parts-mode button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.mode === mode)));
+      list.replaceChildren(...parts.map((p, i) => {
+        const scanned = mode === "all" || i === pick;
+        const row = el("button", {type: "button", class: `prow ${scanned ? "scan" : "pruned"}`, "aria-pressed": String(mode === "month" && i === pick),
+                                  title: `${p.partition}: ${p.bounds}`});
+        const fill = el("span", {class: "fill"});
+        fill.append(el("i", {style: `width:${p.rows ? Math.max(2, p.rows / maxRows * 70) : 0}%`}), el("span", {}, `${fmt(p.rows)} rows`));
+        row.append(el("span", {class: "m"}, p.label), fill, el("span", {class: "st"}, scanned ? "scanned" : "skipped"));
+        row.addEventListener("click", () => { mode = "month"; pick = i; draw(); });
+        return row;
+      }));
+      const p = parts[pick];
+      $("parts-query").textContent = mode === "month"
+        ? `SELECT * FROM readings\nWHERE sensor_id = 5\n  AND recorded_at >= '${p.from}'\n  AND recorded_at <  '${p.to}';`
+        : `SELECT * FROM readings\nWHERE sensor_id = 5;   -- no time filter`;
+      const sum = $("parts-summary");
+      sum.replaceChildren();
+      if (mode === "month") sum.append("Reads ", el("b", {}, "1"), ` of ${total} partitions and skips ${total - 1}. Rows in that partition: `, el("b", {}, fmt(p.rows)), ".");
+      else sum.append("Reads ", el("b", {}, `all ${total}`), " partitions: without a time filter there is nothing to prune.");
+    };
+    $("parts-mode").addEventListener("click", e => { const b = e.target.closest("button"); if (b) { mode = b.dataset.mode; draw(); } });
+    draw();
+    const filled = parts.filter(p => p.rows > 0);
+    $("parts-note").textContent = `${filled.length === 1 ? `Only ${filled[0].label} holds data in this demo (${fmt(filled[0].rows)} rows); the other ${total - 1} partitions exist and stay empty. ` : ""}Row counts are read from each partition. tests/test_performance.py checks with EXPLAIN that a one-month query touches exactly one partition.`;
+  }
+
+  /* ───────── 03 scream ───────── */
+  function renderDetection(det, sourceLabel) {
+    const body = $("detection");
+    body.replaceChildren(...det.sensors.map(row => {
+      const tr = el("tr");
+      [[SENSOR[row.sensor_type] || row.sensor_type], [fmt(row.injected), "r"], [`${fmt(row.spikes_flagged)} / ${fmt(row.spikes)}`, "r"],
+       [`${fmt(row.drops_flagged)} / ${fmt(row.drops)}`, "r"], [pct(row.recall_pct), "r"]].forEach(([v, c]) => tr.appendChild(el("td", c ? {class: c} : {}, v)));
+      return tr;
+    }));
+    const t = det.total;
+    $("det-sub").textContent = `${fmt(t.readings)} readings · precision ${pct(t.precision_pct)} · recall ${pct(t.recall_pct)}`;
+    $("det-prov").replaceChildren(el("span", {class: "badge"}, `source: ${sourceLabel}`));
+    $("det-error").textContent = "";
+  }
+
+  function renderHeroProof(det) {
+    const t = det.total;
+    const ans = $("glance-answer");
+    ans.replaceChildren(
+      el("b", {}, `Spikes: ${pct(t.spikes_flagged / t.spikes * 100, 0)} caught. `),
+      document.createTextNode("Drops to zero: "),
+      el("b", {}, `${pct(t.drops_flagged / t.drops * 100, 1)}`),
+      document.createTextNode(`, only where zero is physically impossible. Every flag is a real fault (precision ${pct(t.precision_pct)}).`));
+    $("proof-scream").textContent = pct(t.spikes_flagged / t.spikes * 100, 0);
+    $("proof-scream-sub").textContent = `${fmt(t.spikes_flagged)} of ${fmt(t.spikes)} spikes · |z| > 3`;
+    $("proof-silence").textContent = pct(t.drops_flagged / t.drops * 100, 1);
+    const where = det.sensors.filter(s => s.drops_flagged > 0).map(s => (SENSOR[s.sensor_type] || s.sensor_type).toLowerCase());
+    $("proof-silence-sub").textContent = `${fmt(t.drops_flagged)} of ${fmt(t.drops)} zeros` + (where.length === 1 ? `, all on ${where[0]}` : "");
+  }
+
+  function renderThresholds(th) {
+    if (!th) { $("thr-text").textContent = "Threshold data unavailable."; return; }
+    const rows = th.thresholds;
+    const zs = rows.map(r => r.z_threshold);
+    const at3 = rows.find(r => r.z_threshold === 3).total;
+    const same = rows.filter(r => r.total.flagged === at3.flagged && r.total.true_positives === at3.true_positives).map(r => r.z_threshold);
+    const plateau = [Math.min(...same), Math.max(...same)];
+    const input = $("thr-input");
+    const draw = z => {
+      const i = zs.indexOf(z);
+      const t = rows[i].total;
+      $("thr-z").textContent = z.toFixed(1);
+      $("thr-precision").textContent = pct(t.precision_pct);
+      $("thr-recall").textContent = pct(t.recall_pct);
+      input.setAttribute("aria-valuetext", `z greater than ${z.toFixed(1)}: precision ${pct(t.precision_pct)}, recall ${pct(t.recall_pct)}`);
+      let msg;
+      if (z >= plateau[0] && z <= plateau[1]) msg = `Anywhere from ${plateau[0].toFixed(1)} to ${plateau[1].toFixed(1)} gives exactly the same result: every spike is far beyond it and every other value far below it. ${fmt(t.flagged)} flags, all of them real faults.`;
+      else if (z < plateau[0]) msg = `Too sensitive: ${fmt(t.flagged)} flags, but only ${fmt(t.true_positives)} are real faults. Ordinary readings start to look like failures.`;
+      else msg = `Too deaf: only ${fmt(t.true_positives)} of ${fmt(t.injected)} faults are flagged. Spikes on sensors with a wide normal spread now fall under the line.`;
+      $("thr-text").textContent = msg;
+      lineChart($("thr-chart"), {
+        height: 300,
+        series: [
+          {name: "Precision", values: rows.map(r => r.total.precision_pct), color: "var(--prec)", width: 2, dots: true},
+          {name: "Recall", values: rows.map(r => r.total.recall_pct), color: "var(--rec)", width: 2, dots: true},
+        ],
+        labels: zs, yMin: 0, yMax: 100, vline: i,
+        yFmt: v => `${fmt(v)}%`,
+        xTick: (k, l, narrow) => Number.isInteger(l) && (!narrow || l % 2 === 1) ? l.toFixed(0) : null,
+        tipTitle: l => `|z| > ${l.toFixed(1)}`,
+        tipValue: v => pct(v),
+        yLabel: "Percent",
+        xLabel: "Threshold: flag a reading when |z| is above",
+      });
+    };
+    input.addEventListener("input", () => draw(Number(input.value)));
+    draw(3);
+  }
+
+  let examples = [], anomalyRows = [], anomalyFilter = "all";
+  function renderAnomalyTable() {
+    const body = $("anomalies");
+    const rows = anomalyRows.filter(r => anomalyFilter === "all" || r.facility_type === anomalyFilter);
+    if (!rows.length) { body.replaceChildren(el("tr", {}, "")); body.firstChild.appendChild(el("td", {colspan: 6, class: "loading"}, "No anomalies for this filter.")); return; }
+    body.replaceChildren(...rows.map(r => {
+      const tr = el("tr", {class: "pick", tabindex: 0, "aria-selected": "false"});
+      [[`${dayFmt(r.recorded_at)} ${hhmm(r.recorded_at)}`], [r.facility_name], [SENSOR[r.sensor_type] || r.sensor_type],
+       [`${fmt(r.value, 2)} ${unitOf(r.unit)}`, "r"], [fmt(r.z_score, 2), "r"]].forEach(([v, c]) => tr.appendChild(el("td", c ? {class: c} : {}, v)));
+      const td = el("td");
+      td.appendChild(el("span", {class: r.pre_labelled ? "tag inj" : "tag"}, r.pre_labelled ? "injected" : "not injected"));
+      tr.appendChild(td);
+      const choose = () => selectAnomaly(r, tr);
+      tr.addEventListener("click", choose);
+      tr.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { choose(); e.preventDefault(); } });
+      return tr;
+    }));
+    selectAnomaly(rows[0], body.firstChild);
+  }
+  function selectAnomaly(r, tr) {
+    document.querySelectorAll("#anomalies tr").forEach(t => t.setAttribute("aria-selected", String(t === tr)));
+    const ex = r;
+    $("spark-title").textContent = `${SENSOR[r.sensor_type] || r.sensor_type} at ${r.facility_name}, ${dayFmt(r.recorded_at)} ${hhmm(r.recorded_at)} UTC`;
+    neighbourhoodChart($("anom-spark"), ex, 270);
+    $("spark-note").textContent = `Normal band from that sensor's January baseline: mean ${fmt(ex.mean_val, 2)} ${unitOf(ex.unit)}, σ ${fmt(ex.stddev_val, 2)} ${unitOf(ex.unit)}. The fault reads ${fmt(ex.value, 2)} ${unitOf(ex.unit)}, z = ${fmt(ex.z_score, 1)}.`;
+  }
+  $("anom-filter").addEventListener("click", e => {
+    const b = e.target.closest("button"); if (!b) return;
+    anomalyFilter = b.dataset.type;
+    document.querySelectorAll("#anom-filter button").forEach(x => x.setAttribute("aria-pressed", String(x === b)));
+    renderAnomalyTable();
+  });
+  function anomaliesFromExamples() {
+    return examples.filter(e => e.kind === "strongest_flag").map(e => ({...e, pre_labelled: e.is_anomaly}))
+      .sort((a, b) => b.z_score - a.z_score);
+  }
+
+  /* ───────── 04 silence ───────── */
+  function renderSilence() {
+    const volt = examples.find(e => e.kind === "injected_zero" && e.sensor_type === "voltage");
+    const pow = examples.find(e => e.kind === "injected_zero" && e.sensor_type === "power_output");
+    const scream = examples.find(e => e.kind === "strongest_flag" && e.sensor_type === "voltage");
+    if (scream) {
+      neighbourhoodChart($("duel-scream"), scream, 210);
+      $("duel-scream-verdict").textContent = `Bus voltage · ${fmt(scream.value, 1)} kV · z = ${fmt(scream.z_score, 1)} · caught`;
+    }
+    if (pow) {
+      neighbourhoodChart($("duel-silence"), pow, 210);
+      $("duel-silence-verdict").textContent = `Power output · 0 MW · z = ${fmt(pow.z_score, 2)} · missed`;
+    }
+    if (volt) {
+      $("sil-a-title").textContent = `Bus voltage at ${volt.facility_name}`;
+      $("sil-a-verdict").textContent = `0 kV · z = ${fmt(volt.z_score, 1)} · caught`;
+      neighbourhoodChart($("sil-a"), volt, 250);
+    }
+    if (pow) {
+      $("sil-b-title").textContent = `Power output at ${pow.facility_name}`;
+      $("sil-b-verdict").textContent = `0 MW · z = ${fmt(pow.z_score, 2)} · missed (needs |z| > 3)`;
+      neighbourhoodChart($("sil-b"), pow, 250);
+    }
+    const zeros = examples.filter(e => e.kind === "injected_zero" && e.sensor_type !== "voltage");
+    if (zeros.length) {
+      const zs = zeros.map(e => e.z_score);
+      $("silence-lede").textContent += ` Measured on this data: a zero sits ${fmt(Math.min(...zs), 2)} to ${fmt(Math.max(...zs), 2)} standard deviations from normal on those sensors, versus ${fmt(volt ? volt.z_score : NaN, 1)} on bus voltage.`;
+    }
+  }
+
+  function renderRules(rules) {
+    if (!rules) return;
+    const NAMES = {
+      flatline_3: ["Stuck sensor", "zero three readings in a row"],
+      neighbour_drop: ["Sudden drop", "below 5% of its neighbours"],
+      exact_zero: ["Exactly zero", "value = 0"],
+    };
+    const order = ["flatline_3", "neighbour_drop", "exact_zero"];
+    const wrap = $("rules");
+    wrap.replaceChildren(...order.map(key => {
+      const t = rules.totals.find(r => r.rule === key);
+      const row = el("div", {class: "bar-row"});
+      const name = el("div", {class: "name"}); name.append(el("b", {}, NAMES[key][0]), el("span", {class: "mono", style: "font-size:12px"}, NAMES[key][1]));
+      const track = el("div", {class: "track"});
+      [["Recall", t.recall_pct, "--rec", `${fmt(t.caught)} of ${fmt(t.injected_zeros)} zeros`], ["Precision", t.precision_pct, "--prec", `${fmt(t.flagged)} alarms`]].forEach(([label, v, c, extra]) => {
+        const b = el("div", {class: "bar"});
+        const i = el("i", {style: `width:0; background:var(${c})`});
+        b.append(i, el("span", {}, `${label} ${v == null ? "–" : pct(v)} · ${extra}`));
+        track.appendChild(b);
+        requestAnimationFrame(() => requestAnimationFrame(() => { i.style.width = `calc(${(v || 0)} * (100% - 240px) / 100)`; }));
+      });
+      row.append(name, track);
+      return row;
+    }));
+    const temp = rules.by_sensor.find(r => r.rule === "neighbour_drop" && r.sensor_type === "temperature");
+    const nd = rules.totals.find(r => r.rule === "neighbour_drop");
+    const callout = $("rules-callout");
+    callout.replaceChildren();
+    callout.append(
+      el("b", {}, "What this means. "),
+      document.createTextNode(`A stuck-sensor rule hears almost nothing, because these faults are single readings, not runs. A sudden-drop rule hears ${pct(nd.recall_pct)} of them but raises ${fmt(nd.flagged)} alarms for ${fmt(nd.caught)} real faults${temp ? `, and on temperature, which can be negative, it fails outright (precision ${pct(temp.precision_pct)})` : ""}. "Exactly zero" looks perfect only because clean synthetic readings never land on exactly 0.0. Real telemetry has genuine zeros (a solar plant at night, a stopped turbine), so that rule would not survive contact with reality. Hearing silence needs information this data does not contain: a heartbeat signal, a second sensor, or physics.`)
+    );
+  }
+
+  /* ───────── 05 honesty ───────── */
+  function renderValidation(v) {
+    if (!v) { $("val-error").textContent = "Validation data unavailable."; return; }
+    const rolling = (vals, k) => vals.map((_, i) => {
+      const h = Math.floor(k / 2), s = vals.slice(Math.max(0, i - h), Math.min(vals.length, i + h + 1));
+      return s.reduce((a, b) => a + b, 0) / s.length;
+    });
+    const labels = v.days.map(d => d.day);
+    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const draw = k => {
+      document.querySelectorAll("#val-mode button").forEach(b => b.setAttribute("aria-pressed", String(+b.dataset.smooth === k)));
+      const real = v.days.map(d => d.real_z), syn = v.days.map(d => d.synthetic_z);
+      lineChart($("val-chart"), {
+        height: 330, forceZero: false,
+        series: [
+          {name: "Real", values: k > 1 ? rolling(real, k) : real, color: "var(--real)", width: k > 1 ? 2 : 1.2},
+          {name: "Synthetic", values: k > 1 ? rolling(syn, k) : syn, color: "var(--syn)", width: k > 1 ? 2 : 1.2},
+        ],
+        labels,
+        xTick: (i, l, narrow) => l.slice(8) === "01" && (!narrow || (+l.slice(5, 7)) % 2 === 1) ? months[+l.slice(5, 7) - 1] : null,
+        tipTitle: l => dayFmt(`${l}T00:00:00Z`),
+        tipValue: x => `z ${fmt(x, 2)}`,
+        yLabel: "Daily wind output (z-score, 0 = yearly mean)",
+        xLabel: "Day of 2023",
+      });
+      $("val-sub").textContent = k > 1
+        ? "Daily wind output standardised as z-scores, then a centred 7-day mean for readability. The correlation is computed on the unsmoothed daily values."
+        : "Daily wind output, both series standardised as z-scores. The correlation is computed on these values.";
+    };
+    $("val-mode").addEventListener("click", e => { const b = e.target.closest("button"); if (b) draw(+b.dataset.smooth); });
+    draw(7);
+    $("val-stats").textContent = `Pearson r = ${v.pearson_r.toFixed(3).replace("-", "−")} · p = ${v.p_value.toFixed(2)} · ${v.n_days} days`;
+    $("val-note").textContent = `No day-to-day relationship: the real and synthetic series move independently. The synthetic year comes from a separate full-year run of the generator, compared with Fingrid 2023 by sql/analysis/08. That is expected and fine: the generator exists to exercise the pipeline, not to forecast the wind.`;
+  }
+
+  function renderRanking(rk) {
+    if (!rk) return;
+    const f = rk.facilities;
+    const vals = f.map(x => x.avg_efficiency_pct);
+    const lo = Math.min(...vals), hi = Math.max(...vals);
+    const svg = $("rank-chart");
+    const draw = () => {
+      const keep = Array.from(svg.childNodes).filter(n => n.nodeName === "desc");
+      svg.replaceChildren(...keep);
+      const W = Math.max(280, Math.round(svg.getBoundingClientRect().width || 800)), H = 132;
+      svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+      const m = {l: 14, r: 14};
+      const x = v => m.l + v / 100 * (W - m.l - m.r);
+      const g = svgEl("g"); svg.appendChild(g);
+      g.appendChild(svgEl("line", {x1: x(0), x2: x(100), y1: 70, y2: 70, style: "stroke:var(--axis)"}));
+      [0, 25, 50, 75, 100].forEach(t => {
+        g.appendChild(svgEl("line", {x1: x(t), x2: x(t), y1: 66, y2: 74, style: "stroke:var(--axis)"}));
+        const tx = svgEl("text", {x: x(t), y: 92, "text-anchor": t === 0 ? "start" : t === 100 ? "end" : "middle"}); tx.textContent = `${t}%`; g.appendChild(tx);
+      });
+      const TY = {wind: 48, solar: 56, substation: 64};
+      f.forEach(fc => {
+        const c = svgEl("circle", {cx: x(fc.avg_efficiency_pct), cy: TY[fc.facility_type] || 56, r: 5, style: "fill:var(--syn); stroke:var(--surface)", "stroke-width": 1.5});
+        const t = svgEl("title"); t.textContent = `#${fc.overall_rank} ${fc.facility_name}: ${fc.avg_efficiency_pct}%`; c.appendChild(t);
+        g.appendChild(c);
+      });
+      const at = svgEl("text", {x: (x(0) + x(100)) / 2, y: 124, "text-anchor": "middle", class: "axis-title"});
+      at.textContent = "Capacity factor (%): mean output ÷ nameplate capacity";
+      g.appendChild(at);
+      const lbl = svgEl("text", {x: x(50), y: 30, "text-anchor": "middle", class: "lbl"});
+      lbl.textContent = `all 20 between ${fmt(lo, 1)}% and ${fmt(hi, 1)}%`;
+      g.appendChild(lbl);
+    };
+    draw();
+    window.addEventListener("resize", () => { clearTimeout(draw.t); draw.t = setTimeout(draw, 150); });
+    $("rank-sub").textContent = `Capacity factor: mean power output ÷ nameplate capacity, for all ${f.length} facilities.`;
+    const callout = $("rank-callout");
+    callout.replaceChildren(el("b", {}, "Nothing to rank. "),
+      document.createTextNode(`The best facility (${f[0].facility_name}, ${f[0].avg_efficiency_pct}%) and the worst (${f[f.length - 1].facility_name}, ${f[f.length - 1].avg_efficiency_pct}%) differ by ${fmt(hi - lo, 1)} percentage points. The generator draws power uniformly between zero and capacity, so every site should average about 50%, and the differences are noise. A leaderboard here would invent a story the data does not tell.`));
+  }
+
+  /* ───────── 06 craft ───────── */
+  function renderEngineering(eng) {
+    if (!eng) return;
+    const b = eng.benchmark;
+    $("proof-speed").textContent = `${fmt(b.speedup_composite_vs_single, 1)}×`;
+    const max = b.single_column_index_ms;
+    const rows = [
+      ["Single-column index", "filters 103k rows in memory", b.single_column_index_ms, "--muted"],
+      ["Composite index", "(sensor_id, recorded_at)", b.composite_index_ms, "--real"],
+      ["Partitioned + composite", "one partition scanned", b.partitioned_with_composite_index_ms, "--syn"],
+    ];
+    $("bench").replaceChildren(...rows.map(([name, meta, ms, c]) => {
+      const row = el("div", {class: "bar-row"});
+      const n = el("div", {class: "name"}); n.append(el("b", {}, name), el("span", {class: "mono", style: "font-size:12px"}, meta));
+      const bar = el("div", {class: "bar"});
+      const i = el("i", {style: `width:0; background:var(${c})`});
+      bar.append(i, el("span", {}, `${fmt(ms, 3)} ms`));
+      requestAnimationFrame(() => requestAnimationFrame(() => { i.style.width = `calc(${ms / max} * (100% - 90px))`; }));
+      row.append(n, bar);
+      return row;
+    }));
+    $("bench-sub").textContent = "Execution time of one query: one sensor, one week, full-year dataset (6.3 M rows).";
+    $("bench-note").textContent = `${b.note} Source: benchmarks/index_benchmark.md, one local Docker run; absolute times vary by machine.`;
+
+    const t = eng.tests;
+    const LAYERS = {smoke: "Smoke", api: "API contract", integration: "Integration", regression: "Regression (golden data)",
+                    performance: "Performance (query plans)", security: "Security", e2e: "End-to-end (browser)", data: "Data contract"};
+    const entries = Object.entries(t.by_layer).sort((a, b) => b[1] - a[1]);
+    const top = Math.max(...entries.map(e => e[1]));
+    $("tests").replaceChildren(...entries.map(([k, v]) => {
+      const row = el("div", {class: "bar-row"});
+      row.append(el("div", {class: "name"}, LAYERS[k] || k));
+      const bar = el("div", {class: "bar"});
+      const i = el("i", {style: `width:0; background:var(--rec)`});
+      bar.append(i, el("span", {}, String(v)));
+      requestAnimationFrame(() => requestAnimationFrame(() => { i.style.width = `calc(${v / top} * (100% - 40px))`; }));
+      row.append(bar);
+      return row;
+    }));
+    $("tests-title").textContent = `${t.total} automated tests`;
+    $("proof-tests").textContent = fmt(t.total);
+    $("proof-tests-sub").textContent = `${Object.keys(t.by_layer).length} test layers, plus a load test and a CI version matrix`;
+    $("tests-note").textContent = `Plus a Locust load test and a CI matrix (${t.ci_matrix}). Counted with pytest on ${dayFmt(eng.generated_at)}.`;
+    $("foot-gen").textContent = `Data files generated ${dayFmt(eng.generated_at)}.`;
+  }
+
+  function renderSql(src) {
+    if (!src) return;
+    const map = {"sql/analysis/11_detection_quality.sql": "sql-11", "sql/analysis/12_zero_dropout_rules.sql": "sql-12", "sql/analysis/08_real_vs_synthetic_comparison.sql": "sql-08"};
+    src.files.forEach(f => {
+      const d = $(map[f.path]); if (!d) return;
+      d.querySelector("pre").textContent = f.sql;
+      const links = el("div", {class: "links"});
+      const a = el("a", {href: f.url, target: "_blank", rel: "noopener noreferrer"}, `Open ${f.path} on GitHub ↗`);
+      links.appendChild(a);
+      d.appendChild(links);
+    });
+  }
+
+  $("copy-cmd").addEventListener("click", async e => {
+    const btn = e.currentTarget;
+    try { await navigator.clipboard.writeText($("cmd-text").textContent); btn.textContent = "Copied"; }
+    catch (err) { btn.textContent = "Select and copy"; }
+    setTimeout(() => { btn.textContent = "Copy"; }, 1800);
+  });
+
+  /* ───────── load everything ───────── */
+  (async function main() {
+    const [snapshot, g2023, gRecent, validation, thresholds, ranking, ex, rules, sql, eng] = await Promise.all([
+      "data/api_snapshot.json", "data/fingrid_2023_daily.json", "data/fingrid_recent_daily.json", "data/wind_validation_2023.json",
+      "data/detection_thresholds.json", "data/facility_ranking.json", "data/anomaly_examples.json", "data/zero_dropout_rules.json",
+      "data/sql_sources.json", "data/engineering.json",
+    ].map(u => safe(getJSON(u))));
+
+    examples = ex ? ex.examples : [];
+    if (g2023) gridData["2023"] = g2023;
+    if (gRecent) gridData.recent = gRecent;
+    if (gridData.recent && gridData["2023"]) $("period-tabs").hidden = false;
+    if (gridData.recent || gridData["2023"]) renderGrid(gridData.recent ? "recent" : "2023");
+    else $("grid-error").textContent = "Grid data files could not be loaded.";
+
+    renderEngineering(eng);
+    renderPartitions(eng);
+    renderSql(sql);
+    renderThresholds(thresholds);
+    renderSilence();
+    renderRules(rules);
+    renderValidation(validation);
+    renderRanking(ranking);
+
+    if (snapshot) {
+      renderOverview(snapshot.overview, snapshot.trend, `snapshot ${dayFmt(snapshot.generated_at)}`);
+      renderDetection(snapshot.detection, `snapshot ${dayFmt(snapshot.generated_at)}`);
+      renderHeroProof(snapshot.detection);
+      setStatus("cached", `Showing the bundled snapshot from ${dayFmt(snapshot.generated_at)} while the live API wakes up…`);
+    } else {
+      setStatus("loading", "Waiting for the live API…");
+    }
+    if (examples.length) { anomalyRows = anomaliesFromExamples(); renderAnomalyTable(); }
+    else $("anom-error").textContent = "Anomaly examples could not be loaded.";
+
+    // Live API: the free Render service may need up to a minute to wake.
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 90000);
+    const started = performance.now();
+    try {
+      const [ov, trend] = await Promise.all([
+        getJSON(`${API_BASE_URL}/api/overview`, {signal: controller.signal}),
+        getJSON(`${API_BASE_URL}/api/output-trend?hours=24`, {signal: controller.signal}),
+      ]);
+      renderOverview(ov, trend, "live API");
+      const window_ = ov.latest_reading_at ? new Date(ov.latest_reading_at).toLocaleDateString("en-GB", {month: "long", year: "numeric", timeZone: "UTC"}) : "";
+      setStatus("live", `Live: FastAPI answered in ${fmt((performance.now() - started) / 1000, 1)} s · data window ${window_}`);
+      safe(getJSON(`${API_BASE_URL}/api/detection-quality`)).then(det => { if (det) { renderDetection(det, "live API"); renderHeroProof(det); } });
+    } catch (err) {
+      if (snapshot) setStatus("down", `API unavailable · showing the cached snapshot from ${dayFmt(snapshot.generated_at)}`);
+      else {
+        setStatus("down", "API unavailable");
+        $("trend-window").textContent = "";
+        $("trend-error").textContent = err.name === "AbortError" ? "The API did not respond in time." : err.message;
       }
+    } finally {
+      clearTimeout(timer);
     }
-
-    // The dataset is a fixed snapshot, so a single load is enough (no polling)
-    loadDashboard();
-    loadGrid();
-    loadValidation();
-    loadAnomalies();
-    loadDetection();
+  })();
   </script>
 </body>
 </html>
