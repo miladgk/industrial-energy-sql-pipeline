@@ -24,6 +24,12 @@ DASHBOARD_DATA = (
     "fingrid_2023_daily.json",
     "fingrid_recent_daily.json",
     "wind_validation_2023.json",
+    "detection_thresholds.json",
+    "facility_ranking.json",
+    "anomaly_examples.json",
+    "zero_dropout_rules.json",
+    "sql_sources.json",
+    "engineering.json",
 )
 
 
