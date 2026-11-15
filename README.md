@@ -141,6 +141,7 @@ energy-analytics-sql/
 │   ├── test_integration.py     # SQL files, FK integrity, partitions, API <-> DB consistency
 │   ├── load/locustfile.py      # Locust load test (virtual dashboard users, pass/fail thresholds)
 │   ├── test_performance.py     # EXPLAIN plan checks (index, partition pruning) + latency budgets
+│   ├── e2e/                    # Playwright browser tests of docs/index.html (conftest + test_dashboard)
 │   ├── test_security.py        # Injection, error-leak, secrets and read-only checks
 │   ├── test_regression.py      # Golden dataset with hand-computed expected values
 │   ├── test_detection_quality.py  # Detector scorecard consistency
@@ -315,6 +316,7 @@ Tests are tagged with pytest markers, so each layer can run on its own:
 | `pytest -m integration` | Integration | Do SQL files, schema, partitions and API agree with the real database? |
 | `pytest -m regression` | Regression | Do a hand-built dataset's results still match the written-down golden values? |
 | `pytest -m performance` | Performance | Does the composite index still exist and get used? Does a one-month query still touch one partition? Are endpoints within latency budgets? |
+| `pytest -m e2e` | End-to-end | Does the real dashboard in a real browser show the right numbers from the live API, switch tabs, show tooltips, fall back when the API is down, and fit a phone screen? |
 | `pytest -m security` | Security | Are SQL-injection payloads rejected, DB errors hidden from clients, secrets untracked, the API read-only? |
 
 The regression suite builds a tiny dataset in a throw-away schema, points the API at it
@@ -324,6 +326,11 @@ so any accidental change to the SQL fails loudly. The same layers run in CI, in 
 CI also runs a **compatibility matrix** (Python 3.11 / 3.12 on PostgreSQL 15, plus
 PostgreSQL 14 and 16 on Python 3.11) and a separate **security job**: `bandit` static analysis
 (fails on high-severity findings) and a `pip-audit` dependency CVE scan (informational). Run them locally with `make security`.
+
+**End-to-end tests** (`tests/e2e/`) start the real FastAPI app and serve `docs/` like GitHub Pages, then drive
+Chromium with Playwright. The dashboard hard-codes the production API address, so the browser's requests to it
+are forwarded to the local API (the page is not modified). One-time setup:
+`pip install playwright && playwright install chromium`; without it these tests are skipped.
 
 **Performance tests** automate `benchmarks/index_benchmark.md`. Timing is noisy, so the core checks are
 deterministic query-plan assertions (composite index exists and is used; a one-month query prunes to one

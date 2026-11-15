@@ -110,6 +110,14 @@ jobs:
         run: |
           pytest tests/ -v
 
+      # End-to-end: a real Chromium drives the dashboard against the real API + DB.
+      - name: E2E tests (Playwright + Chromium)
+        if: matrix.python == '3.11' && matrix.postgres == '15'
+        run: |
+          pip install playwright==1.61.0
+          playwright install --with-deps chromium
+          pytest -m e2e -v
+
       # Load testing: once is enough, so only on the primary matrix entry.
       - name: Load test (20 virtual users, 30 s)
         if: matrix.python == '3.11' && matrix.postgres == '15'

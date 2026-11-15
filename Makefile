@@ -49,6 +49,9 @@ test-integration:
 test-regression:
 	pytest -m regression -v
 
+test-e2e:
+	pytest -m e2e -v   # needs: pip install playwright && playwright install chromium
+
 test-performance:
 	pytest -m performance -v
 
