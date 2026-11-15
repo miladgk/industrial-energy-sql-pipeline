@@ -438,7 +438,7 @@
           <span class="chip" tabindex="0" aria-describedby="tip-real"><i style="background:var(--real)"></i>Real: Fingrid Open Data, CC BY 4.0<span class="info" aria-hidden="true">i</span>
             <span class="pop" role="tooltip" id="tip-real"><b>Real measurements.</b> Fingrid is Finland's electricity transmission system operator. Its Open Data API publishes national wind power production and total electricity consumption; this page shows them as daily averages for the last 12 months (refreshed every day) and for the full year 2025. Licence: CC BY 4.0, free to reuse with attribution.</span></span>
           <span class="chip" tabindex="0" aria-describedby="tip-syn"><i style="background:var(--syn)"></i>Synthetic: 30 days of sensor data, seed 42<span class="info" aria-hidden="true">i</span>
-            <span class="pop" role="tooltip" id="tip-syn"><b>Generated, not measured.</b> A Python script (src/generate_data.py) invents 20 facilities (wind farms, solar plants, substations) with 3 sensors each, one reading every 5 minutes for 30 days: 518,400 rows in PostgreSQL. Seed 42 makes every run identical. The timestamps start on 1 Jan 2023, a fixed label: the values are random, so the date carries no meaning.</span></span>
+            <span class="pop" role="tooltip" id="tip-syn"><b>Generated, not measured.</b> A Python script (src/generate_data.py) invents 20 facilities (wind farms, solar plants, substations) with 3 sensors each, one reading every 5 minutes for 30 days: 518,400 rows in PostgreSQL. Seed 42 makes every run identical. The readings cover 1 to 30 January 2025.</span></span>
           <span class="chip" tabindex="0" aria-describedby="tip-fault"><i style="background:var(--fault)"></i>Injected faults, labelled<span class="info" aria-hidden="true">i</span>
             <span class="pop" role="tooltip" id="tip-fault"><b>Broken on purpose.</b> The generator deliberately breaks about 2% of the synthetic readings: each one becomes either 0 (a sensor that goes silent) or 3× the sensor's maximum (a spike). Every broken reading is marked <code>is_anomaly = true</code>. The detectors never see that label; it is only used afterwards to score how many faults they found.</span></span>
         </div>
@@ -469,7 +469,7 @@
 
         <div class="card glance reveal" aria-label="The project at a glance">
           <div><div class="eyebrow">What was built</div><p>Python ETL into <b>PostgreSQL 15</b> (monthly partitions, composite index, quality gate), analytics in plain <b>SQL</b>, served by <b>FastAPI</b> to this page.</p></div>
-          <div><div class="eyebrow">Data</div><p><b>Real:</b> Fingrid hourly wind and consumption for Finland, the last 365 days and the full year 2025. <b>Synthetic:</b> <span id="glance-syn">20 sites × 3 sensors, every 5 minutes, January 2023</span>, with about 2% labelled faults.</p></div>
+          <div><div class="eyebrow">Data</div><p><b>Real:</b> Fingrid hourly wind and consumption for Finland, the last 365 days and the full year 2025. <b>Synthetic:</b> <span id="glance-syn">20 sites × 3 sensors, every 5 minutes, January 2025</span>, with about 2% labelled faults.</p></div>
           <div><div class="eyebrow">Question</div><p>Can a SQL rule that flags readings more than 3 standard deviations from each sensor's monthly baseline find sensor faults?</p></div>
           <div><div class="eyebrow">Answer</div><p id="glance-answer">Loading…</p></div>
         </div>
@@ -515,7 +515,7 @@
           <div>
             <div class="eyebrow">The machine · <span class="badge b-syn"><i></i>Synthetic data</span></div>
             <h2 id="demo-title">Then build a machine you can <span class="serif">interrogate.</span></h2>
-            <p>Twenty facilities (wind farms, solar plants and substations) with three sensors each, reporting every five minutes through January 2023. About 2% of readings are deliberately broken and labelled, so every detector can be scored against the truth.</p>
+            <p>Twenty facilities (wind farms, solar plants and substations) with three sensors each, reporting every five minutes through January 2025. About 2% of readings are deliberately broken and labelled, so every detector can be scored against the truth.</p>
           </div>
         </div>
 
@@ -611,7 +611,7 @@
           <div class="panel-top">
             <div>
               <h3>The warehouse, live</h3>
-              <div class="prov"><span class="badge b-syn"><i></i>Synthetic · Jan 2023 · seed 42</span><span class="badge" id="demo-src">source: –</span></div>
+              <div class="prov"><span class="badge b-syn"><i></i>Synthetic · Jan 2025 · seed 42</span><span class="badge" id="demo-src">source: –</span></div>
             </div>
           </div>
           <section class="kpis" aria-label="Warehouse figures">
@@ -778,7 +778,7 @@
         <div class="card panel reveal">
           <div class="panel-top">
             <div><h3>Twenty facilities. <span class="serif" style="font-size:1.1em">Nothing to rank.</span></h3><p class="sub" id="rank-sub">Capacity factor: mean power output ÷ nameplate capacity.</p></div>
-            <div class="prov"><span class="badge b-syn"><i></i>Synthetic · Jan 2023</span></div>
+            <div class="prov"><span class="badge b-syn"><i></i>Synthetic · Jan 2025</span></div>
           </div>
           <div class="chart-box"><svg id="rank-chart" class="chart" role="img" aria-label="Capacity factor of all twenty facilities on a 0 to 100 percent scale"><desc>Twenty dots, all close to 50 percent.</desc></svg></div>
           <div class="callout" id="rank-callout"></div>
@@ -800,7 +800,7 @@
 
         <div class="grid-2 reveal">
           <div class="card panel">
-            <h3>One index, 37 times faster</h3>
+            <h3 id="bench-title">One index, many times faster</h3>
             <p class="sub" id="bench-sub">One sensor, one week, on the full-year dataset.</p>
             <div class="bars" id="bench"></div>
             <p class="note" id="bench-note"></p>
@@ -1155,7 +1155,7 @@ make test</pre>
   })();
 
   function renderOverview(ov, trend, sourceLabel) {
-    $("glance-syn").textContent = `${fmt(ov.facility_count)} sites × ${fmt(ov.sensor_count / ov.facility_count)} sensors, every 5 minutes, January 2023 (${fmt(ov.reading_count)} readings)`;
+    $("glance-syn").textContent = `${fmt(ov.facility_count)} sites × ${fmt(ov.sensor_count / ov.facility_count)} sensors, every 5 minutes, January 2025 (${fmt(ov.reading_count)} readings)`;
     $("facility-count").textContent = fmt(ov.facility_count);
     $("reading-count").textContent = fmt(ov.reading_count);
     $("anomaly-rate").textContent = `${ov.anomaly_rate_pct}%`;
@@ -1468,6 +1468,7 @@ make test</pre>
     if (!eng) return;
     const b = eng.benchmark;
     $("proof-speed").textContent = `${fmt(b.speedup_composite_vs_single, 1)}×`;
+    $("bench-title").textContent = `One index, ${fmt(Math.round(b.speedup_composite_vs_single))} times faster`;
     const max = b.single_column_index_ms;
     const rows = [
       ["Single-column index", "filters 103k rows in memory", b.single_column_index_ms, "--muted"],
@@ -1485,7 +1486,7 @@ make test</pre>
       return row;
     }));
     $("bench-sub").textContent = "Execution time of one query: one sensor, one week, full-year dataset (6.3 M rows).";
-    $("bench-note").textContent = `${b.note} Source: benchmarks/index_benchmark.md, one local Docker run; absolute times vary by machine.`;
+    $("bench-note").textContent = `${b.note} Source: benchmarks/index_benchmark.md, median of 7 local Docker runs; absolute times vary by machine.`;
 
     const t = eng.tests;
     const LAYERS = {smoke: "Smoke", api: "API contract", integration: "Integration", regression: "Regression (golden data)",

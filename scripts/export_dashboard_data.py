@@ -404,15 +404,15 @@ def export_engineering(dataset: dict) -> None:
     _write("engineering.json", {
         "generated_at": _now(), "dataset": dataset,
         "benchmark": {
-            "source": "benchmarks/index_benchmark.md (full-year dataset, 6.3 M rows, one local Docker run)",
-            "query": "SELECT * FROM readings WHERE sensor_id = 5 AND recorded_at BETWEEN '2023-06-01' AND '2023-06-07'",
+            "source": "benchmarks/index_benchmark.md (full-year 2025 dataset, 6.3 M rows, median of 7 local Docker runs)",
+            "query": "SELECT * FROM readings WHERE sensor_id = 5 AND recorded_at BETWEEN '2025-06-01' AND '2025-06-07'",
             "single_column_index_ms": times[0],
             "composite_index_ms": times[1],
             "partitioned_with_composite_index_ms": times[2],
             "speedup_composite_vs_single": round(times[0] / times[1], 1),
             "rows_removed_by_filter_without_composite": int(removed.group(1)) if removed else None,
             "note": "The speed-up comes from the composite index. On this single-sensor lookup the partitioned "
-                    "table was slower (planning time); partitioning pays off in pruning and maintenance.",
+                    "table is about as fast; partitioning pays off in pruning and maintenance.",
         },
         "partitioning": {
             "partition_count": len(partitions),

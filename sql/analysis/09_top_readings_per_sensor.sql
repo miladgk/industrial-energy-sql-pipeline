@@ -1,7 +1,7 @@
 -- =============================================================
 -- 09_top_readings_per_sensor.sql
 -- Find the top 3 highest-value readings per sensor for the most
--- recent month of data (December 2023).
+-- recent month of data (December 2025).
 --
 -- Techniques: CROSS JOIN LATERAL (per-row correlated subquery with LIMIT)
 --
@@ -32,7 +32,7 @@ CROSS JOIN LATERAL (
     SELECT recorded_at, value
     FROM readings r
     WHERE r.sensor_id = se.sensor_id
-      AND r.recorded_at >= '2023-12-01' AND r.recorded_at < '2024-01-01'
+      AND r.recorded_at >= '2025-12-01' AND r.recorded_at < '2026-01-01'
       AND r.is_anomaly = FALSE
     ORDER BY r.value DESC
     LIMIT 3

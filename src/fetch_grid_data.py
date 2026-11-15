@@ -3,7 +3,7 @@ fetch_grid_data.py
 ~~~~~~~~~~~~~~~~~~
 Pulls hourly electricity consumption and wind power production for Finland
 from the Fingrid Open Data API (data.fingrid.fi). By default it fetches the
-full year 2023 into data/raw/grid_data.csv; --start/--end/--output select
+full year 2025 into data/raw/grid_data.csv; --start/--end/--output select
 another window (used by scripts/export_dashboard_data.py for recent data).
 
 The API key is read from the FINGRID_API_KEY environment variable (e.g. a
@@ -63,14 +63,14 @@ def load_api_key() -> str:
 
 def get_mock_grid_data() -> pd.DataFrame:
     """
-    Generate high-quality, realistic mock grid data for Finland for the full year of 2023.
+    Generate high-quality, realistic mock grid data for Finland for the full year of 2025.
     Stamps every row with source='mock'.
     """
     print("⚠ WARNING: Using explicit --allow-mock flag. Generating synthetic MOCK data with source='mock'...")
     
     timestamps = pd.date_range(
-        start="2023-01-01 00:00:00+00:00",
-        end="2023-12-31 23:00:00+00:00",
+        start="2025-01-01 00:00:00+00:00",
+        end="2025-12-31 23:00:00+00:00",
         freq="1h"
     )
     n_hours = len(timestamps)
@@ -175,7 +175,7 @@ def _month_windows(start: str, end: str) -> list:
     return list(zip(edges[:-1], edges[1:]))
 
 
-def fetch_fingrid_data(api_key: str, start: str = "2023-01-01", end: str = "2024-01-01") -> pd.DataFrame:
+def fetch_fingrid_data(api_key: str, start: str = "2025-01-01", end: str = "2026-01-01") -> pd.DataFrame:
     """Fetch hourly grid data for [start, end) in month-sized requests."""
     print(f"Connecting to Fingrid Open Data API ({start} to {end}) ...")
     windows = _month_windows(start, end)
@@ -233,8 +233,8 @@ def fetch_fingrid_data(api_key: str, start: str = "2023-01-01", end: str = "2024
 def main():
     parser = argparse.ArgumentParser(description="Fetch Fingrid hourly data or generate mock fallback.")
     parser.add_argument("--allow-mock", action="store_true", help="Allow generating synthetic mock data if API key is missing or fails")
-    parser.add_argument("--start", default="2023-01-01", help="Window start date (inclusive), default 2023-01-01")
-    parser.add_argument("--end", default="2024-01-01", help="Window end date (exclusive), default 2024-01-01")
+    parser.add_argument("--start", default="2025-01-01", help="Window start date (inclusive), default 2025-01-01")
+    parser.add_argument("--end", default="2026-01-01", help="Window end date (exclusive), default 2026-01-01")
     parser.add_argument("--output", default=OUTPUT_PATH, help="CSV output path (default data/raw/grid_data.csv)")
     args = parser.parse_args()
 

@@ -22,13 +22,13 @@ def db_conn():
 @pytest.fixture
 def remove_incremental_day_afterwards(db_conn):
     """
-    Teardown only: delete the 2024-01-01 rows this test loads. Without it the test
+    Teardown only: delete the 2026-01-01 rows this test loads. Without it the test
     leaves ~17k extra rows behind, which breaks the row-volume check in
     test_data_quality.py on the next run (tests must not leak state).
     """
     yield
     with db_conn.cursor() as cur:
-        cur.execute("DELETE FROM readings WHERE recorded_at >= '2024-01-01' AND recorded_at < '2024-01-02';")
+        cur.execute("DELETE FROM readings WHERE recorded_at >= '2026-01-01' AND recorded_at < '2026-01-02';")
     db_conn.commit()
 
 
@@ -42,11 +42,11 @@ def test_incremental_idempotency(db_conn, remove_incremental_day_afterwards):
     gen_script = os.path.join(src_dir, "generate_data.py")
     ingest_script = os.path.join(src_dir, "ingest.py")
 
-    target_date = "2024-01-01"
+    target_date = "2026-01-01"
 
-    # Clean up any existing data for 2024-01-01 in case of re-runs
+    # Clean up any existing data for 2026-01-01 in case of re-runs
     with db_conn.cursor() as cur:
-        cur.execute("DELETE FROM readings WHERE recorded_at >= '2024-01-01' AND recorded_at < '2024-01-02';")
+        cur.execute("DELETE FROM readings WHERE recorded_at >= '2026-01-01' AND recorded_at < '2026-01-02';")
         db_conn.commit()
         
         cur.execute("SELECT COUNT(*) FROM readings;")

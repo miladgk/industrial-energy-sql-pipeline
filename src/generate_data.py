@@ -24,6 +24,10 @@ import pandas as pd
 SEED = 42
 rng  = np.random.default_rng(SEED)
 
+# First day of the synthetic data. Must match the monthly partitions in
+# sql/schema/10_partition_readings.sql (2025, plus January 2026 for incremental loads).
+DEFAULT_START = "2025-01-01"
+
 RAW_DIR = os.path.join(os.path.dirname(__file__), "..", "data", "raw")
 os.makedirs(RAW_DIR, exist_ok=True)
 
@@ -84,7 +88,7 @@ def generate_sensors(facilities: pd.DataFrame) -> pd.DataFrame:
 
 
 # ──────────────────────────────────────────────────────────────
-# 3. Readings  (every 5 minutes, default: full year 2023, see --start)
+# 3. Readings  (every 5 minutes, default: full year 2025, see --start)
 # ──────────────────────────────────────────────────────────────
 
 ANOMALY_RATE    = 0.02   # 2 % of readings are anomalous
@@ -112,7 +116,7 @@ def generate_readings(
     target_date: str = None,
     days: int = None,
     id_start: int = 1,
-    start_date: str = "2023-01-01",
+    start_date: str = DEFAULT_START,
 ) -> pd.DataFrame:
     """
     Generate time-series readings at *interval_minutes* resolution.
@@ -121,7 +125,7 @@ def generate_readings(
       1. ``target_date`` — single day, used for incremental loads.
       2. ``days``        — explicit window starting at ``start_date`` (e.g. 30 days).
       3. ``rows_limit``  — back-calculates the number of timestamps per sensor.
-      4. default         — the full calendar year of ``start_date`` (2023 by default).
+      4. default         — the full calendar year of ``start_date`` (2025 by default).
 
     ``id_start`` sets the first reading_id. Incremental batches must not reuse
     IDs from the base dataset (see ``incremental_id_start``).
@@ -236,8 +240,8 @@ def main():
     parser.add_argument("--days", type=int, default=365, help="Number of days of data to generate (if rows not set)")
     parser.add_argument("--interval", type=int, default=INTERVAL_MINS, help="Interval in minutes (default: 5)")
     parser.add_argument("--incremental", action="store_true", help="Generate incremental batch for a specific date")
-    parser.add_argument("--date", type=str, default="2024-01-01", help="Target date for incremental mode (YYYY-MM-DD)")
-    parser.add_argument("--start", type=str, default="2023-01-01",
+    parser.add_argument("--date", type=str, default="2026-01-01", help="Target date for incremental mode (YYYY-MM-DD)")
+    parser.add_argument("--start", type=str, default=DEFAULT_START,
                         help="First day of the generated window (YYYY-MM-DD); the default full-year run covers its calendar year")
     parser.add_argument("--out-dir", type=str, default=RAW_DIR, help="Directory for the CSV files (default data/raw)")
     args = parser.parse_args()
