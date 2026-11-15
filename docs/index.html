@@ -599,7 +599,7 @@
                 <button type="button" data-mode="all" aria-pressed="false">No time filter</button>
               </div>
             </div>
-            <p class="sub" id="parts-sub"><code>readings</code> is stored as one table per month. Pick a month: PostgreSQL reads that partition and skips the rest.</p>
+            <p class="sub" id="parts-sub"><code>readings</code> is stored as one table per month. Pick a month: PostgreSQL opens only that partition and never reads the others (<b>skipped</b>).</p>
             <pre class="query" id="parts-query" aria-label="Example query"></pre>
             <p class="parts-summary" id="parts-summary" aria-live="polite"></p>
             <div class="plist" id="parts" role="group" aria-label="Partitions of the readings table"></div>
@@ -1209,7 +1209,12 @@ make test</pre>
         : `SELECT * FROM readings\nWHERE sensor_id = 5;   -- no time filter`;
       const sum = $("parts-summary");
       sum.replaceChildren();
-      if (mode === "month") sum.append("Reads ", el("b", {}, "1"), ` of ${total} partitions and skips ${total - 1}. Rows in that partition: `, el("b", {}, fmt(p.rows)), ".");
+      if (mode === "month") {
+        const skippedRows = parts.reduce((a, q, i) => a + (i === pick ? 0 : q.rows || 0), 0);
+        sum.append("Reads ", el("b", {}, "1"), ` of ${total} partitions (${p.label}, `, el("b", {}, fmt(p.rows)), ` rows) and skips the other ${total - 1}` +
+          (skippedRows ? `, so ${fmt(skippedRows)} rows elsewhere are never read.` : "."));
+        if (!p.rows) sum.append(` ${p.label} is empty because the demo data only fills ${parts.filter(q => q.rows > 0).map(q => q.label).join(", ")}: the query returns nothing, and costs almost nothing to answer.`);
+      }
       else sum.append("Reads ", el("b", {}, `all ${total}`), " partitions: without a time filter there is nothing to prune.");
     };
     $("parts-mode").addEventListener("click", e => { const b = e.target.closest("button"); if (b) { mode = b.dataset.mode; draw(); } });
