@@ -33,6 +33,8 @@ Then open:  http://localhost:8000/docs  (auto-generated Swagger UI)
 import logging
 import os
 import sys
+from datetime import date, datetime
+from decimal import Decimal
 from typing import Optional
 
 import psycopg2.extras
@@ -86,6 +88,21 @@ def _fetch_rows(sql: str, params: tuple = ()) -> list[dict]:
         conn.close()
 
 
+def _make_json_safe(row: dict) -> dict:
+    """
+    Convert database types JSON cannot carry, in place: datetimes become ISO
+    strings and Decimals (NUMERIC columns) become floats. Integers, strings,
+    booleans and None are left alone. (The old `hasattr(v, "__float__")` test
+    also matched ints, turning IDs and counts into 22501.0.)
+    """
+    for key, value in row.items():
+        if isinstance(value, (datetime, date)):
+            row[key] = value.isoformat()
+        elif isinstance(value, Decimal):
+            row[key] = float(value)
+    return row
+
+
 def _internal_error(exc: Exception) -> HTTPException:
     """Log the real error server-side; give the client a generic message
     (raw database errors can reveal table names, queries and host details)."""
@@ -123,11 +140,7 @@ def get_overview():
     except Exception as exc:
         raise _internal_error(exc)
 
-    for key, value in row.items():
-        if hasattr(value, "isoformat"):
-            row[key] = value.isoformat()
-        elif hasattr(value, "__float__"):
-            row[key] = float(value)
+    _make_json_safe(row)
     row["anomaly_rate_pct"] = (
         round(row["anomaly_count"] / row["reading_count"] * 100, 2)
         if row["reading_count"]
@@ -167,11 +180,7 @@ def get_output_trend(
     except Exception as exc:
         raise _internal_error(exc)
     for row in rows:
-        for key, value in row.items():
-            if hasattr(value, "isoformat"):
-                row[key] = value.isoformat()
-            elif hasattr(value, "__float__"):
-                row[key] = float(value)
+        _make_json_safe(row)
     return {"hours": hours, "facility_type": facility_type, "points": rows}
 
 
@@ -254,11 +263,7 @@ def get_anomalies(
 
     # Convert Decimal / datetime to JSON-serialisable types
     for row in rows:
-        for k, v in row.items():
-            if hasattr(v, "isoformat"):
-                row[k] = v.isoformat()
-            elif hasattr(v, "__float__"):
-                row[k] = float(v)
+        _make_json_safe(row)
 
     return {
         "z_threshold"    : z_threshold,
@@ -394,8 +399,6 @@ def get_facility_ranking():
         raise _internal_error(exc)
 
     for row in rows:
-        for k, v in row.items():
-            if hasattr(v, "__float__"):
-                row[k] = float(v)
+        _make_json_safe(row)
 
     return {"count": len(rows), "facilities": rows}

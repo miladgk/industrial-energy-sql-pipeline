@@ -113,3 +113,18 @@ def test_sql_injection_in_filter_is_inert(client, db):
     with db.cursor() as cur:
         cur.execute("SELECT COUNT(*) FROM readings")
         assert cur.fetchone()[0] > 0
+
+
+# ── JSON types ─────────────────────────────────────────────────
+
+def test_ids_and_counts_are_integers_not_floats(client):
+    """Whole numbers must stay integers (22501, not 22501.0); NUMERIC values are floats."""
+    overview = client.get("/api/overview").json()
+    for key in ("facility_count", "sensor_count", "reading_count", "anomaly_count"):
+        assert isinstance(overview[key], int), f"{key} is {overview[key]!r}"
+    assert isinstance(overview["avg_power_output_mw"], float)
+
+    anomaly = client.get("/api/anomalies", params={"limit": 1}).json()["anomalies"][0]
+    assert isinstance(anomaly["reading_id"], int) and isinstance(anomaly["sensor_id"], int)
+    assert isinstance(anomaly["value"], float) and isinstance(anomaly["z_score"], float)
+    assert isinstance(anomaly["recorded_at"], str)
