@@ -22,6 +22,12 @@ jobs:
           - { python: "3.11", postgres: "14" }
           - { python: "3.11", postgres: "16" }
 
+    env:
+      # CI restores the snapshot published by main, which cannot yet contain a
+      # dataset this pull request adds. The daily workflow syncs before it checks
+      # and keeps this check strict.
+      QUALITY_INFO_ONLY: "Datasets in the catalogue without any data"
+
     services:
       postgres:
         image: postgres:${{ matrix.postgres }}

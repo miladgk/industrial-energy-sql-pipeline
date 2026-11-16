@@ -9,6 +9,10 @@ Usage:
     python src/run_quality_checks.py
 
 Exit code 1 when any [fail] check returns rows.
+
+QUALITY_INFO_ONLY (environment, labels separated by ";") turns the named [fail]
+checks into [info]. CI uses it: it restores the snapshot that main published,
+which cannot yet hold a dataset that the pull request adds.
 """
 
 import os
@@ -24,6 +28,10 @@ CHECKS_PATH = os.path.join(os.path.dirname(__file__), "..", "sql", "etl", "02_da
 CHECK_HEADER = re.compile(r"^-- Check: (.+?) \[(fail|info)\]\s*$", re.MULTILINE)
 
 
+def _info_only() -> set[str]:
+    return {label.strip() for label in os.environ.get("QUALITY_INFO_ONLY", "").split(";") if label.strip()}
+
+
 def load_checks(path: str = CHECKS_PATH) -> list[tuple[str, str, str]]:
     """Return (label, mode, sql) for every '-- Check: ... [fail|info]' block."""
     with open(path, encoding="utf-8") as fh:
@@ -32,7 +40,8 @@ def load_checks(path: str = CHECKS_PATH) -> list[tuple[str, str, str]]:
     checks = []
     for i, m in enumerate(heads):
         body = text[m.end(): heads[i + 1].start() if i + 1 < len(heads) else len(text)]
-        checks.append((m.group(1), m.group(2), body.strip()))
+        mode = "info" if m.group(1) in _info_only() else m.group(2)
+        checks.append((m.group(1), mode, body.strip()))
     return checks
 
 
