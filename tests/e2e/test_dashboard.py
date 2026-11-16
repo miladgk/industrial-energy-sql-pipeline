@@ -48,6 +48,21 @@ def test_page_loads_without_javascript_errors(open_dashboard):
     assert page.problems == [], page.problems
 
 
+def test_latest_fingrid_row_shows_finnish_time(open_dashboard):
+    page = open_dashboard()
+    row = page.locator("#grid-latest")
+    expect(row).to_be_visible()
+    expect(row).to_contain_text("6,603 MW")
+    expect(row).to_contain_text("11,455 MW")
+    expect(row).to_contain_text("08:15–08:30 Finnish time")   # 06:15 UTC = 08:15 in Helsinki (EET)
+
+
+def test_latest_fingrid_row_hides_without_its_file(open_dashboard):
+    page = open_dashboard(latest="missing")
+    expect(page.locator("#grid-kpis .kpi").first).to_be_visible()   # the rest of the grid section loaded
+    expect(page.locator("#grid-latest")).to_be_hidden()
+
+
 # ── Live data: browser -> API -> database ──────────────────────
 
 def test_kpis_match_the_database(open_dashboard, db):

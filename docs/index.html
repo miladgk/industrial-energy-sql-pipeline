@@ -237,6 +237,7 @@
     @media (max-width: 640px) { .kpis { grid-template-columns: 1fr 1fr; } }
 
     .latest { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 18px; margin: 14px 0 0; padding: 10px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); font-size: 13px; color: var(--muted); }
+    .latest[hidden] { display: none; }
     .latest .lt-label { font: 500 11px/1.35 "JetBrains Mono", monospace; letter-spacing: .03em; color: var(--ink-2); }
     .latest .lt-val { display: inline-flex; align-items: baseline; gap: 6px; }
     .latest .lt-val i { width: 7px; height: 7px; border-radius: 50%; display: inline-block; align-self: center; }
