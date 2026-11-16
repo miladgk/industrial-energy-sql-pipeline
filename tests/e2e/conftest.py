@@ -88,6 +88,18 @@ def browser():
         chromium.close()
 
 
+# Shape of docs/data/fingrid_latest.json (scripts/export_dashboard_data.py, part fingrid-latest).
+SAMPLE_LATEST = {
+    "source": "sample for the e2e tests",
+    "generated_at": "2026-11-16T06:46:21+00:00",
+    "unit": "MW",
+    "consumption": {"dataset_id": 124, "value_mw": 11454.5,
+                    "start_time": "2026-11-16T06:15:00+00:00", "end_time": "2026-11-16T06:30:00+00:00"},
+    "wind_production": {"dataset_id": 75, "value_mw": 6603.0,
+                        "start_time": "2026-11-16T06:15:00+00:00", "end_time": "2026-11-16T06:30:00+00:00"},
+}
+
+
 @pytest.fixture
 def open_dashboard(browser, static_url, api_url):
     """
@@ -96,12 +108,13 @@ def open_dashboard(browser, static_url, api_url):
     * "live": requests to the production API host are forwarded to the local FastAPI.
     * "down": the API is unreachable, so the page must fall back to its bundled snapshot.
     * block_data=True also blocks docs/data/*.json, to see what the bare HTML shows.
+    * latest="missing" answers data/fingrid_latest.json with 404 instead of SAMPLE_LATEST.
 
     The returned page has `page.problems`, a list of console errors / uncaught JS exceptions.
     """
     contexts = []
 
-    def _open(api="live", viewport=None, block_data=False):
+    def _open(api="live", viewport=None, block_data=False, latest="sample"):
         context = browser.new_context(viewport=viewport or {"width": 1400, "height": 900})
         contexts.append(context)
         page = context.new_page()
@@ -119,6 +132,12 @@ def open_dashboard(browser, static_url, api_url):
             page.route(PRODUCTION_API + "/**", forward)
         else:
             page.route(PRODUCTION_API + "/**", lambda route: route.abort())
+        # fingrid_latest.json is git-ignored and only built by the hourly Pages deploy,
+        # so serve a sample here the way production would (or a 404 when asked to).
+        if latest == "missing":
+            page.route("**/data/fingrid_latest.json", lambda route: route.fulfill(status=404))
+        else:
+            page.route("**/data/fingrid_latest.json", lambda route: route.fulfill(json=SAMPLE_LATEST))
         if block_data:
             page.route("**/data/*.json", lambda route: route.abort())
         page.goto(static_url + "/index.html")

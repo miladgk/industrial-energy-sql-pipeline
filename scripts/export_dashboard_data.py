@@ -11,6 +11,8 @@ Rebuild the static data files used by the GitHub Pages dashboard (docs/data/).
                               instantly while the free Render service wakes up        [part: snapshot]
   fingrid_recent_daily.json   Last 365 complete days fetched live from the Fingrid
                               API (needs FINGRID_API_KEY or config.yaml)              [part: fingrid-recent]
+  fingrid_latest.json         Newest wind and consumption values from the Fingrid API.
+                              Built by the hourly Pages deploy and never committed     [part: fingrid-latest]
 
   Dashboard extras (API + database; both must hold the same dataset, which is checked):
   detection_thresholds.json   Detector scorecard for z = 1.0 ... 10.0 in 0.5 steps    [part: thresholds]
@@ -26,6 +28,7 @@ Usage (from the repository root):
     python scripts/export_dashboard_data.py                          # fingrid, validation, snapshot
     python scripts/export_dashboard_data.py --skip-snapshot          # local files only
     python scripts/export_dashboard_data.py --parts fingrid-recent   # what the daily workflow runs
+    python scripts/export_dashboard_data.py --parts fingrid-latest   # what the hourly Pages deploy runs
     python scripts/export_dashboard_data.py --api-url http://127.0.0.1:8000
     python scripts/export_dashboard_data.py --api-url http://127.0.0.1:8000 \
         --parts thresholds ranking anomalies blindspot sql engineering
@@ -120,6 +123,39 @@ def export_fingrid_recent(days: int = 365) -> None:
         "window_start": start.strftime("%Y-%m-%d"),
         "window_end_exclusive": end.strftime("%Y-%m-%d"),
     }))
+
+
+def export_fingrid_latest(hours: int = 6) -> None:
+    """Newest raw value of each dataset in the last few hours: two small requests, no history."""
+    sys.path.insert(0, os.path.join(ROOT, "src"))
+    from fetch_grid_data import DATASETS, fetch_dataset_chunk, load_api_key
+
+    api_key = load_api_key()
+    if not api_key:
+        raise SystemExit("No Fingrid API key: set FINGRID_API_KEY or fingrid_api_key in config.yaml.")
+    now = pd.Timestamp.now(tz="UTC")
+    start = now - pd.Timedelta(hours=hours)
+    latest = {}
+    for dataset_id, metric in DATASETS.items():
+        rows = fetch_dataset_chunk(dataset_id, api_key, start.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                                   now.strftime("%Y-%m-%dT%H:%M:%SZ"))
+        rows = [r for r in rows if r.get("value") is not None]
+        if not rows:
+            raise RuntimeError(f"Fingrid returned no {metric} values in the last {hours} hours.")
+        newest = max(rows, key=lambda r: pd.Timestamp(r["startTime"]))
+        latest[metric] = {
+            "dataset_id": dataset_id,
+            "value_mw": round(float(newest["value"]), 1),
+            "start_time": pd.Timestamp(newest["startTime"]).tz_convert("UTC").isoformat(),
+            "end_time": pd.Timestamp(newest["endTime"]).tz_convert("UTC").isoformat(),
+        }
+    _write("fingrid_latest.json", {
+        "source": "Fingrid Open Data API, newest published value of dataset 75 (wind power production) "
+                  "and 124 (electricity consumption), Finland, not averaged",
+        "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "unit": "MW",
+        **latest,
+    })
 
 
 def export_validation() -> None:
@@ -434,8 +470,8 @@ def main() -> None:
     parser.add_argument("--api-url", default=DEFAULT_API, help="API base URL for the snapshot")
     parser.add_argument("--skip-snapshot", action="store_true", help="Do not call the API")
     parser.add_argument("--parts", nargs="+",
-                        choices=["fingrid", "validation", "snapshot", "fingrid-recent", "thresholds", "ranking",
-                                 "anomalies", "blindspot", "sql", "engineering"],
+                        choices=["fingrid", "validation", "snapshot", "fingrid-recent", "fingrid-latest", "thresholds",
+                                 "ranking", "anomalies", "blindspot", "sql", "engineering"],
                         help="Only build these files (default: fingrid validation snapshot)")
     parser.add_argument("--year", type=int, default=2025, help="Calendar year for the fingrid part (default 2025)")
     parser.add_argument("--recent-days", type=int, default=365, help="Window for fingrid-recent (days)")
@@ -452,6 +488,8 @@ def main() -> None:
         export_snapshot(args.api_url.rstrip("/"))
     if "fingrid-recent" in parts:
         export_fingrid_recent(args.recent_days)
+    if "fingrid-latest" in parts:
+        export_fingrid_latest()
 
     api_url = args.api_url.rstrip("/")
     needs_dataset = {"thresholds", "ranking", "anomalies", "blindspot", "engineering"} & set(parts)

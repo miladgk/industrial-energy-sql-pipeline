@@ -33,3 +33,6 @@ Thumbs.db
 .idea/
 .vscode/
 *.swp
+
+# Built by the hourly Pages deploy from the Fingrid API; never committed
+docs/data/fingrid_latest.json
