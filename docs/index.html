@@ -1,25 +1,28 @@
 <!doctype html>
 <html lang="en">
+
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Grid in SQL · Industrial Energy SQL Pipeline</title>
-  <meta name="description" content="Finland's electricity grid in a PostgreSQL warehouse: Fingrid's forecasts scored, tomorrow's cleanest hours forecast, and a log of grid events. Real Fingrid Open Data, refreshed daily.">
+  <title>Grid in SQL · Finland's Living Energy Observatory</title>
+  <meta name="description"
+    content="Finland's electricity grid in a PostgreSQL warehouse: Fingrid's forecasts scored, tomorrow's cleanest hours forecast, and a log of grid events. Real Fingrid Open Data, refreshed daily.">
   <link rel="canonical" href="https://miladgk.github.io/industrial-energy-sql-pipeline/">
   <meta property="og:type" content="website">
-  <meta property="og:title" content="Grid in SQL · Industrial Energy SQL Pipeline">
-  <meta property="og:description" content="Finland's electricity grid in a PostgreSQL warehouse: how good Fingrid's forecasts are, the cleanest hours of tomorrow, and a log of grid events, refreshed daily from Fingrid Open Data.">
+  <meta property="og:title" content="Grid in SQL · Finland's Living Energy Observatory">
+  <meta property="og:description"
+    content="Finland's electricity grid in a PostgreSQL warehouse: how good Fingrid's forecasts are, the cleanest hours of tomorrow, and a log of grid events, refreshed daily from Fingrid Open Data.">
   <meta property="og:url" content="https://miladgk.github.io/industrial-energy-sql-pipeline/">
   <meta name="twitter:card" content="summary">
   <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet"
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;600&display=swap">
   <script>
-    // Apply the saved or system theme before first paint (no flash).
     (function () {
       var t = null;
-      try { t = localStorage.getItem("theme"); } catch (e) { /* storage blocked */ }
+      try { t = localStorage.getItem("theme"); } catch (e) { }
       if (t !== "light" && t !== "dark") {
         t = window.matchMedia && matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
       }
@@ -28,660 +31,1406 @@
     })();
   </script>
   <style>
-    /* ───────────── tokens ───────────── */
+    /* ───────────── DESIGN TOKENS (Nordic Observatory) ───────────── */
     :root {
       color-scheme: dark;
-      --bg: #0b0d11;
-      --surface: #12151c;
-      --surface-2: #181c25;
-      --line: rgba(255, 255, 255, .07);
-      --line-strong: rgba(255, 255, 255, .13);
-      --ink: #eceef2;
-      --ink-2: #b6bbc6;
-      --muted: #8b919d;
-      --grid: #232833;
-      --axis: #383e4a;
-      --real: #199e70;
-      --cons: #9085e9;
-      --syn: #c98500;
-      --fault: #e5484d;
-      --ok: #0ca30c;
-      --rec: #3987e5;
-      --prec: #d55181;
-      --band: rgba(255, 255, 255, .06);
+      --bg: #07090e;
+      --surface: #0e121b;
+      --surface-2: #151b28;
+      --surface-3: #1c2436;
+      --line: rgba(255, 255, 255, .08);
+      --line-strong: rgba(255, 255, 255, .15);
+      --ink: #f1f5f9;
+      --ink-2: #94a3b8;
+      --muted: #64748b;
+      --grid: #1e293b;
+      --axis: #334155;
+      --real: #10b981;
+      --cons: #818cf8;
+      --syn: #f59e0b;
+      --fault: #ef4444;
+      --ok: #10b981;
+      --rec: #3b82f6;
+      --prec: #ec4899;
+      --fc-da: #3b82f6;
+      --fc-id: #ec4899;
+      --band: rgba(255, 255, 255, .04);
       --focus: #34d399;
-      --glow-a: rgba(25, 158, 112, .16);
-      --glow-b: rgba(201, 133, 0, .10);
-      --shadow: 0 1px 0 rgba(255, 255, 255, .05) inset, 0 20px 40px -24px rgba(0, 0, 0, .6);
+      --glow-a: rgba(16, 185, 129, .14);
+      --glow-b: rgba(59, 130, 246, .10);
+      --shadow: 0 12px 32px -12px rgba(0, 0, 0, .75), 0 1px 0 rgba(255, 255, 255, .06) inset;
     }
+
     :root[data-theme="light"] {
       color-scheme: light;
-      --bg: #faf8f5;
+      --bg: #f6f7f9;
       --surface: #ffffff;
-      --surface-2: #f4f1ec;
-      --line: #e7e2da;
-      --line-strong: #d6cfc4;
-      --ink: #111827;
-      --ink-2: #3f4654;
-      --muted: #646b78;
-      --grid: #ece8e1;
-      --axis: #cfc8bc;
-      --real: #1baf7a;
-      --cons: #6250d6;
-      --syn: #eda100;
-      --fault: #d03b3b;
-      --ok: #0a7f0a;
-      --rec: #2a78d6;
-      --prec: #e87ba4;
-      --band: rgba(17, 24, 39, .05);
+      --surface-2: #f1f4f8;
+      --surface-3: #e2e8f0;
+      --line: #e2e8f0;
+      --line-strong: #cbd5e1;
+      --ink: #0f172a;
+      --ink-2: #475569;
+      --muted: #64748b;
+      --grid: #e2e8f0;
+      --axis: #cbd5e1;
+      --real: #059669;
+      --cons: #4f46e5;
+      --syn: #d97706;
+      --fault: #dc2626;
+      --ok: #059669;
+      --rec: #2563eb;
+      --prec: #db2777;
+      --fc-da: #2563eb;
+      --fc-id: #db2777;
+      --band: rgba(15, 23, 42, .04);
       --focus: #0f766e;
-      --glow-a: rgba(27, 175, 122, .10);
-      --glow-b: rgba(237, 161, 0, .08);
-      --shadow: 0 1px 2px rgba(17, 24, 39, .04), 0 16px 32px -24px rgba(17, 24, 39, .18);
+      --glow-a: rgba(5, 150, 105, .08);
+      --glow-b: rgba(37, 99, 235, .06);
+      --shadow: 0 8px 24px -8px rgba(15, 23, 42, .08), 0 1px 0 rgba(255, 255, 255, .8) inset;
     }
 
-    /* ───────────── base ───────────── */
-    * { box-sizing: border-box; }
-    html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+    /* ───────────── BASE & TYPOGRAPHY ───────────── */
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
     body {
-      margin: 0; background: var(--bg); color: var(--ink);
-      font: 400 16px/1.6 Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+      height: 100%;
+      margin: 0;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--ink);
+      font: 400 14.5px/1.5 Inter, system-ui, -apple-system, sans-serif;
+      display: flex;
+      flex-direction: column;
       overflow-x: hidden;
     }
+
     body::before {
-      content: ""; position: fixed; inset: 0; pointer-events: none; z-index: -1;
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: -1;
       background:
-        radial-gradient(900px 500px at 12% -10%, var(--glow-a), transparent 60%),
-        radial-gradient(800px 500px at 100% 0%, var(--glow-b), transparent 60%);
+        radial-gradient(900px 550px at 10% -5%, var(--glow-a), transparent 60%),
+        radial-gradient(800px 550px at 95% 105%, var(--glow-b), transparent 60%);
     }
-    a { color: inherit; text-underline-offset: 3px; text-decoration-color: var(--line-strong); }
-    a:hover { text-decoration-color: currentColor; }
-    :focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; border-radius: 6px; }
-    body, .mono, code, pre, .num, svg text { font-variant-ligatures: none; font-feature-settings: "liga" 0, "calt" 0; }
-    .mono, code, pre, .num { font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace; }
-    .num, td, .kpi strong, .tile strong { font-variant-numeric: tabular-nums; }
-    em.serif, .serif { font-family: "Instrument Serif", Georgia, serif; font-style: italic; font-weight: 400; }
-    code { font-size: .86em; background: var(--surface-2); border: 1px solid var(--line); padding: .05em .35em; border-radius: 6px; }
-    .wrap { width: min(1120px, 100% - 32px); margin-inline: auto; }
-    .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-    section[id], header[id] { scroll-margin-top: 76px; }
 
-    /* ───────────── top bar ───────────── */
+    a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    :focus-visible {
+      outline: 2px solid var(--focus);
+      outline-offset: 2px;
+      border-radius: 6px;
+    }
+
+    .mono,
+    code,
+    pre,
+    .num,
+    svg text {
+      font-family: "JetBrains Mono", monospace;
+      font-variant-ligatures: none;
+    }
+
+    .num,
+    td,
+    .kpi strong {
+      font-variant-numeric: tabular-nums;
+    }
+
+    .serif {
+      font-family: "Instrument Serif", Georgia, serif;
+      font-style: italic;
+      font-weight: 400;
+    }
+
+    code {
+      font-size: .85em;
+      background: var(--surface-2);
+      border: 1px solid var(--line);
+      padding: .1em .35em;
+      border-radius: 5px;
+    }
+
+    /* ───────────── TOP VITAL-SIGN HEADER ───────────── */
     .topbar {
-      position: sticky; top: 0; z-index: 20;
-      backdrop-filter: saturate(140%) blur(14px); -webkit-backdrop-filter: saturate(140%) blur(14px);
-      background: color-mix(in srgb, var(--bg) 78%, transparent);
+      flex: none;
+      height: 56px;
+      z-index: 30;
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      background: color-mix(in srgb, var(--bg) 82%, transparent);
       border-bottom: 1px solid var(--line);
+      display: flex;
+      align-items: center;
     }
-    .topbar .wrap { display: flex; align-items: center; gap: 16px; height: 60px; }
-    .brand { display: flex; align-items: center; gap: 10px; font-weight: 600; letter-spacing: -.01em; white-space: nowrap; text-decoration: none; }
-    .brand-mark { width: 22px; height: 22px; }
-    .nav { display: flex; gap: 2px; margin-left: auto; overflow-x: auto; scrollbar-width: none; }
-    .nav::-webkit-scrollbar { display: none; }
-    .nav a {
-      text-decoration: none; color: var(--ink-2); font-size: 14px; padding: 6px 10px; border-radius: 8px; white-space: nowrap;
+
+    .topbar-inner {
+      width: min(1440px, 100% - 32px);
+      margin-inline: auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
     }
-    .nav a:hover, .nav a[aria-current="true"] { color: var(--ink); background: var(--surface-2); }
-    .nav .idx { font-family: "JetBrains Mono", monospace; font-size: 11px; color: var(--muted); margin-right: 4px; }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 600;
+      font-size: 14px;
+      letter-spacing: -.01em;
+    }
+
+    .pulse-ring {
+      position: relative;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--real);
+    }
+
+    .pulse-ring::after {
+      content: "";
+      position: absolute;
+      inset: -4px;
+      border-radius: 50%;
+      border: 1.5px solid var(--real);
+      animation: radar 2.4s cubic-bezier(0, 0, .2, 1) infinite;
+    }
+
+    @keyframes radar {
+      0% {
+        transform: scale(.7);
+        opacity: .9;
+      }
+
+      100% {
+        transform: scale(2.1);
+        opacity: 0;
+      }
+    }
+
+    .live-ticker {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      font-size: 12px;
+      color: var(--ink-2);
+      background: var(--surface);
+      border: 1px solid var(--line);
+      padding: 4px 12px;
+      border-radius: 999px;
+    }
+
+    .live-ticker b {
+      color: var(--ink);
+      font-family: "JetBrains Mono", monospace;
+      font-weight: 600;
+    }
+
+    @media (max-width: 980px) {
+      .live-ticker {
+        display: none;
+      }
+    }
+
+    /* Persona Lens Switcher */
+    .lens-switch {
+      display: inline-flex;
+      background: var(--surface-2);
+      padding: 3px;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+    }
+
+    .lens-btn {
+      font: 500 12px Inter, sans-serif;
+      color: var(--ink-2);
+      background: transparent;
+      border: 0;
+      padding: 5px 11px;
+      border-radius: 7px;
+      cursor: pointer;
+      transition: all .15s;
+    }
+
+    .lens-btn[aria-pressed="true"] {
+      background: var(--surface);
+      color: var(--ink);
+      box-shadow: 0 1px 3px rgba(0, 0, 0, .25);
+    }
+
+    .actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
     .icon-btn {
-      flex: none; display: inline-grid; place-items: center; width: 36px; height: 36px; border-radius: 10px;
-      border: 1px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer;
+      width: 34px;
+      height: 34px;
+      border-radius: 9px;
+      border: 1px solid var(--line);
+      background: var(--surface);
+      color: var(--ink);
+      display: grid;
+      place-items: center;
+      cursor: pointer;
     }
-    .icon-btn svg { width: 18px; height: 18px; }
-    @media (max-width: 860px) { .nav { display: none; } .topbar .actions { margin-left: auto; } }
-    .actions { display: flex; gap: 8px; }
 
-    /* ───────────── hero ───────────── */
-    .hero { padding: 72px 0 40px; }
+    .icon-btn:hover {
+      border-color: var(--line-strong);
+    }
+
+    .icon-btn svg {
+      width: 16px;
+      height: 16px;
+    }
+
+    /* ───────────── VIEWPORT-LOCKED BENTO COCKPIT ───────────── */
+    .cockpit {
+      flex: 1;
+      width: min(1440px, 100% - 32px);
+      margin: 14px auto;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    @media (min-width: 1120px) and (min-height: 760px) {
+      body {
+        overflow: hidden;
+      }
+
+      .cockpit {
+        height: calc(100vh - 84px);
+        overflow: hidden;
+      }
+    }
+
+    /* Existential Hero Strip (Compact & High-Impact) */
+    .thesis-bar {
+      flex: none;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      padding: 12px 18px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+    }
+
+    .thesis-bar h1 {
+      font-size: clamp(18px, 1.8vw, 23px);
+      margin: 0;
+      font-weight: 700;
+      letter-spacing: -.025em;
+    }
+
+    .thesis-bar p {
+      margin: 0;
+      font-size: 13px;
+      color: var(--ink-2);
+      max-width: 68ch;
+    }
+
+    .thesis-stats {
+      display: flex;
+      gap: 20px;
+      flex: none;
+    }
+
+    .t-stat {
+      text-align: right;
+    }
+
+    .t-stat strong {
+      display: block;
+      font: 700 17px "JetBrains Mono", monospace;
+      color: var(--ink);
+      line-height: 1.1;
+    }
+
+    .t-stat span {
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    @media (max-width: 960px) {
+      .thesis-bar {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+
+      .thesis-stats {
+        width: 100%;
+        justify-content: space-between;
+        text-align: left;
+      }
+    }
+
+    @media (max-width: 560px) {
+      .thesis-stats {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 14px 16px;
+      }
+
+      .t-stat {
+        text-align: left;
+      }
+    }
+
+    /* Bento Grid (4 Spatial Chambers) */
+    .bento {
+      flex: 1;
+      min-height: 0;
+      display: grid;
+      grid-template-columns: 1.35fr 1fr 1fr;
+      grid-template-rows: 1fr 1fr;
+      gap: 14px;
+    }
+
+    @media (max-width: 1119px) {
+      .bento {
+        grid-template-columns: 1fr 1fr;
+        grid-template-rows: auto;
+      }
+    }
+
+    @media (max-width: 720px) {
+      .bento {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .tile {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-top-color: var(--line-strong);
+      border-radius: 18px;
+      padding: 18px 20px;
+      box-shadow: var(--shadow);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      min-height: 0;
+      position: relative;
+      transition: border-color .2s, transform .2s;
+    }
+
+    .tile:hover {
+      border-color: var(--line-strong);
+    }
+
+    .tile-hero {
+      grid-row: span 2;
+    }
+
+    @media (max-width: 1119px) {
+      .tile-hero {
+        grid-row: span 1;
+        grid-column: span 2;
+      }
+    }
+
+    @media (max-width: 720px) {
+      .tile-hero {
+        grid-column: span 1;
+      }
+    }
+
+    .tile-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+
     .eyebrow {
-      font: 500 12px/1.4 "JetBrains Mono", monospace; letter-spacing: .08em; text-transform: uppercase; color: var(--muted);
+      font: 500 10.5px "JetBrains Mono", monospace;
+      letter-spacing: .07em;
+      text-transform: uppercase;
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      gap: 6px;
     }
-    h1 {
-      font-size: clamp(28px, 3.25vw, 44px); line-height: 1.12; letter-spacing: -.03em; font-weight: 700;
-      margin: 14px 0 18px; text-wrap: balance;
+
+    .eyebrow i {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--real);
     }
-    @media (min-width: 900px) { h1 { white-space: nowrap; } }
-    h1 .serif { font-weight: 400; letter-spacing: -.01em; }
-    .lede { font-size: clamp(17px, 2vw, 20px); color: var(--ink-2); max-width: 60ch; margin: 0 0 22px; }
-    .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 26px; }
-    .chip {
-      display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-2);
-      border: 1px solid var(--line); background: var(--surface); padding: 5px 10px; border-radius: 999px;
+
+    .tile h2 {
+      font-size: 19px;
+      font-weight: 700;
+      letter-spacing: -.02em;
+      margin: 3px 0 0;
+      line-height: 1.2;
     }
-    .chip i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
-    .chip[tabindex] { position: relative; cursor: help; }
-    .chip[tabindex]:focus-visible { outline: 2px solid var(--accent, var(--ink)); outline-offset: 2px; }
-    .chip .info { font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 50%; width: 15px; height: 15px; display: inline-grid; place-items: center; line-height: 1; }
-    .chip .pop {
-      position: absolute; left: 0; top: calc(100% + 8px); z-index: 30; width: min(340px, calc(100vw - 32px));
-      background: var(--surface); color: var(--ink-2); border: 1px solid var(--line); border-radius: 10px;
-      padding: 10px 12px; font-size: 13px; line-height: 1.5; box-shadow: 0 8px 24px rgba(0,0,0,.12);
-      opacity: 0; visibility: hidden; transform: translateY(-4px); transition: opacity .15s, transform .15s, visibility .15s;
-      pointer-events: none; white-space: normal;
+
+    .tile h2 .serif {
+      font-size: 23px;
     }
-    .chip .pop b { color: var(--ink); }
-    .chip:hover .pop, .chip:focus .pop, .chip:focus-within .pop { opacity: 1; visibility: visible; transform: none; }
-    @media (prefers-reduced-motion: reduce) { .chip .pop { transition: none; } }
+
+    .tile-copy {
+      font-size: 12.5px;
+      color: var(--ink-2);
+      margin: 4px 0 10px;
+      line-height: 1.45;
+    }
+
+    /* Mini KPI strip inside tiles */
+    .mini-kpis {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    .mkpi {
+      background: var(--surface-2);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 8px 10px;
+    }
+
+    .mkpi strong {
+      display: block;
+      font: 650 16px "JetBrains Mono", monospace;
+      letter-spacing: -.02em;
+    }
+
+    .mkpi span {
+      font-size: 11px;
+      color: var(--muted);
+      display: block;
+      line-height: 1.25;
+      margin-top: 2px;
+    }
+
+    .chart-stage {
+      flex: 1;
+      min-height: 115px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      position: relative;
+    }
+
+    svg.chart {
+      display: block;
+      width: 100%;
+      height: 100%;
+      max-height: 230px;
+      overflow: visible;
+    }
+
+    .tile-hero svg.chart {
+      max-height: 310px;
+    }
+
+    svg.chart text {
+      font: 11px Inter, sans-serif;
+      fill: var(--muted);
+    }
+
+    svg.chart .lbl {
+      fill: var(--ink-2);
+      font-weight: 500;
+    }
+
+    svg.chart .tip-text {
+      fill: var(--ink);
+      font: 11.5px "JetBrains Mono", monospace;
+    }
+
+    svg.chart .tip-text .t0 {
+      fill: var(--muted);
+    }
+
+    svg.chart .tip-hit {
+      fill: transparent;
+      cursor: crosshair;
+      outline: none;
+    }
+
+    /* Drawer Action Button */
+    .inspect-btn {
+      margin-top: 10px;
+      width: 100%;
+      padding: 8px 12px;
+      border-radius: 10px;
+      background: var(--surface-2);
+      border: 1px solid var(--line);
+      color: var(--ink);
+      font: 500 12px Inter, sans-serif;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      transition: all .15s;
+    }
+
+    .inspect-btn:hover {
+      border-color: var(--real);
+      color: var(--real);
+      background: color-mix(in srgb, var(--real) 7%, var(--surface));
+    }
+
+    .inspect-btn .tag {
+      font: 500 10.5px "JetBrains Mono", monospace;
+      color: var(--muted);
+    }
+
+    /* Lens Visibility Modifiers */
+    body[data-lens="executive"] .data-only {
+      display: none !important;
+    }
+
+    body[data-lens="data"] .exec-only {
+      display: none !important;
+    }
+
+    .live-ticker[hidden] {
+      display: none;
+    }
+
+    /* Phones: the lens switch does not fit next to the brand and the icons */
     @media (max-width: 640px) {
-      .chips { position: relative; }
-      .chip[tabindex] { position: static; }
-      .chip .pop { width: auto; right: 0; }
+      .lens-switch {
+        display: none;
+      }
     }
 
-    .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
-
-    @keyframes pulse { 50% { opacity: .3; } }
-
-    .tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-top: 14px; }
-    .tile { padding: 18px; }
-    .tile strong { display: block; font-size: clamp(26px, 3.4vw, 36px); line-height: 1.1; letter-spacing: -.03em; font-weight: 650; }
-    .tile span { color: var(--ink-2); font-size: 14px; }
-    .tile small { display: block; color: var(--muted); font-size: 12px; margin-top: 6px; }
-    @media (max-width: 860px) { .tiles { grid-template-columns: 1fr 1fr; } }
-    .glance { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; margin-top: 14px; }
-    .glance > div { padding: 18px; border-left: 1px solid var(--line); min-width: 0; }
-    .glance > div:first-child { border-left: 0; }
-    .glance p { margin: 6px 0 0; font-size: 14px; color: var(--ink-2); }
-    .glance b { color: var(--ink); font-weight: 600; }
-    @media (max-width: 860px) { .glance { grid-template-columns: 1fr 1fr; } .glance > div:nth-child(3) { border-left: 0; } .glance > div:nth-child(n+3) { border-top: 1px solid var(--line); } }
-    @media (max-width: 520px) { .glance { grid-template-columns: 1fr; } .glance > div { border-left: 0; } .glance > div + div { border-top: 1px solid var(--line); } }
-
-    .takeaway { margin: 14px 0 0; padding: 12px 16px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--line); font-size: 14.5px; color: var(--ink-2); }
-    .takeaway b { color: var(--ink); }
-
-    /* ───────────── chapters ───────────── */
-    .chapter { padding: 64px 0 24px; border-top: 1px solid var(--line); }
-    .chapter-head { display: grid; grid-template-columns: 120px 1fr; gap: 24px; margin-bottom: 28px; }
-    .chapter-no { font-family: "Instrument Serif", serif; font-style: italic; font-size: 64px; line-height: .9; color: var(--muted); }
-    h2 { font-size: clamp(28px, 3.6vw, 42px); line-height: 1.08; letter-spacing: -.03em; margin: 6px 0 14px; font-weight: 700; max-width: 22ch; }
-    h2 .serif { font-weight: 400; }
-    .chapter-head p { color: var(--ink-2); max-width: 66ch; margin: 0 0 10px; }
-    @media (max-width: 760px) { .chapter-head { grid-template-columns: 1fr; gap: 0; } .chapter-no { font-size: 44px; } }
-    h3 { font-size: 18px; letter-spacing: -.015em; margin: 0 0 6px; }
-    .sub { color: var(--muted); font-size: 14px; margin: 0 0 14px; }
-
-    .card {
-      background: var(--surface); border: 1px solid var(--line); border-top-color: var(--line-strong);
-      border-radius: 16px; box-shadow: var(--shadow); min-width: 0;
+    .load-error:empty {
+      display: none;
     }
-    .panel { padding: 22px; margin-bottom: 16px; }
-    .panel-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; margin-bottom: 6px; }
-    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-    .grid-2 > .panel { margin-bottom: 0; }
 
-    @media (max-width: 860px) { .grid-2 { grid-template-columns: 1fr; } .panel { padding: 18px; } }
-
-    .prov { display: inline-flex; flex-wrap: wrap; gap: 6px; }
-    .badge {
-      display: inline-flex; align-items: center; gap: 6px; font: 500 11px/1 "JetBrains Mono", monospace; letter-spacing: .03em;
-      padding: 5px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--ink-2); background: var(--surface-2); max-width: 100%; line-height: 1.35;
+    /* ───────────── SLIDE-OVER INSPECTOR DRAWER ───────────── */
+    .drawer-mask {
+      position: fixed;
+      inset: 0;
+      z-index: 90;
+      background: rgba(3, 6, 12, .65);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity .25s, visibility 0s linear .25s;   /* hide only after the fade-out */
     }
-    .badge i { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
-    .b-real i { background: var(--real); }
 
-    .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--line); border-radius: 12px; overflow: hidden; border: 1px solid var(--line); margin: 14px 0 18px; }
-    .kpi { background: var(--surface); padding: 14px 16px; min-width: 0; }
-    .kpi strong { display: block; font-size: 22px; letter-spacing: -.02em; font-weight: 650; overflow-wrap: anywhere; }
-    .kpi span { color: var(--muted); font-size: 13px; }
-    @media (max-width: 640px) { .kpis { grid-template-columns: 1fr 1fr; } }
+    .drawer-mask.open {
+      opacity: 1;
+      visibility: visible;
+      transition: opacity .25s, visibility 0s;                /* visible at once, so focus can move in */
+    }
 
-    .latest { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 18px; margin: 14px 0 0; padding: 10px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); font-size: 13px; color: var(--muted); }
-    .latest[hidden] { display: none; }
+    .drawer {
+      position: fixed;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 100;
+      width: min(760px, 100vw);
+      background: var(--surface);
+      border-left: 1px solid var(--line-strong);
+      box-shadow: -24px 0 60px rgba(0, 0, 0, .65);
+      display: flex;
+      flex-direction: column;
+      transform: translateX(100%);
+      transition: transform .3s cubic-bezier(.16, 1, .3, 1);
+    }
 
-    /* forecast scorecard: day-ahead and intraday keep these colours in every chart */
-    :root { --fc-da: var(--rec); --fc-id: var(--prec); }
-    .fc { margin-top: 16px; }
-    .fc-first { margin-top: 0; }
-    .fc-intro { max-width: 78ch; margin: 10px 0 0; }
-    .fc-h { margin: 22px 0 8px; font-size: 15px; font-weight: 600; }
-    .fc-tables { margin-top: 6px; }
-    .fc details.sql { margin-top: 12px; }
-    .latest .lt-label { font: 500 11px/1.35 "JetBrains Mono", monospace; letter-spacing: .03em; color: var(--ink-2); }
-    .latest .lt-val { display: inline-flex; align-items: baseline; gap: 6px; }
-    .latest .lt-val i { width: 7px; height: 7px; border-radius: 50%; display: inline-block; align-self: center; }
-    .latest .lt-val strong { font-size: 17px; font-weight: 650; color: var(--ink); font-variant-numeric: tabular-nums; }
-    .latest .lt-when { flex-basis: 100%; }
+    .drawer-mask.open .drawer {
+      transform: translateX(0);
+    }
 
-    .seg { display: inline-flex; padding: 3px; gap: 2px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); flex-wrap: wrap; }
+    .drawer-top {
+      flex: none;
+      padding: 16px 24px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      background: var(--surface-2);
+    }
+
+    .drawer-top h3 {
+      margin: 0;
+      font-size: 17px;
+      font-weight: 650;
+    }
+
+    .drawer-tabs {
+      flex: none;
+      display: flex;
+      gap: 6px;
+      padding: 10px 24px;
+      border-bottom: 1px solid var(--line);
+      overflow-x: auto;
+      background: var(--surface);
+    }
+
+    .dtab {
+      font: 500 12.5px Inter, sans-serif;
+      padding: 6px 12px;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      background: var(--surface-2);
+      color: var(--ink-2);
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .dtab[aria-selected="true"] {
+      background: var(--real);
+      color: #fff;
+      border-color: var(--real);
+    }
+
+    .drawer-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 22px 24px;
+    }
+
+    .drawer-pane {
+      display: none;
+    }
+
+    .drawer-pane.active {
+      display: block;
+    }
+
+    /* Shared Components inside Drawers */
+    .seg {
+      display: inline-flex;
+      padding: 2px;
+      gap: 2px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface-2);
+    }
+
     .seg button {
-      font: 500 13px/1 Inter, sans-serif; color: var(--ink-2); background: transparent; border: 0; border-radius: 7px; padding: 8px 12px; cursor: pointer;
+      font: 500 12px Inter, sans-serif;
+      color: var(--ink-2);
+      background: transparent;
+      border: 0;
+      border-radius: 6px;
+      padding: 5px 10px;
+      cursor: pointer;
     }
-    .seg button[aria-pressed="true"] { background: var(--surface); color: var(--ink); box-shadow: 0 1px 2px rgba(0, 0, 0, .2); }
-    .btn {
-      font: 500 13px/1 Inter, sans-serif; color: var(--ink); background: var(--surface-2); border: 1px solid var(--line);
-      border-radius: 9px; padding: 9px 12px; cursor: pointer; text-decoration: none; display: inline-flex; gap: 6px; align-items: center;
+
+    .seg button[aria-pressed="true"] {
+      background: var(--surface);
+      color: var(--ink);
+      box-shadow: 0 1px 2px rgba(0, 0, 0, .2);
     }
-    .btn:hover { border-color: var(--line-strong); }
 
-    /* charts */
-    .chart-box { position: relative; margin-top: 8px; }
-    svg.chart { display: block; width: 100%; height: auto; overflow: visible; }
-    svg.chart text { font: 12px Inter, sans-serif; fill: var(--muted); }
-    svg.chart .lbl { fill: var(--ink-2); font-weight: 500; }
-    svg.chart .axis-title { fill: var(--ink-2); font: 500 11.5px Inter, sans-serif; letter-spacing: .01em; }
-    svg.chart .tip-text { fill: var(--ink); font: 12px "JetBrains Mono", monospace; }
-    svg.chart .tip-text .t0 { fill: var(--muted); }
-    svg.chart .tip-hit { fill: transparent; cursor: crosshair; outline: none; }
-    svg.chart .tip-hit:focus-visible { stroke: var(--focus); stroke-width: 2; }
-    .legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 13px; color: var(--ink-2); margin: 4px 0 0; }
-    .legend span { display: inline-flex; align-items: center; gap: 6px; }
-    .legend i { width: 14px; height: 3px; border-radius: 2px; display: inline-block; }
-    .legend i.band { height: 10px; background: var(--band); border: 1px dashed var(--axis); }
-    .legend i.pt { width: 9px; height: 9px; border-radius: 50%; }
-    .error { color: var(--fault); font-size: 14px; margin: 8px 0 0; }
-    .error:empty { display: none; }
-    .note { color: var(--muted); font-size: 13.5px; margin: 12px 0 0; }
-    .loading { color: var(--muted); font-size: 14px; }
+    .kpis-4 {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      margin: 12px 0 16px;
+    }
 
-    /* tables */
-    .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; }
-    table { width: 100%; border-collapse: collapse; font-size: 14px; }
-    th, td { padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--line); white-space: nowrap; }
-    th { font: 500 11.5px/1.3 "JetBrains Mono", monospace; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); background: var(--surface-2); }
-    tbody tr:last-child td { border-bottom: 0; }
-    td.r, th.r { text-align: right; }
-    tbody tr.pick { cursor: pointer; }
-    tbody tr.pick:hover { background: var(--surface-2); }
-    tbody tr[aria-selected="true"] { background: color-mix(in srgb, var(--fault) 10%, var(--surface)); }
+    @media (max-width: 640px) {
+      .kpis-4 {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
 
-    /* bars (HTML) */
-    .bars { display: grid; gap: 14px; }
-    .bar-row { display: grid; grid-template-columns: minmax(110px, 190px) 1fr; gap: 14px; align-items: center; }
-    .bar-row .name { font-size: 14px; color: var(--ink-2); }
-    .bar-row .name b { color: var(--ink); font-weight: 600; display: block; }
+    .kpi {
+      background: var(--surface-2);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 10px 12px;
+    }
 
-    .bar { display: flex; align-items: center; gap: 8px; min-width: 0; }
-    .bar > i { display: block; height: 10px; border-radius: 0 4px 4px 0; min-width: 2px; transition: width .6s cubic-bezier(.2, .7, .2, 1); }
-    .bar > span { font: 12.5px "JetBrains Mono", monospace; color: var(--ink-2); white-space: nowrap; }
-    @media (max-width: 560px) { .bar-row { grid-template-columns: 1fr; gap: 6px; } }
+    .kpi strong {
+      display: block;
+      font-size: 17px;
+      font-weight: 650;
+    }
 
-    /* pipeline + ERD */
-    .pipeline { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; }
+    .kpi span {
+      font-size: 11.5px;
+      color: var(--muted);
+    }
+
+    .takeaway {
+      margin: 12px 0;
+      padding: 10px 14px;
+      border-radius: 10px;
+      background: var(--surface-2);
+      border: 1px solid var(--line);
+      font-size: 13px;
+      color: var(--ink-2);
+    }
+
+    .takeaway b {
+      color: var(--ink);
+    }
+
+    .note {
+      font-size: 12.5px;
+      color: var(--muted);
+      line-height: 1.5;
+      margin: 10px 0;
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      margin: 10px 0 16px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    th,
+    td {
+      padding: 8px 12px;
+      text-align: left;
+      border-bottom: 1px solid var(--line);
+      white-space: nowrap;
+    }
+
+    th {
+      font: 500 11px "JetBrains Mono", monospace;
+      text-transform: uppercase;
+      color: var(--muted);
+      background: var(--surface-2);
+    }
+
+    td.r,
+    th.r {
+      text-align: right;
+    }
+
+    details.sql {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--surface-2);
+      margin-top: 10px;
+    }
+
+    details.sql summary {
+      cursor: pointer;
+      padding: 10px 14px;
+      font: 500 12px "JetBrains Mono", monospace;
+      color: var(--ink-2);
+    }
+
+    details.sql pre {
+      margin: 0;
+      padding: 12px 14px;
+      border-top: 1px solid var(--line);
+      overflow-x: auto;
+      font-size: 12px;
+      line-height: 1.5;
+      color: var(--ink-2);
+      max-height: 360px;
+    }
+
+    /* Pipeline & Partitions in Craft Drawer */
+    .pipeline {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 6px;
+      margin: 10px 0;
+    }
+
+    @media (max-width: 600px) {
+      .pipeline {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+
     .step {
-      text-align: center; font: inherit; color: var(--ink-2); background: var(--surface-2); border: 1px solid var(--line);
-      border-radius: 12px; padding: 14px 10px; cursor: pointer; min-width: 0; position: relative;
-      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+      text-align: left;
+      background: var(--surface-2);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 10px;
+      cursor: pointer;
+      color: var(--ink-2);
     }
-    .step b { display: block; color: var(--ink); font-size: 14px; font-weight: 600; }
-    .step small { font: 11px "JetBrains Mono", monospace; color: var(--muted); }
-    .step[aria-current="step"] { border-color: var(--real); background: color-mix(in srgb, var(--real) 10%, var(--surface)); }
-    .inspector { margin-top: 12px; padding: 14px 16px; border-radius: 12px; border: 1px dashed var(--line-strong); color: var(--ink-2); font-size: 14.5px; min-height: 70px; }
-    .inspector b { color: var(--ink); }
-    @media (max-width: 860px) { .pipeline { grid-template-columns: repeat(2, 1fr); } }
 
-    .query { margin: 12px 0 10px; padding: 10px 12px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 10px; font-size: 12px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ink-2); }
-    .parts-summary { font-size: 14px; color: var(--ink-2); margin: 0 0 8px; min-height: 22px; }
-    .parts-summary b { color: var(--ink); }
-    .plist { display: grid; gap: 3px; }
+    .step b {
+      display: block;
+      color: var(--ink);
+      font-size: 12.5px;
+    }
+
+    .step small {
+      font: 10.5px "JetBrains Mono", monospace;
+      color: var(--muted);
+    }
+
+    .step[aria-current="step"] {
+      border-color: var(--real);
+      background: color-mix(in srgb, var(--real) 10%, var(--surface));
+    }
+
+    .inspector-box {
+      padding: 12px;
+      border-radius: 10px;
+      border: 1px dashed var(--line-strong);
+      font-size: 13px;
+      color: var(--ink-2);
+      margin-bottom: 16px;
+    }
+
+    .plist {
+      display: grid;
+      gap: 3px;
+      margin: 10px 0;
+    }
+
     .prow {
-      display: grid; grid-template-columns: 76px 1fr auto; align-items: center; gap: 10px; width: 100%;
-      padding: 5px 8px; border-radius: 8px; border: 1px solid transparent; background: none;
-      font: inherit; color: var(--ink-2); text-align: left; cursor: pointer;
+      display: grid;
+      grid-template-columns: 74px 1fr auto;
+      align-items: center;
+      gap: 8px;
+      padding: 5px 8px;
+      border-radius: 7px;
+      border: 1px solid transparent;
+      background: none;
+      color: var(--ink-2);
+      cursor: pointer;
+      text-align: left;
     }
-    .prow:hover { background: var(--surface-2); }
-    .prow .m { font: 500 12.5px "JetBrains Mono", monospace; }
-    .prow .fill { display: flex; align-items: center; gap: 8px; min-width: 0; }
-    .prow .fill i { display: block; height: 8px; border-radius: 0 4px 4px 0; background: var(--real); }
-    .prow .fill span { font: 11.5px "JetBrains Mono", monospace; color: var(--muted); white-space: nowrap; }
-    .prow .st { font: 500 11px "JetBrains Mono", monospace; letter-spacing: .03em; text-transform: uppercase; }
-    .prow.scan { border-color: color-mix(in srgb, var(--real) 45%, transparent); background: color-mix(in srgb, var(--real) 9%, var(--surface)); color: var(--ink); }
-    .prow.scan .st { color: var(--real); }
-    .prow.pruned { opacity: .5; }
-    .prow.pruned .st { color: var(--muted); }
 
-    /* SQL drawers */
-    details.sql { border: 1px solid var(--line); border-radius: 12px; background: var(--surface); margin-top: 12px; }
-    details.sql summary { cursor: pointer; padding: 12px 16px; font: 500 13px "JetBrains Mono", monospace; color: var(--ink-2); list-style: none; display: flex; gap: 10px; align-items: baseline; overflow-wrap: anywhere; min-width: 0; }
-    details.sql summary::-webkit-details-marker { display: none; }
-    details.sql summary::before { content: "▸"; color: var(--muted); transition: transform .2s; }
-    details.sql[open] summary::before { transform: rotate(90deg); }
-    details.sql pre { margin: 0; padding: 14px 16px; border-top: 1px solid var(--line); overflow-x: auto; font-size: 12.5px; line-height: 1.55; color: var(--ink-2); max-height: 460px; }
-    details.sql .links { padding: 0 16px 14px; font-size: 13px; }
-
-    /* craft */
-    .cmd { position: relative; }
-    .cmd pre { margin: 0; padding: 16px; padding-right: 76px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 12px; overflow-x: auto; font-size: 13px; line-height: 1.7; color: var(--ink-2); }
-    .cmd .btn { position: absolute; top: 10px; right: 10px; }
-
-    .layer { border: 1px solid var(--line); background: var(--surface-2); border-radius: 10px; padding: 8px 12px; font-size: 13.5px; }
-    .layer b { font-family: "JetBrains Mono", monospace; margin-right: 6px; }
-
-    footer { border-top: 1px solid var(--line); margin-top: 48px; padding: 32px 0 48px; color: var(--muted); font-size: 13.5px; }
-    footer .wrap { display: flex; flex-wrap: wrap; gap: 12px 28px; justify-content: space-between; }
-
-    .noscript { background: var(--fault); color: #fff; padding: 10px 16px; text-align: center; font-size: 14px; }
-
-    /* reveal on scroll (only when JS runs and motion is welcome) */
-    @media (prefers-reduced-motion: no-preference) {
-      .js .reveal { opacity: 0; transform: translateY(22px); transition: opacity .6s ease, transform .7s cubic-bezier(.2, .7, .2, 1); }
-      .js .reveal.above { transform: translateY(-22px); }
-      .js .reveal.in { opacity: 1; transform: none; }
+    .prow.scan {
+      border-color: color-mix(in srgb, var(--real) 45%, transparent);
+      background: color-mix(in srgb, var(--real) 9%, var(--surface));
+      color: var(--ink);
     }
-    @media (prefers-reduced-motion: reduce) {
-      html { scroll-behavior: auto; }
-      *, *::before, *::after { animation: none !important; transition: none !important; }
+
+    .prow.scan .st {
+      color: var(--real);
     }
-    @media print {
-      .topbar, .actions, .seg, .btn, .icon-btn, details.sql summary::before { display: none !important; }
-      body { background: #fff; color: #000; }
-      body::before { display: none; }
-      .card { box-shadow: none; break-inside: avoid; }
-      details.sql pre { max-height: none; }
+
+    .prow.pruned {
+      opacity: .45;
+    }
+
+    .prow .fill {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .prow .fill i {
+      display: block;
+      height: 7px;
+      border-radius: 3px;
+      background: var(--real);
+    }
+
+    .prow .st {
+      font: 500 10.5px "JetBrains Mono", monospace;
+      text-transform: uppercase;
+    }
+
+    .bars {
+      display: grid;
+      gap: 10px;
+      margin: 10px 0;
+    }
+
+    .bar-row {
+      display: grid;
+      grid-template-columns: 160px 1fr;
+      gap: 10px;
+      align-items: center;
+      font-size: 12.5px;
+    }
+
+    .bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .bar>i {
+      display: block;
+      height: 8px;
+      border-radius: 4px;
+      transition: width .5s;
+    }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      font-size: 12px;
+      color: var(--ink-2);
+      margin: 4px 0;
+    }
+
+    .legend span {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .legend i {
+      width: 12px;
+      height: 3px;
+      border-radius: 2px;
+      display: inline-block;
     }
   </style>
 </head>
-<body>
-  <noscript><div class="noscript">This page draws its charts with JavaScript. The text below still explains every result; enable JavaScript to see the data.</div></noscript>
 
+<body data-lens="all">
+
+  <!-- ───────────── TOP VITAL-SIGN HEADER ───────────── -->
   <header class="topbar">
-    <div class="wrap">
-      <a class="brand" href="#top" aria-label="Back to top">
-        <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true"><rect x="1" y="1" width="22" height="22" rx="6" fill="none" stroke="currentColor" stroke-opacity=".35"/><path d="M4 14h4l2-7 3 11 2-6 1 2h4" fill="none" stroke="var(--real)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <div class="topbar-inner">
+      <a class="brand" href="#top" aria-label="Grid in SQL Home">
+        <span class="pulse-ring" aria-hidden="true"></span>
         <span>Grid in SQL</span>
       </a>
-      <nav class="nav" aria-label="Chapters">
-        <a href="#grid"><span class="idx">01</span>Grid</a>
-        <a href="#forecasts-ch"><span class="idx">02</span>Forecasts</a>
-        <a href="#co2-ch"><span class="idx">03</span>Cleanest hours</a>
-        <a href="#events-ch"><span class="idx">04</span>Events</a>
-        <a href="#cold-ch"><span class="idx">05</span>Cold</a>
-        <a href="#engineering"><span class="idx">06</span>Craft</a>
-      </nav>
+
+      <div class="live-ticker" id="live-ticker" aria-live="polite" hidden>
+        <span>Latest Fingrid: <b id="tick-wind">– MW</b> wind</span>
+        <span>·</span>
+        <span><b id="tick-cons">– MW</b> demand</span>
+        <span>·</span>
+        <span id="tick-age"></span>
+      </div>
+
+      <div class="lens-switch" role="group" aria-label="Perspective Lens">
+        <button type="button" class="lens-btn" data-lens="all" aria-pressed="true">Observatory</button>
+        <button type="button" class="lens-btn" data-lens="executive" aria-pressed="false">Executive</button>
+        <button type="button" class="lens-btn" data-lens="data" aria-pressed="false">Data & SQL</button>
+      </div>
+
       <div class="actions">
-        <a class="icon-btn" href="https://github.com/miladgk/industrial-energy-sql-pipeline" target="_blank" rel="noopener noreferrer" aria-label="Source code on GitHub">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48v-1.7c-2.78.6-3.37-1.34-3.37-1.34-.46-1.16-1.11-1.47-1.11-1.47-.9-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.89 1.53 2.34 1.09 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.55-1.11-4.55-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.65 0 0 .84-.27 2.75 1.02a9.56 9.56 0 0 1 5 0c1.91-1.29 2.75-1.02 2.75-1.02.55 1.38.2 2.4.1 2.65.64.7 1.03 1.59 1.03 2.68 0 3.84-2.34 4.68-4.57 4.93.36.31.68.92.68 1.85v2.74c0 .27.18.58.69.48A10 10 0 0 0 12 2Z"/></svg>
+        <a class="icon-btn" href="https://github.com/miladgk/industrial-energy-sql-pipeline" target="_blank"
+          rel="noopener noreferrer" aria-label="Source code on GitHub">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path fill="currentColor"
+              d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48v-1.7c-2.78.6-3.37-1.34-3.37-1.34-.46-1.16-1.11-1.47-1.11-1.47-.9-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.89 1.53 2.34 1.09 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.55-1.11-4.55-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.65 0 0 .84-.27 2.75 1.02a9.56 9.56 0 0 1 5 0c1.91-1.29 2.75-1.02 2.75-1.02.55 1.38.2 2.4.1 2.65.64.7 1.03 1.59 1.03 2.68 0 3.84-2.34 4.68-4.57 4.93.36.31.68.92.68 1.85v2.74c0 .27.18.58.69.48A10 10 0 0 0 12 2Z" />
+          </svg>
         </a>
         <button class="icon-btn" type="button" id="theme-toggle" aria-label="Switch colour theme" aria-pressed="false">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M12 3v2M12 19v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M3 12h2M19 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"/><circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
+              d="M12 3v2M12 19v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M3 12h2M19 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4" />
+            <circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="1.8" />
+          </svg>
         </button>
       </div>
     </div>
   </header>
 
-  <main id="top">
-    <!-- ───────────── HERO ───────────── -->
-    <section class="hero">
-      <div class="wrap">
-        <div class="eyebrow">A data engineering project · PostgreSQL · SQL · Python · FastAPI</div>
+  <!-- ───────────── MAIN BENTO COCKPIT ───────────── -->
+  <main class="cockpit" id="top">
+
+    <!-- Compact Thesis & Proof Strip -->
+    <section class="thesis-bar" aria-label="Project Summary">
+      <div>
         <h1>Finland's electricity grid, <span class="serif">read in SQL.</span></h1>
-        <p class="lede">Fingrid, Finland's grid operator, publishes hundreds of measurements and forecasts as open data, one chart at a time. This pipeline keeps <span class="n-datasets">25</span> of them in a partitioned PostgreSQL warehouse and asks what no single chart answers: how good are the forecasts, when tomorrow will electricity be cleanest, and what unusual happened on the grid.</p>
-        <div class="chips">
-          <span class="chip" tabindex="0" aria-describedby="tip-real"><i style="background:var(--real)"></i>Real data: Fingrid Open Data, CC BY 4.0<span class="info" aria-hidden="true">i</span>
-            <span class="pop" role="tooltip" id="tip-real"><b>Real measurements and forecasts.</b> Fingrid is Finland's electricity transmission system operator. Its Open Data API publishes production, consumption, forecasts, balancing, CO<sub>2</sub> intensity and frequency. Licence: CC BY 4.0, free to reuse with attribution.</span></span>
-          <span class="chip" tabindex="0" aria-describedby="tip-fresh"><i style="background:var(--fc-da)"></i>Refreshed every day<span class="info" aria-hidden="true">i</span>
-            <span class="pop" role="tooltip" id="tip-fresh"><b>Automated.</b> A GitHub Action syncs the warehouse every day after Fingrid publishes the next day's forecasts at 12:00 Finnish time, reruns the SQL and redeploys this page. The latest values above the first chart refresh every hour.</span></span>
-        </div>
-
-        <div class="tiles">
-          <div class="card tile reveal"><strong id="proof-rows">–</strong><span>rows in the warehouse</span><small id="proof-rows-sub"><span class="n-datasets">25</span> Fingrid datasets</small></div>
-          <div class="card tile reveal"><strong id="proof-wind">–</strong><span>average miss of the day-ahead wind forecast</span><small id="proof-wind-sub">last 12 months</small></div>
-          <div class="card tile reveal"><strong id="proof-co2">–</strong><span>less CO<sub>2</sub> in the hour this page picks as cleanest</span><small id="proof-co2-sub">replayed over the past year</small></div>
-          <div class="card tile reveal"><strong id="proof-events">–</strong><span>grid events found in the last 12 months</span><small>frequency, nuclear, inertia, price</small></div>
-        </div>
-
-        <div class="card glance reveal" aria-label="The project at a glance">
-          <div><div class="eyebrow">What was built</div><p>A Python sync from the Fingrid API into <b>PostgreSQL</b> (monthly partitions, idempotent upserts, a quality gate), analytics in plain <b>SQL</b> files and functions, a <b>FastAPI</b> service over the same SQL, and this static page.</p></div>
-          <div><div class="eyebrow">Data</div><p><b><span class="n-datasets">25</span> Fingrid datasets</b>, from 1-minute frequency and temperature to hourly capacity, kept exactly as published since October 2025 and growing every day.</p></div>
-          <div><div class="eyebrow">Questions</div><p>How far off are Fingrid's own forecasts? When is tomorrow's electricity cleanest? What unusual happened on the grid, and do independent sensors agree?</p></div>
-          <div><div class="eyebrow">Tested</div><p id="glance-tests">Loading…</p></div>
-        </div>
+        <p><span class="n-datasets">25</span> Fingrid open datasets unified in a partitioned PostgreSQL warehouse—scoring forecast error, predicting
+          tomorrow's cleanest hours, and logging grid anomalies.</p>
+      </div>
+      <div class="thesis-stats">
+        <div class="t-stat"><strong id="proof-rows">–</strong><span>warehouse rows</span></div>
+        <div class="t-stat"><strong id="proof-wind">–</strong><span>day-ahead wind miss</span></div>
+        <div class="t-stat"><strong id="proof-co2">–</strong><span>CO₂ saved by the forecast's pick</span></div>
+        <div class="t-stat"><strong id="proof-events">–</strong><span>grid events (12m)</span></div>
       </div>
     </section>
 
-    <!-- ───────────── 01 WORLD ───────────── -->
-    <section id="grid" class="chapter" aria-labelledby="grid-title">
-      <div class="wrap">
-        <div class="chapter-head reveal">
-          <div class="chapter-no">01</div>
-          <div>
-            <div class="eyebrow">The grid · <span class="badge b-real"><i></i>Real data</span></div>
-            <h2 id="grid-title">Wind and demand, <span class="serif">day by day.</span></h2>
-            <p id="grid-desc">Wind production (Fingrid dataset 75) and electricity consumption (dataset 124) in Finland, 15-minute values from the warehouse averaged per day, for the last 12 months. The row above the chart shows the newest values.</p>
-          </div>
-        </div>
-        <div class="card panel reveal">
-          <div class="panel-top">
+    <!-- 4-Chamber Spatial Bento Grid -->
+    <div class="bento">
+
+      <!-- CHAMBER 1 (HERO LEFT): REALITY VS FORECAST & GRID PULSE -->
+      <article class="tile tile-hero">
+        <div>
+          <div class="tile-head">
             <div>
-              <h3 id="grid-chart-title">Daily average power (MW)</h3>
-              <div class="prov" id="grid-prov"></div>
+              <div class="eyebrow"><i></i>01 · Pulse & Forecast Integrity</div>
+              <h2>Wind, Demand & <span class="serif">Forecast Error.</span></h2>
+            </div>
+            <div class="seg" id="hero-chart-switch" role="group" aria-label="Primary chart view">
+              <button type="button" data-view="grid" aria-pressed="true">Grid 12m</button>
+              <button type="button" data-view="forecast" aria-pressed="false">Forecast Miss</button>
             </div>
           </div>
-          <div class="latest" id="grid-latest" aria-live="polite" hidden></div>
-          <div class="kpis" id="grid-kpis"></div>
-          <div class="legend"><span><i style="background:var(--real)"></i>Wind production</span><span><i style="background:var(--cons)"></i>Electricity consumption</span></div>
-          <div class="chart-box"><svg id="grid-chart" class="chart" role="img" aria-label="Daily average wind production and electricity consumption in Finland"><desc>Two lines in megawatts, one value per day.</desc></svg></div>
-          <p class="takeaway" id="grid-takeaway"></p>
-          <p id="grid-error" class="error"></p>
+          <p class="tile-copy" id="hero-tile-copy">Daily average wind production vs. national consumption over the last
+            12 months, updated daily via GitHub Actions.</p>
+          <div class="mini-kpis" id="hero-mini-kpis">
+            <div class="mkpi"><strong id="mk-wind-mean">–</strong><span>avg wind production</span></div>
+            <div class="mkpi"><strong id="mk-wind-share">–</strong><span>wind share of demand</span></div>
+          </div>
         </div>
 
+        <div class="chart-stage">
+          <svg id="bento-hero-chart" class="chart" role="img" aria-label="Primary grid and forecast chart">
+            <desc>Interactive visualization of Finland's electricity grid.</desc>
+          </svg>
+        </div>
+
+        <button type="button" class="inspect-btn data-only" data-open-drawer="pane-forecasts">
+          <span>Inspect Forecast Scorecard, Balancing & SQL</span>
+          <span class="tag">2 SQL files · Tables ↗</span>
+        </button>
+      </article>
+
+      <!-- CHAMBER 2 (TOP MIDDLE): CLEANEST HOURS TOMORROW -->
+      <article class="tile">
+        <div>
+          <div class="tile-head">
+            <div>
+              <div class="eyebrow"><i></i>02 · Carbon Optics</div>
+              <h2>Cleanest <span class="serif" id="co2-tile-when">Hours Tomorrow.</span></h2>
+            </div>
+          </div>
+          <div class="mini-kpis">
+            <div class="mkpi"><strong id="mk-co2-best">–</strong><span>cleanest 3h window</span></div>
+            <div class="mkpi"><strong id="mk-co2-low">–</strong><span>lowest intensity</span></div>
+          </div>
+        </div>
+
+        <div class="chart-stage">
+          <svg id="bento-co2-chart" class="chart" role="img" aria-label="Forecast CO2 intensity by hour">
+            <desc>Hourly CO2 forecast curve.</desc>
+          </svg>
+        </div>
+
+        <button type="button" class="inspect-btn data-only" data-open-drawer="pane-co2">
+          <span>Inspect Yesterday's Replay & Regression SQL</span>
+          <span class="tag">14_co2_forecast.sql ↗</span>
+        </button>
+      </article>
+
+      <!-- CHAMBER 3 (TOP RIGHT): GRID EVENTS & ANOMALIES -->
+      <article class="tile">
+        <div>
+          <div class="tile-head">
+            <div>
+              <div class="eyebrow"><i></i>03 · Grid Anomalies</div>
+              <h2>When the Grid <span class="serif">Trembles.</span></h2>
+            </div>
+          </div>
+          <div class="mini-kpis">
+            <div class="mkpi"><strong id="mk-ev-freq">–</strong><span>frequency excursions</span></div>
+            <div class="mkpi"><strong id="mk-ev-peak-min">–</strong><span>worst minute of hour</span></div>
+          </div>
+        </div>
+
+        <div class="chart-stage">
+          <svg id="bento-ev-chart" class="chart" role="img" aria-label="Frequency excursions by minute of the hour">
+            <desc>Minute-by-minute distribution of frequency excursions.</desc>
+          </svg>
+        </div>
+
+        <button type="button" class="inspect-btn data-only" data-open-drawer="pane-events">
+          <span>Open Event Log & Detector SQL</span>
+          <span class="tag">15_grid_events.sql ↗</span>
+        </button>
+      </article>
+
+      <!-- CHAMBER 4 (BOTTOM MIDDLE): THERMODYNAMICS OF COLD -->
+      <article class="tile">
+        <div>
+          <div class="tile-head">
+            <div>
+              <div class="eyebrow"><i></i>04 · Thermodynamics</div>
+              <h2>Cost of <span class="serif">Arctic Cold.</span></h2>
+            </div>
+          </div>
+          <div class="mini-kpis">
+            <div class="mkpi"><strong id="mk-cold-slope">–</strong><span>added per °C below threshold</span></div>
+            <div class="mkpi"><strong id="mk-cold-r2">–</strong><span>weekday model r²</span></div>
+          </div>
+        </div>
+
+        <div class="chart-stage">
+          <svg id="bento-cold-chart" class="chart" role="img" aria-label="Consumption against temperature">
+            <desc>Consumption curve vs outdoor temperature.</desc>
+          </svg>
+        </div>
+
+        <button type="button" class="inspect-btn data-only" data-open-drawer="pane-cold">
+          <span>Inspect 4-City Thermal Model</span>
+          <span class="tag">23_temperature_sensitivity.sql ↗</span>
+        </button>
+      </article>
+
+      <!-- CHAMBER 5 (BOTTOM RIGHT): THE ENGINEERING CRAFT -->
+      <article class="tile">
+        <div>
+          <div class="tile-head">
+            <div>
+              <div class="eyebrow"><i></i>05 · PostgreSQL Craft</div>
+              <h2>Partitioned, <span class="serif">Tested & Fast.</span></h2>
+            </div>
+          </div>
+          <p class="tile-copy" id="mk-craft-summary">Monthly table partitioning, primary-key indexing, automated CI
+            quality gates, and reproducible snapshots.</p>
+          <div class="mini-kpis">
+            <div class="mkpi"><strong id="mk-craft-speedup">–</strong><span>index query speedup</span></div>
+            <div class="mkpi"><strong id="mk-craft-tests">–</strong><span>automated CI tests</span></div>
+          </div>
+        </div>
+
+        <button type="button" class="inspect-btn data-only" data-open-drawer="pane-craft">
+          <span>Launch Partition Pruning & CI Inspector</span>
+          <span class="tag">Architecture · CLI ↗</span>
+        </button>
+      </article>
+
+    </div>
+  </main>
+
+  <!-- ───────────── SLIDE-OVER INSPECTOR DRAWER (DEEP DIVE) ───────────── -->
+  <div class="drawer-mask" id="drawer-mask" aria-hidden="true">
+    <aside class="drawer" role="dialog" aria-modal="true" aria-labelledby="drawer-heading">
+      <div class="drawer-top">
+        <h3 id="drawer-heading">Observatory Deep Inspector</h3>
+        <button type="button" class="icon-btn" id="drawer-close" aria-label="Close Inspector">✕</button>
       </div>
-    </section>
 
-    <section id="forecasts-ch" class="chapter" aria-labelledby="forecasts-ch-title">
-      <div class="wrap">
-        <div class="chapter-head reveal">
-          <div class="chapter-no">02</div>
-          <div>
-            <div class="eyebrow">Forecasts · <span class="badge b-real"><i></i>Real data</span></div>
-            <h2 id="forecasts-ch-title">Forecasts, <span class="serif">checked against reality.</span></h2>
-            <p>Fingrid forecasts wind and consumption a day ahead and again every 15 minutes. Its site shows the forecasts and the measurements; nobody shows how far apart they were. The warehouse lines them up for every quarter-hour of the year.</p>
-          </div>
-        </div>
+      <nav class="drawer-tabs" role="tablist" aria-label="Inspector Sections">
+        <button type="button" class="dtab" role="tab" data-pane="pane-forecasts" aria-selected="true">01 · Forecasts &
+          Balancing</button>
+        <button type="button" class="dtab" role="tab" data-pane="pane-co2" aria-selected="false">02 · CO₂ Model</button>
+        <button type="button" class="dtab" role="tab" data-pane="pane-events" aria-selected="false">03 · Grid
+          Events</button>
+        <button type="button" class="dtab" role="tab" data-pane="pane-cold" aria-selected="false">04 · Cold
+          Sensitivity</button>
+        <button type="button" class="dtab" role="tab" data-pane="pane-craft" aria-selected="false">05 · Craft &
+          Partitions</button>
+      </nav>
 
-        <div class="card panel reveal fc fc-first" id="forecasts">
-          <div class="panel-top">
-            <div>
-              <h3>How good are Fingrid's own forecasts?</h3>
-              <div class="prov" id="fc-prov"></div>
-            </div>
+      <div class="drawer-body">
+
+        <!-- PANE 1: FORECASTS -->
+        <div class="drawer-pane active" id="pane-forecasts">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+            <h4 style="margin:0">Fingrid Forecasts vs. Reality</h4>
             <div class="seg" id="fc-tabs" role="group" aria-label="Forecast variable">
               <button type="button" data-var="wind" aria-pressed="true">Wind</button>
               <button type="button" data-var="consumption" aria-pressed="false">Consumption</button>
             </div>
           </div>
-          <p class="sub fc-intro">Fingrid publishes its forecasts and the measured values as separate datasets, but not how far apart they were. Here every 15-minute forecast of the last 12 months is lined up with what actually happened, and the gap is scored in SQL. Two forecasts are compared: the <b>day-ahead</b> one, fixed at noon the day before, and the <b>intraday</b> one, updated every 15 minutes until the moment itself.</p>
-          <div class="kpis" id="fc-kpis"></div>
-          <h4 class="fc-h" id="fc-hour-title">Average miss by hour of the day (MW)</h4>
-          <div class="legend" id="fc-legend"><span><i style="background:var(--fc-da)"></i>Day-ahead forecast</span><span><i style="background:var(--fc-id)"></i>Intraday forecast</span></div>
-          <div class="chart-box"><svg id="fc-hour-chart" class="chart" role="img" aria-label="Mean absolute forecast error by hour of the day, Finnish time"><desc>Two lines, one per forecast, with the average absolute error in megawatts for each hour of the day.</desc></svg></div>
+          <p class="note" id="fc-prov-text">Every 15-minute forecast of the last 12 months lined up with measured
+            reality in SQL.</p>
+          <div class="kpis-4" id="fc-kpis"></div>
+          <div class="legend"><span><i style="background:var(--fc-da)"></i>Day-ahead forecast</span><span><i
+                style="background:var(--fc-id)"></i>Intraday forecast</span></div>
+          <div style="height:240px; margin:8px 0;"><svg id="fc-hour-chart" class="chart"
+              aria-label="Mean absolute forecast error by hour"></svg></div>
           <p class="takeaway" id="fc-takeaway"></p>
 
-          <div class="fc-tables">
-            <div>
-              <h4 class="fc-h">The five worst day-ahead days</h4>
-              <div class="table-wrap">
-                <table>
-                  <thead><tr><th scope="col">Day</th><th scope="col" class="r">Actual avg</th><th scope="col" class="r">Forecast avg</th><th scope="col" class="r">Avg miss</th></tr></thead>
-                  <tbody id="fc-misses"><tr><td colspan="4" class="loading">Loading…</td></tr></tbody>
-                </table>
-              </div>
-            </div>
-            <div>
-              <h4 class="fc-h">When the forecast is wrong, the grid has to react</h4>
-              <div class="table-wrap">
-                <table>
-                  <thead><tr><th scope="col">Day-ahead surprise</th><th scope="col" class="r">Quarter-hours</th><th scope="col" class="r">mFRR need</th><th scope="col" class="r">Activated up</th><th scope="col" class="r">Activated down</th><th scope="col" class="r">Imbalance price</th></tr></thead>
-                  <tbody id="fc-balancing"><tr><td colspan="6" class="loading">Loading…</td></tr></tbody>
-                </table>
-              </div>
-              <p class="note" id="fc-balancing-note"></p>
-            </div>
+          <h4>The five worst day-ahead days</h4>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Day</th>
+                  <th class="r">Actual avg</th>
+                  <th class="r">Forecast avg</th>
+                  <th class="r">Avg miss</th>
+                </tr>
+              </thead>
+              <tbody id="fc-misses">
+                <tr>
+                  <td colspan="4">Loading…</td>
+                </tr>
+              </tbody>
+            </table>
           </div>
-          <p id="fc-error" class="error"></p>
-          <details class="sql" id="sql-13"><summary>Inspect the SQL · sql/analysis/13_forecast_scorecard.sql</summary><pre>Loading…</pre></details>
-          <details class="sql" id="sql-17"><summary>Inspect the SQL · sql/analysis/17_forecast_error_vs_balancing.sql</summary><pre>Loading…</pre></details>
+
+          <h4>When the forecast is wrong, the grid reacts (mFRR Balancing)</h4>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Day-ahead surprise</th>
+                  <th class="r">Quarter-hours</th>
+                  <th class="r">mFRR need</th>
+                  <th class="r">Activated up</th>
+                  <th class="r">Activated down</th>
+                  <th class="r">Imbalance price</th>
+                </tr>
+              </thead>
+              <tbody id="fc-balancing">
+                <tr>
+                  <td colspan="6">Loading…</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="note" id="fc-balancing-note"></p>
+          <p id="fc-error" class="load-error" role="alert" style="color:var(--fault)"></p>
+
+          <details class="sql" id="sql-13">
+            <summary>Inspect SQL · sql/analysis/13_forecast_scorecard.sql</summary>
+            <pre>Loading…</pre>
+          </details>
+          <details class="sql" id="sql-17">
+            <summary>Inspect SQL · sql/analysis/17_forecast_error_vs_balancing.sql</summary>
+            <pre>Loading…</pre>
+          </details>
         </div>
 
-      </div>
-    </section>
-
-    <section id="co2-ch" class="chapter" aria-labelledby="co2-ch-title">
-      <div class="wrap">
-        <div class="chapter-head reveal">
-          <div class="chapter-no">03</div>
-          <div>
-            <div class="eyebrow">Cleanest hours · <span class="badge b-real"><i></i>Real data</span></div>
-            <h2 id="co2-ch-title">When is electricity <span class="serif">cleanest tomorrow?</span></h2>
-            <p>The CO<sub>2</sub> intensity of electricity in Finland changes hour by hour with wind, demand and imports. Fingrid publishes it only as it happens; this forecasts it a day ahead, in SQL, and keeps score.</p>
-          </div>
-        </div>
-
-        <div class="card panel reveal fc fc-first" id="co2">
-          <div class="panel-top">
-            <div>
-              <h3 id="co2-title">When is electricity cleanest tomorrow?</h3>
-              <div class="prov" id="co2-prov"></div>
-            </div>
-          </div>
-          <p class="sub fc-intro">Fingrid publishes the CO<sub>2</sub> intensity of the electricity consumed in Finland only as it happens. This page forecasts it hour by hour, from Fingrid's own day-ahead forecasts of consumption, wind and solar: the demand that wind and solar do not cover is met by imports and thermal plants, so the intensity rises with it. Shifting flexible use, such as charging a car, to the cleanest hours cuts its emissions.</p>
-          <div class="kpis" id="co2-kpis"></div>
-          <h4 class="fc-h" id="co2-chart-title">Forecast CO<sub>2</sub> intensity by hour (gCO<sub>2</sub>/kWh)</h4>
-          <div class="chart-box"><svg id="co2-chart" class="chart" role="img" aria-label="Forecast CO2 intensity of electricity consumed in Finland, by hour"><desc>One line with the forecast grams of CO2 per kilowatt-hour for each hour; the cleanest and dirtiest hours are marked.</desc></svg></div>
+        <!-- PANE 2: CO2 -->
+        <div class="drawer-pane" id="pane-co2">
+          <h4 id="co2-title" style="margin-top:0">When is electricity cleanest tomorrow?</h4>
+          <div class="kpis-4" id="co2-kpis"></div>
+          <div style="height:230px; margin:8px 0;"><svg id="co2-chart" class="chart"
+              aria-label="Forecast CO2 intensity by hour"></svg></div>
           <p class="takeaway" id="co2-takeaway"></p>
 
-          <h4 class="fc-h" id="co2-past-title">Yesterday: forecast against what happened</h4>
-          <div class="legend"><span><i style="background:var(--ink)"></i>Measured by Fingrid</span><span><i style="background:var(--fc-da)"></i>Forecast (dashed)</span></div>
-          <div class="chart-box"><svg id="co2-past-chart" class="chart" role="img" aria-label="Yesterday's CO2 intensity forecast compared with the measured values"><desc>Two lines per hour: the measured intensity and the forecast made the day before.</desc></svg></div>
+          <h4 id="co2-past-title">Yesterday: forecast against reality</h4>
+          <div class="legend"><span><i style="background:var(--ink)"></i>Measured by Fingrid</span><span><i
+                style="background:var(--fc-da)"></i>Forecast (dashed)</span></div>
+          <div style="height:200px; margin:8px 0;"><svg id="co2-past-chart" class="chart"
+              aria-label="Yesterday CO2 forecast vs actual"></svg></div>
 
-          <h4 class="fc-h">Track record</h4>
-          <div class="kpis" id="co2-record"></div>
+          <h4>Backtest Track Record</h4>
+          <div class="kpis-4" id="co2-record"></div>
           <p class="note" id="co2-note"></p>
-          <p id="co2-error" class="error"></p>
-          <details class="sql" id="sql-14"><summary>Inspect the SQL · sql/schema/14_co2_forecast.sql (the model)</summary><pre>Loading…</pre></details>
+          <p id="co2-error" class="load-error" role="alert" style="color:var(--fault)"></p>
+          <details class="sql" id="sql-14">
+            <summary>Inspect SQL · sql/schema/14_co2_forecast.sql</summary>
+            <pre>Loading…</pre>
+          </details>
         </div>
 
-      </div>
-    </section>
+        <!-- PANE 3: EVENTS -->
+        <div class="drawer-pane" id="pane-events">
+          <h4 style="margin-top:0">Unusual Grid Events (Last 12 Months)</h4>
+          <div class="kpis-4" id="ev-kpis"></div>
 
-    <section id="events-ch" class="chapter" aria-labelledby="events-ch-title">
-      <div class="wrap">
-        <div class="chapter-head reveal">
-          <div class="chapter-no">04</div>
-          <div>
-            <div class="eyebrow">Events · <span class="badge b-real"><i></i>Real data</span></div>
-            <h2 id="events-ch-title">What happened <span class="serif">on the grid.</span></h2>
-            <p>Frequency excursions, fast drops in nuclear output, hours with little spinning mass, and price spikes: the unusual moments of the year, found by one SQL function across four datasets.</p>
-          </div>
-        </div>
-
-        <div class="card panel reveal fc fc-first" id="events">
-          <div class="panel-top">
-            <div>
-              <h3>What happened on the grid</h3>
-              <div class="prov" id="ev-prov"></div>
-            </div>
-          </div>
-          <p class="sub fc-intro">Fingrid shows its signals live, one at a time. This log keeps the unusual moments of the last 12 months, found in SQL across four of them: the grid frequency leaving its normal band, Finnish nuclear output dropping fast, the Nordic system running with very little inertia, and the imbalance price spiking.</p>
-          <div class="kpis" id="ev-kpis"></div>
-          <h4 class="fc-h">Latest events (frequency excursions are counted above, not listed)</h4>
+          <h4>Latest events (excluding frequency excursions counted above)</h4>
           <div class="table-wrap">
             <table>
-              <thead><tr><th scope="col">When (Finnish time)</th><th scope="col">Event</th><th scope="col" class="r">Peak</th><th scope="col" class="r">Lasted</th></tr></thead>
-              <tbody id="ev-recent"><tr><td colspan="4" class="loading">Loading…</td></tr></tbody>
+              <thead>
+                <tr>
+                  <th>When (Finnish time)</th>
+                  <th>Event</th>
+                  <th class="r">Peak</th>
+                  <th class="r">Lasted</th>
+                </tr>
+              </thead>
+              <tbody id="ev-recent">
+                <tr>
+                  <td colspan="4">Loading…</td>
+                </tr>
+              </tbody>
             </table>
           </div>
-          <h4 class="fc-h">The largest of the year</h4>
+
+          <h4>Largest anomalies of the year</h4>
           <div class="table-wrap">
             <table>
-              <thead><tr><th scope="col">Event</th><th scope="col">When (Finnish time)</th><th scope="col" class="r">Peak</th></tr></thead>
-              <tbody id="ev-top"><tr><td colspan="3" class="loading">Loading…</td></tr></tbody>
+              <thead>
+                <tr>
+                  <th>Event</th>
+                  <th>When (Finnish time)</th>
+                  <th class="r">Peak</th>
+                </tr>
+              </thead>
+              <tbody id="ev-top">
+                <tr>
+                  <td colspan="3">Loading…</td>
+                </tr>
+              </tbody>
             </table>
           </div>
-          <h4 class="fc-h">When in the hour does the frequency leave its normal band?</h4>
-          <div class="chart-box"><svg id="ev-minute-chart" class="chart" role="img" aria-label="Share of one-minute frequency samples outside 49.9 to 50.1 hertz, by minute of the hour"><desc>One line with a value for each minute from 0 to 59; the last minute before the hour is marked.</desc></svg></div>
+
+          <h4>Frequency excursions by minute of the hour</h4>
+          <div style="height:210px; margin:8px 0;"><svg id="ev-minute-chart" class="chart"
+              aria-label="Frequency excursions by minute"></svg></div>
           <p class="takeaway" id="ev-takeaway"></p>
           <p class="note" id="ev-note"></p>
-          <p id="ev-error" class="error"></p>
-          <details class="sql" id="sql-15"><summary>Inspect the SQL · sql/schema/15_grid_events.sql (the detector)</summary><pre>Loading…</pre></details>
-        </div>
-      </div>
-    </section>
-
-    <!-- ───────────── 02 MACHINE ───────────── -->
-    <section id="cold-ch" class="chapter" aria-labelledby="cold-ch-title">
-      <div class="wrap">
-        <div class="chapter-head reveal">
-          <div class="chapter-no">05</div>
-          <div>
-            <div class="eyebrow">Cold · <span class="badge b-real"><i></i>Real data</span></div>
-            <h2 id="cold-ch-title">What every degree <span class="serif">of cold costs.</span></h2>
-            <p>Finland heats a large share of its homes with electricity. Fingrid also publishes the temperature in four cities, from Helsinki in the south to Rovaniemi on the Arctic Circle; set against the national consumption, they show how much each colder day adds.</p>
-          </div>
+          <p id="ev-error" class="load-error" role="alert" style="color:var(--fault)"></p>
+          <details class="sql" id="sql-15">
+            <summary>Inspect SQL · sql/schema/15_grid_events.sql</summary>
+            <pre>Loading…</pre>
+          </details>
         </div>
 
-        <div class="card panel reveal fc fc-first" id="cold">
-          <div class="panel-top">
-            <div>
-              <h3>Consumption against temperature</h3>
-              <div class="prov" id="cold-prov"></div>
-            </div>
-          </div>
-          <div class="kpis" id="cold-kpis"></div>
-          <h4 class="fc-h">Average daily consumption by daily temperature (MW)</h4>
-          <div class="legend"><span><i style="background:var(--fc-da)"></i>Weekdays</span><span><i style="background:var(--fc-id)"></i>Weekends</span><span><i style="background:var(--ink-2)"></i>Model, weekdays (dashed)</span></div>
-          <div class="chart-box"><svg id="cold-chart" class="chart" role="img" aria-label="Average daily electricity consumption in Finland by daily temperature, weekdays and weekends"><desc>Two lines of average consumption per 3-degree temperature band, falling as it gets warmer and flattening above about 15 degrees, with the fitted model as a dashed line.</desc></svg></div>
+        <!-- PANE 4: COLD -->
+        <div class="drawer-pane" id="pane-cold">
+          <h4 style="margin-top:0">Consumption vs. Outdoor Temperature</h4>
+          <div class="kpis-4" id="cold-kpis"></div>
+          <div class="legend"><span><i style="background:var(--fc-da)"></i>Weekdays</span><span><i
+                style="background:var(--fc-id)"></i>Weekends</span><span><i style="background:var(--ink-2)"></i>Model
+              (dashed)</span></div>
+          <div style="height:240px; margin:8px 0;"><svg id="cold-chart" class="chart"
+              aria-label="Consumption vs temperature"></svg></div>
           <p class="takeaway" id="cold-takeaway"></p>
           <p class="note" id="cold-note"></p>
-          <p id="cold-error" class="error"></p>
-          <details class="sql" id="sql-23"><summary>Inspect the SQL · sql/analysis/23_temperature_sensitivity.sql (the model)</summary><pre>Loading…</pre></details>
-        </div>
-      </div>
-    </section>
-
-    <section id="engineering" class="chapter" aria-labelledby="eng-title">
-      <div class="wrap">
-        <div class="chapter-head reveal">
-          <div class="chapter-no">06</div>
-          <div>
-            <div class="eyebrow">The craft</div>
-            <h2 id="eng-title">Fast, tested, <span class="serif">and reproducible.</span></h2>
-            <p>The parts a chart does not show: how the data gets in and stays correct, why the queries are fast, the tests that keep the numbers true, and the commands to rebuild all of it.</p>
-          </div>
+          <p id="cold-error" class="load-error" role="alert" style="color:var(--fault)"></p>
+          <details class="sql" id="sql-23">
+            <summary>Inspect SQL · sql/analysis/23_temperature_sensitivity.sql</summary>
+            <pre>Loading…</pre>
+          </details>
         </div>
 
-        <div class="card panel reveal">
-          <h3>Seven stages, from Fingrid to this page</h3>
-          <p class="sub">Select a stage to inspect it.</p>
+        <!-- PANE 5: CRAFT & PARTITIONS -->
+        <div class="drawer-pane" id="pane-craft">
+          <h4 style="margin-top:0">7-Stage Data Pipeline</h4>
           <div class="pipeline" id="pipeline" role="list"></div>
-          <div class="inspector" id="inspector" aria-live="polite"></div>
-        </div>
+          <div class="inspector-box" id="inspector" aria-live="polite"></div>
 
-        <div class="grid-2 reveal" style="margin-top:16px">
-          <div class="card panel">
-            <div class="panel-top">
-              <div><h3>Partition pruning</h3></div>
-              <div class="seg" id="parts-mode" role="group" aria-label="Query shape">
-                <button type="button" data-mode="month" aria-pressed="true">One month</button>
-                <button type="button" data-mode="all" aria-pressed="false">No time filter</button>
-              </div>
-            </div>
-            <p class="sub" id="parts-sub"><code>fingrid_observation</code> is stored as one table per month. Pick a month: PostgreSQL opens only that partition and never reads the others (<b>skipped</b>).</p>
-            <pre class="query" id="parts-query" aria-label="Example query"></pre>
-            <p class="parts-summary" id="parts-summary" aria-live="polite"></p>
-            <div class="plist" id="parts" role="group" aria-label="Partitions of the fingrid_observation table"></div>
-            <p class="note" id="parts-note"></p>
-          </div>
-          <div>
-            <div class="card panel">
-              <h3 id="bench-title">One index, many times faster</h3>
-              <p class="sub" id="bench-sub">One dataset, one week, on the real warehouse.</p>
-              <div class="bars" id="bench"></div>
-              <p class="note" id="bench-note"></p>
-            </div>
-            <div class="card panel" style="margin-top:16px">
-              <h3 id="tests-title">Automated tests</h3>
-              <p class="sub">Each layer answers a different question. All run in CI on every pull request, against a restored copy of the real warehouse.</p>
-              <div class="bars" id="tests"></div>
-              <p class="note" id="tests-note"></p>
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-top:16px;">
+            <h4 style="margin:0">Interactive Partition Pruning</h4>
+            <div class="seg" id="parts-mode" role="group">
+              <button type="button" data-mode="month" aria-pressed="true">One month</button>
+              <button type="button" data-mode="all" aria-pressed="false">No time filter</button>
             </div>
           </div>
-        </div>
+          <pre id="parts-query"
+            style="background:var(--surface-2); padding:10px; border-radius:8px; border:1px solid var(--line); font-size:11.5px; overflow-x:auto;"></pre>
+          <p class="note" id="parts-summary" style="color:var(--ink)"></p>
+          <div class="plist" id="parts"></div>
+          <p class="note" id="parts-note"></p>
 
-        <div class="card panel reveal" style="margin-top:16px">
-          <h3>Run it yourself</h3>
-          <p class="sub">Loads the published warehouse snapshot (no Fingrid key needed), then serves and tests it. Add a free Fingrid API key to <code>config.yaml</code> to sync new data with <code>make sync</code>.</p>
-          <div class="cmd">
-            <pre id="cmd-text">git clone https://github.com/miladgk/industrial-energy-sql-pipeline.git
+          <h4 id="bench-title" style="margin-top:18px">Index Benchmark</h4>
+          <div class="bars" id="bench"></div>
+          <p class="note" id="bench-note"></p>
+
+          <h4 id="tests-title" style="margin-top:18px">Automated CI Test Suite</h4>
+          <div class="bars" id="tests"></div>
+          <p class="note" id="tests-note"></p>
+
+          <h4 style="margin-top:18px">Run Locally</h4>
+          <div style="position:relative;">
+            <pre id="cmd-text"
+              style="background:var(--surface-2); padding:12px; border-radius:8px; border:1px solid var(--line); font-size:11.5px; overflow-x:auto;">git clone https://github.com/miladgk/industrial-energy-sql-pipeline.git
 cd industrial-energy-sql-pipeline
 cp config_template.yaml config.yaml
 pip install -r requirements.txt
@@ -689,721 +1438,619 @@ docker compose up -d
 make db-setup snapshot-restore quality-checks
 make api        # http://localhost:8000/docs
 make test</pre>
-            <button class="btn" type="button" id="copy-cmd">Copy</button>
+            <button type="button" class="dtab" id="copy-cmd"
+              style="position:absolute; top:8px; right:8px;">Copy</button>
           </div>
         </div>
+
       </div>
-    </section>
-  </main>
-
-  <footer>
-    <div class="wrap">
-      <span>Data: Fingrid Open Data (CC BY 4.0), processed in this repository.</span>
-      <span id="foot-gen"></span>
-      <span><a href="https://github.com/miladgk/industrial-energy-sql-pipeline" target="_blank" rel="noopener noreferrer">Source on GitHub</a> · <a href="https://miladgk.github.io/" target="_blank" rel="noopener noreferrer">Milad Ghaemi</a></span>
-    </div>
-  </footer>
-
+    </aside>
+  </div>
   <script>
-  "use strict";
-  const $ = id => document.getElementById(id);
-  const fmt = (v, d = 0) => (v == null || !isFinite(v)) ? "–"
-    : Number(v).toLocaleString("en-US", {minimumFractionDigits: d, maximumFractionDigits: d});
-  const pct = (v, d = 1) => v == null ? "–" : `${fmt(v, d)}%`;
-  const dayFmt = iso => new Date(iso).toLocaleDateString("en-GB", {day: "numeric", month: "short", year: "numeric", timeZone: "UTC"});
-  const hhmm = iso => new Date(iso).toLocaleTimeString("en-GB", {hour: "2-digit", minute: "2-digit", timeZone: "UTC"});
-  const el = (tag, attrs = {}, text) => { const n = document.createElement(tag); for (const k in attrs) n.setAttribute(k, attrs[k]); if (text != null) n.textContent = text; return n; };
-  async function getJSON(url, opts) {
-    const res = await fetch(url, opts);
-    if (!res.ok) throw new Error(`${url} returned HTTP ${res.status}`);
-    return res.json();
-  }
-  const safe = p => p.catch(() => null);
-
-  /* ───────── theme ───────── */
-  (function theme() {
-    const btn = $("theme-toggle");
-    const sync = () => btn.setAttribute("aria-pressed", String(document.documentElement.dataset.theme === "light"));
-    sync();
-    btn.addEventListener("click", () => {
-      const next = document.documentElement.dataset.theme === "light" ? "dark" : "light";
-      document.documentElement.dataset.theme = next;
-      try { localStorage.setItem("theme", next); } catch (e) { /* storage blocked */ }
-      sync();
-    });
-  })();
-
-  /* ───────── line chart (SVG, crosshair tooltip, keyboard scrubbing) ───────── */
-  const NS = "http://www.w3.org/2000/svg";
-  const charts = new Map();
-  const svgEl = (tag, attrs = {}) => { const n = document.createElementNS(NS, tag); for (const k in attrs) n.setAttribute(k, attrs[k]); return n; };
-
-  function lineChart(svg, cfg) { charts.set(svg, cfg); drawLine(svg, cfg); }
-  function niceStep(span, count) {
-    const raw = span / count, p = Math.pow(10, Math.floor(Math.log10(raw))), f = raw / p;
-    return (f < 1.5 ? 1 : f < 3 ? 2 : f < 7 ? 5 : 10) * p;
-  }
-
-  function drawLine(svg, cfg) {
-    const {series, labels, height = 300, yFmt = null, xTick = () => null, tipTitle = l => l, tipValue = v => fmt(v, 1),
-           band = null, points = [], forceZero = true, yMin, yMax, directLabels = series.length > 1, vline = null,
-           yLabel = null, xLabel = null} = cfg;
-    const keep = Array.from(svg.childNodes).filter(n => n.nodeName === "desc" || n.nodeName === "title");
-    svg.replaceChildren(...keep);
-    const W = Math.max(280, Math.round(svg.getBoundingClientRect().width || svg.parentNode.clientWidth || 800));
-    const H = height;
-    svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
-    const narrow = W < 520;
-    const m = {l: narrow ? 46 : 58, r: directLabels ? (narrow ? 70 : 104) : 14, t: yLabel ? 30 : 12, b: xLabel ? 50 : 30};
-    const vals = series.flatMap(s => s.values).filter(v => Number.isFinite(v));
-    if (band) vals.push(band.lo, band.hi);
-    let lo = yMin ?? Math.min(...vals), hi = yMax ?? Math.max(...vals);
-    if (yMin == null && forceZero) lo = Math.min(lo, 0);
-    const step = niceStep((hi - lo) || 1, narrow ? 3 : 4);
-    if (yMin == null) lo = Math.floor(lo / step + 1e-9) * step;
-    if (yMax == null) hi = Math.ceil(hi / step - 1e-9) * step;
-    if (hi <= lo) hi = lo + step;
-    const dec = Math.max(0, Math.ceil(-Math.log10(step) - 1e-9));
-    const tickFmt = yFmt || (v => fmt(Math.abs(v) < step / 1e6 ? 0 : v, dec));
-    const n = labels.length;
-    const x = i => m.l + (n <= 1 ? 0 : i * (W - m.l - m.r) / (n - 1));
-    const y = v => H - m.b - (v - lo) * (H - m.t - m.b) / ((hi - lo) || 1);
-    const g = svgEl("g");
-    svg.appendChild(g);
-
-    const tickStep = (yMin != null && yMax != null) ? niceStep(hi - lo, 4) : step;
-    for (let v = lo, t = 0; v <= hi + tickStep * 1e-6; v += tickStep, t++) {
-      const ty = y(v);
-      g.appendChild(svgEl("line", {x1: m.l, x2: W - m.r, y1: ty, y2: ty, style: `stroke:var(${t === 0 ? "--axis" : "--grid"})`, "stroke-width": 1}));
-      const tx = svgEl("text", {x: m.l - 8, y: ty + 4, "text-anchor": "end"}); tx.textContent = tickFmt(v); g.appendChild(tx);
+    "use strict";
+    const $ = id => document.getElementById(id);
+    const fmt = (v, d = 0) => (v == null || !isFinite(v)) ? "–"
+      : Number(v).toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
+    const dayFmt = iso => new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+    const el = (tag, attrs = {}, text) => { const n = document.createElement(tag); for (const k in attrs) n.setAttribute(k, attrs[k]); if (text != null) n.textContent = text; return n; };
+    async function getJSON(url, opts) {
+      const res = await fetch(url, opts);
+      if (!res.ok) throw new Error(`${url} returned HTTP ${res.status}`);
+      return res.json();
     }
-    if (yLabel) { const tx = svgEl("text", {x: 0, y: 13, class: "axis-title"}); tx.textContent = yLabel; g.appendChild(tx); }
-    if (xLabel) { const tx = svgEl("text", {x: (m.l + W - m.r) / 2, y: H - 8, "text-anchor": "middle", class: "axis-title"}); tx.textContent = xLabel; g.appendChild(tx); }
-    if (!forceZero && lo < 0 && hi > 0) g.appendChild(svgEl("line", {x1: m.l, x2: W - m.r, y1: y(0), y2: y(0), style: "stroke:var(--axis)", "stroke-width": 1}));
-    labels.forEach((l, i) => {
-      const t = xTick(i, l, narrow);
-      if (t == null) return;
-      const tx = svgEl("text", {x: x(i), y: H - m.b + 19, "text-anchor": "middle"}); tx.textContent = t; g.appendChild(tx);
-    });
-    if (band) {
-      const top = y(Math.min(band.hi, hi)), bot = y(Math.max(band.lo, lo));
-      g.appendChild(svgEl("rect", {x: m.l, width: W - m.l - m.r, y: top, height: Math.max(0, bot - top), style: "fill:var(--band)"}));
-      [band.lo, band.hi].forEach(v => { if (v > lo && v < hi) g.appendChild(svgEl("line", {x1: m.l, x2: W - m.r, y1: y(v), y2: y(v), style: "stroke:var(--axis)", "stroke-dasharray": "3 4"})); });
-    }
-    if (vline != null) g.appendChild(svgEl("line", {x1: x(vline), x2: x(vline), y1: m.t, y2: H - m.b, style: "stroke:var(--ink-2)", "stroke-dasharray": "2 3"}));
+    const safe = p => p.catch(() => null);
 
-    series.forEach(s => {
-      let d = "", pen = false;
-      s.values.forEach((v, i) => {
-        if (!Number.isFinite(v)) { pen = false; return; }
-        d += `${pen ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`; pen = true;
+    /* ───────── 1. THEME & PERSPECTIVE LENS SWITCHER ───────── */
+    (function initControls() {
+      const tBtn = $("theme-toggle");
+      const syncTheme = () => tBtn.setAttribute("aria-pressed", String(document.documentElement.dataset.theme === "light"));
+      syncTheme();
+      tBtn.addEventListener("click", () => {
+        const next = document.documentElement.dataset.theme === "light" ? "dark" : "light";
+        document.documentElement.dataset.theme = next;
+        try { localStorage.setItem("theme", next); } catch (e) { }
+        syncTheme();
+        redrawAllCharts();
       });
-      g.appendChild(svgEl("path", {d, fill: "none", style: `stroke:${s.color}`, "stroke-width": s.width || 2, "stroke-linejoin": "round", "stroke-linecap": "round", ...(s.dash ? {"stroke-dasharray": s.dash} : {})}));
-      if (s.dots) s.values.forEach((v, i) => Number.isFinite(v) && g.appendChild(svgEl("circle", {cx: x(i), cy: y(v), r: 3, style: `fill:${s.color}`})));
+
+      // Lens switcher (Observatory / Executive / Data & SQL)
+      document.querySelectorAll(".lens-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const lens = btn.dataset.lens;
+          document.body.dataset.lens = lens;
+          document.querySelectorAll(".lens-btn").forEach(b => b.setAttribute("aria-pressed", String(b === btn)));
+          if (lens === "data") openDrawer("pane-craft");
+          if (lens === "executive") closeDrawer();
+        });
+      });
+    })();
+
+    /* ───────── 2. SLIDE-OVER INSPECTOR DRAWER LOGIC ───────── */
+    const mask = $("drawer-mask");
+    let drawerOpener = null;
+    function openDrawer(paneId) {
+      if (!mask.classList.contains("open")) drawerOpener = document.activeElement;
+      mask.classList.add("open");
+      mask.setAttribute("aria-hidden", "false");
+      switchDrawerPane(paneId);
+      $("drawer-close").focus({ preventScroll: true });
+    }
+    function closeDrawer() {
+      if (!mask.classList.contains("open")) return;
+      mask.classList.remove("open");
+      mask.setAttribute("aria-hidden", "true");
+      if (drawerOpener && drawerOpener.focus) drawerOpener.focus({ preventScroll: true });
+    }
+    function switchDrawerPane(paneId) {
+      document.querySelectorAll(".drawer-tabs .dtab").forEach(t => t.setAttribute("aria-selected", String(t.dataset.pane === paneId)));
+      document.querySelectorAll(".drawer-pane").forEach(p => p.classList.toggle("active", p.id === paneId));
+      // Redraw SVG charts inside newly visible drawer pane so bounding boxes are accurate
+      requestAnimationFrame(() => redrawAllCharts());
+    }
+
+    document.querySelectorAll("[data-open-drawer]").forEach(btn => {
+      btn.addEventListener("click", () => openDrawer(btn.dataset.openDrawer));
     });
-    points.forEach(p => {
-      g.appendChild(svgEl("circle", {cx: x(p.i), cy: y(p.v), r: p.r || 6, style: `fill:${p.color}; stroke:var(--surface)`, "stroke-width": 2}));
-      if (p.label) {
-        const right = x(p.i) > W * .7;
-        const tx = svgEl("text", {x: x(p.i) + (right ? -10 : 10), y: y(p.v) + (p.dy || 4), "text-anchor": right ? "end" : "start", class: "lbl"});
-        tx.textContent = p.label; g.appendChild(tx);
+    document.querySelectorAll(".drawer-tabs .dtab").forEach(tab => {
+      tab.addEventListener("click", () => switchDrawerPane(tab.dataset.pane));
+    });
+    $("drawer-close").addEventListener("click", closeDrawer);
+    mask.addEventListener("click", e => { if (e.target === mask) closeDrawer(); });
+    document.addEventListener("keydown", e => { if (e.key === "Escape" && mask.classList.contains("open")) closeDrawer(); });
+
+    /* ───────── 3. SVG LINE CHART ENGINE (WITH CROSSHAIR & KEYBOARD SCRUB) ───────── */
+    const NS = "http://www.w3.org/2000/svg";
+    const charts = new Map();
+    const svgEl = (tag, attrs = {}) => { const n = document.createElementNS(NS, tag); for (const k in attrs) n.setAttribute(k, attrs[k]); return n; };
+
+    function lineChart(svg, cfg) {
+      if (!svg) return;
+      charts.set(svg, cfg);
+      drawLine(svg, cfg);
+    }
+    function redrawAllCharts() {
+      charts.forEach((cfg, svg) => {
+        if (svg.offsetParent !== null) drawLine(svg, cfg);
+      });
+    }
+    function niceStep(span, count) {
+      const raw = span / count, p = Math.pow(10, Math.floor(Math.log10(raw))), f = raw / p;
+      return (f < 1.5 ? 1 : f < 3 ? 2 : f < 7 ? 5 : 10) * p;
+    }
+
+    function drawLine(svg, cfg) {
+      const { series, labels, height = 220, yFmt = null, xTick = () => null, tipTitle = l => l, tipValue = v => fmt(v, 1),
+        points = [], forceZero = true, yMin, yMax, directLabels = false } = cfg;
+      const keep = Array.from(svg.childNodes).filter(n => n.nodeName === "desc" || n.nodeName === "title");
+      svg.replaceChildren(...keep);
+      const rect = svg.getBoundingClientRect();
+      const W = Math.max(240, Math.round(rect.width || svg.parentNode.clientWidth || 420));
+      const H = Math.max(130, Math.round(rect.height || height));
+      svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+
+      const m = { l: 44, r: directLabels ? 86 : 12, t: 10, b: 24 };
+      const vals = series.flatMap(s => s.values).filter(v => Number.isFinite(v));
+      if (!vals.length) return;
+      let lo = yMin ?? Math.min(...vals), hi = yMax ?? Math.max(...vals);
+      if (yMin == null && forceZero) lo = Math.min(lo, 0);
+      const step = niceStep((hi - lo) || 1, 3);
+      if (yMin == null) lo = Math.floor(lo / step + 1e-9) * step;
+      if (yMax == null) hi = Math.ceil(hi / step - 1e-9) * step;
+      if (hi <= lo) hi = lo + step;
+      const dec = Math.max(0, Math.ceil(-Math.log10(step) - 1e-9));
+      const tickFmt = yFmt || (v => fmt(Math.abs(v) < step / 1e6 ? 0 : v, dec));
+      const n = labels.length;
+      const x = i => m.l + (n <= 1 ? 0 : i * (W - m.l - m.r) / (n - 1));
+      const y = v => H - m.b - (v - lo) * (H - m.t - m.b) / ((hi - lo) || 1);
+      const g = svgEl("g");
+      svg.appendChild(g);
+
+      for (let v = lo, t = 0; v <= hi + step * 1e-6; v += step, t++) {
+        const ty = y(v);
+        g.appendChild(svgEl("line", { x1: m.l, x2: W - m.r, y1: ty, y2: ty, style: `stroke:var(${t === 0 ? "--axis" : "--grid"})`, "stroke-width": 1 }));
+        const tx = svgEl("text", { x: m.l - 6, y: ty + 3.5, "text-anchor": "end" }); tx.textContent = tickFmt(v); g.appendChild(tx);
       }
-    });
-    if (directLabels) {
-      const ends = series.map(s => { let i = s.values.length - 1; while (i > 0 && !Number.isFinite(s.values[i])) i--; return {s, yy: y(s.values[i])}; })
-        .sort((a, b) => a.yy - b.yy);
-      for (let k = 1; k < ends.length; k++) if (ends[k].yy - ends[k - 1].yy < 16) ends[k].yy = ends[k - 1].yy + 16;
-      ends.forEach(({s, yy}) => {
-        g.appendChild(svgEl("line", {x1: W - m.r + 6, x2: W - m.r + 16, y1: yy, y2: yy, style: `stroke:${s.color}`, "stroke-width": 3, "stroke-linecap": "round"}));
-        const tx = svgEl("text", {x: W - m.r + 21, y: yy + 4, class: "lbl"}); tx.textContent = s.short || s.name; g.appendChild(tx);
+      labels.forEach((l, i) => {
+        const t = xTick(i, l, W < 420);
+        if (t == null) return;
+        const tx = svgEl("text", { x: x(i), y: H - 6, "text-anchor": "middle" }); tx.textContent = t; g.appendChild(tx);
+      });
+
+      series.forEach(s => {
+        let d = "", pen = false;
+        s.values.forEach((v, i) => {
+          if (!Number.isFinite(v)) { pen = false; return; }
+          d += `${pen ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`; pen = true;
+        });
+        g.appendChild(svgEl("path", { d, fill: "none", style: `stroke:${s.color}`, "stroke-width": s.width || 2, "stroke-linejoin": "round", "stroke-linecap": "round", ...(s.dash ? { "stroke-dasharray": s.dash } : {}) }));
+        if (s.dots) s.values.forEach((v, i) => Number.isFinite(v) && g.appendChild(svgEl("circle", { cx: x(i), cy: y(v), r: 2.5, style: `fill:${s.color}` })));
+      });
+
+      points.forEach(p => {
+        g.appendChild(svgEl("circle", { cx: x(p.i), cy: y(p.v), r: p.r || 5, style: `fill:${p.color}; stroke:var(--surface)`, "stroke-width": 2 }));
+        if (p.label) {
+          const right = x(p.i) > W * .68;
+          const tx = svgEl("text", { x: x(p.i) + (right ? -8 : 8), y: y(p.v) + (p.dy || 4), "text-anchor": right ? "end" : "start", class: "lbl" });
+          tx.textContent = p.label; g.appendChild(tx);
+        }
+      });
+
+      if (directLabels) {
+        const ends = series.map(s => { let i = s.values.length - 1; while (i > 0 && !Number.isFinite(s.values[i])) i--; return { s, yy: y(s.values[i]) }; })
+          .sort((a, b) => a.yy - b.yy);
+        for (let k = 1; k < ends.length; k++) if (ends[k].yy - ends[k - 1].yy < 14) ends[k].yy = ends[k - 1].yy + 14;
+        ends.forEach(({ s, yy }) => {
+          const tx = svgEl("text", { x: W - m.r + 8, y: yy + 3.5, class: "lbl", style: `fill:${s.color}` }); tx.textContent = s.short || s.name; g.appendChild(tx);
+        });
+      }
+
+      // Interactive Crosshair Tooltip
+      const tip = svgEl("g", { visibility: "hidden", "pointer-events": "none" });
+      const guide = svgEl("line", { y1: m.t, y2: H - m.b, style: "stroke:var(--ink-2)", "stroke-opacity": .5 });
+      const dots = series.map(s => svgEl("circle", { r: 4, style: `fill:${s.color}; stroke:var(--surface)`, "stroke-width": 2 }));
+      const box = svgEl("rect", { rx: 6, style: "fill:var(--surface); stroke:var(--line-strong)" });
+      const text = svgEl("text", { class: "tip-text" });
+      tip.append(guide, ...dots, box, text);
+      const hit = svgEl("rect", {
+        class: "tip-hit", x: m.l, y: m.t, width: W - m.l - m.r, height: H - m.t - m.b, tabindex: 0,
+        role: "slider", "aria-label": `${svg.getAttribute("aria-label") || "Chart"}: use the arrow keys to read the values`,
+        "aria-valuemin": 0, "aria-valuemax": n - 1
+      });
+      g.append(hit, tip);
+
+      let cur = n - 1;
+      const show = i => {
+        cur = Math.max(0, Math.min(n - 1, i));
+        const gx = x(cur);
+        guide.setAttribute("x1", gx); guide.setAttribute("x2", gx);
+        series.forEach((s, k) => {
+          const v = s.values[cur];
+          dots[k].setAttribute("visibility", Number.isFinite(v) ? "visible" : "hidden");
+          if (Number.isFinite(v)) { dots[k].setAttribute("cx", gx); dots[k].setAttribute("cy", y(v)); }
+        });
+        const lines = [tipTitle(labels[cur], cur), ...series.map(s => `${s.short || s.name}: ${Number.isFinite(s.values[cur]) ? tipValue(s.values[cur], s) : "–"}`)];
+        hit.setAttribute("aria-valuenow", cur);
+        hit.setAttribute("aria-valuetext", lines.join(", "));
+        text.replaceChildren(...lines.map((line, k) => { const t = svgEl("tspan", { dy: k ? 15 : 0, class: k ? "" : "t0" }); t.textContent = line; return t; }));
+        tip.setAttribute("visibility", "visible");
+        text.setAttribute("y", m.t + 18);
+        text.querySelectorAll("tspan").forEach(t => t.setAttribute("x", 0));
+        const bb = text.getBBox();
+        const bw = bb.width + 18, bh = bb.height + 10;
+        const bx = gx + 10 + bw > W - 4 ? Math.max(4, gx - 10 - bw) : gx + 10;
+        box.setAttribute("x", bx); box.setAttribute("y", m.t + 4); box.setAttribute("width", bw); box.setAttribute("height", bh);
+        text.querySelectorAll("tspan").forEach(t => t.setAttribute("x", bx + 9));
+      };
+      const toIndex = e => {
+        const pt = svg.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY;
+        const p = pt.matrixTransform(svg.getScreenCTM().inverse());
+        return Math.round((p.x - m.l) / ((W - m.l - m.r) || 1) * (n - 1));
+      };
+      hit.addEventListener("pointermove", e => show(toIndex(e)));
+      hit.addEventListener("pointerdown", e => show(toIndex(e)));
+      hit.addEventListener("pointerleave", e => { if (e.pointerType === "mouse") tip.setAttribute("visibility", "hidden"); });
+      hit.addEventListener("focus", () => show(cur));
+      hit.addEventListener("blur", () => tip.setAttribute("visibility", "hidden"));
+      hit.addEventListener("keydown", e => {
+        const step = { ArrowRight: 1, ArrowUp: 1, ArrowLeft: -1, ArrowDown: -1, PageUp: 5, PageDown: -5 }[e.key];
+        if (step) show(cur + step);
+        else if (e.key === "Home") show(0);
+        else if (e.key === "End") show(n - 1);
+        else return;
+        e.preventDefault();
       });
     }
 
-    // tooltip layer
-    const tip = svgEl("g", {visibility: "hidden", "pointer-events": "none"});
-    const guide = svgEl("line", {y1: m.t, y2: H - m.b, style: "stroke:var(--ink-2)", "stroke-opacity": .5});
-    const dots = series.map(s => svgEl("circle", {r: 4.5, style: `fill:${s.color}; stroke:var(--surface)`, "stroke-width": 2}));
-    const box = svgEl("rect", {rx: 8, style: "fill:var(--surface); stroke:var(--line-strong)"});
-    const text = svgEl("text", {class: "tip-text"});
-    tip.append(guide, ...dots, box, text);
-    const hit = svgEl("rect", {class: "tip-hit", x: m.l, y: m.t, width: W - m.l - m.r, height: H - m.t - m.b, tabindex: 0, role: "slider",
-      "aria-label": svg.getAttribute("aria-label") + ": use left and right arrow keys to read values", "aria-valuemin": 0, "aria-valuemax": n - 1});
-    g.append(hit, tip);
-    let cur = n - 1;
-    const show = i => {
-      cur = Math.max(0, Math.min(n - 1, i));
-      const gx = x(cur);
-      guide.setAttribute("x1", gx); guide.setAttribute("x2", gx);
-      series.forEach((s, k) => {
-        const v = s.values[cur];
-        dots[k].setAttribute("visibility", Number.isFinite(v) ? "visible" : "hidden");
-        if (Number.isFinite(v)) { dots[k].setAttribute("cx", gx); dots[k].setAttribute("cy", y(v)); }
-      });
-      const lines = [tipTitle(labels[cur], cur), ...series.map(s => `${s.name}: ${Number.isFinite(s.values[cur]) ? tipValue(s.values[cur], s) : "–"}`)];
-      text.replaceChildren(...lines.map((line, k) => { const t = svgEl("tspan", {dy: k ? 18 : 0, class: k ? "" : "t0"}); t.textContent = line; return t; }));
-      tip.setAttribute("visibility", "visible");
-      text.setAttribute("y", m.t + 22);
-      text.querySelectorAll("tspan").forEach(t => t.setAttribute("x", 0));
-      const bb = text.getBBox();
-      const bw = bb.width + 22, bh = bb.height + 14;
-      const bx = gx + 14 + bw > W - 4 ? Math.max(4, gx - 14 - bw) : gx + 14;
-      box.setAttribute("x", bx); box.setAttribute("y", m.t + 4); box.setAttribute("width", bw); box.setAttribute("height", bh);
-      text.querySelectorAll("tspan").forEach(t => t.setAttribute("x", bx + 11));
-      hit.setAttribute("aria-valuenow", cur);
-      hit.setAttribute("aria-valuetext", lines.join(", "));
-    };
-    const toIndex = e => {
-      const pt = svg.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY;
-      const p = pt.matrixTransform(svg.getScreenCTM().inverse());
-      return Math.round((p.x - m.l) / ((W - m.l - m.r) || 1) * (n - 1));
-    };
-    hit.addEventListener("pointermove", e => show(toIndex(e)));
-    hit.addEventListener("pointerdown", e => show(toIndex(e)));
-    hit.addEventListener("pointerleave", e => { if (e.pointerType === "mouse") tip.setAttribute("visibility", "hidden"); });
-    hit.addEventListener("focus", () => show(cur));
-    hit.addEventListener("blur", () => tip.setAttribute("visibility", "hidden"));
-    hit.addEventListener("keydown", e => {
-      const step = {ArrowLeft: -1, ArrowRight: 1, PageUp: -10, PageDown: 10}[e.key];
-      if (step) { show(cur + step); e.preventDefault(); }
-      if (e.key === "Home") { show(0); e.preventDefault(); }
-      if (e.key === "End") { show(n - 1); e.preventDefault(); }
-    });
-  }
+    let resizeTimer;
+    window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(redrawAllCharts, 150); });
 
-  let resizeTimer;
-  window.addEventListener("resize", () => {
-    clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(() => charts.forEach((cfg, svg) => drawLine(svg, cfg)), 150);
-  });
+    /* ───────── 4. RENDERERS FOR BOTH BENTO TILES & DEEP DRAWERS ───────── */
+    const signed = v => `${v > 0 ? "+" : v < 0 ? "−" : ""}${fmt(Math.abs(Math.round(v)))}`;
+    const hrs = h => `${String(h).padStart(2, "0")}:00`;
+    const hourSpan = (h, n = 1) => `${hrs(h)}–${hrs((h + n) % 24)}`;
+    function kpi(value, label) { const d = el("div", { class: "kpi" }); d.append(el("strong", {}, value), el("span", {}, label)); return d; }
 
-  /* ───────── reveal on scroll + active nav ───────── */
-  (function scrollFx() {
-    const items = document.querySelectorAll(".reveal");
-    if (!("IntersectionObserver" in window)) { items.forEach(i => i.classList.add("in")); return; }
-    // Animate every time a block enters the viewport, in either direction. When a block
-    // leaves through the top it is marked "above", so scrolling back up slides it in from above.
-    const io = new IntersectionObserver(es => es.forEach(e => {
-      if (e.isIntersecting) e.target.classList.add("in");
-      else {
-        e.target.classList.remove("in");
-        e.target.classList.toggle("above", e.boundingClientRect.top < 0);
+    let cachedGrid = null, cachedScorecard = null;
+    function renderHeroChamber(mode) {
+      document.querySelectorAll("#hero-chart-switch button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.view === mode)));
+      const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+      if (mode === "grid" && cachedGrid) {
+        const data = cachedGrid, sm = data.summary;
+        $("hero-tile-copy").textContent = "Daily average wind production vs. national consumption over the last 12 months, refreshed daily via GitHub Actions.";
+        $("hero-mini-kpis").replaceChildren(
+          el("div", { class: "mkpi" }, null), el("div", { class: "mkpi" }, null)
+        );
+        $("hero-mini-kpis").children[0].append(el("strong", {}, `${fmt(sm.wind_mean_mw)} MW`), el("span", {}, "avg wind production"));
+        $("hero-mini-kpis").children[1].append(el("strong", {}, `${sm.wind_share_pct}%`), el("span", {}, "wind share of consumption"));
+
+        lineChart($("bento-hero-chart"), {
+          height: 290, directLabels: true,
+          series: [
+            { name: "Consumption", short: "Demand", values: data.days.map(d => d.consumption_mw), color: "var(--cons)", width: 1.7 },
+            { name: "Wind", short: "Wind", values: data.days.map(d => d.wind_mw), color: "var(--real)", width: 2 },
+          ],
+          labels: data.days.map(d => d.day),
+          xTick: (i, l, narrow) => (l.slice(8) === "01" && (!narrow || (+l.slice(5, 7) - 1) % 2 === 0)) ? months[+l.slice(5, 7) - 1] : null,
+          tipTitle: l => dayFmt(`${l}T00:00:00Z`),
+          tipValue: v => `${fmt(Math.round(v))} MW`
+        });
+      } else if (mode === "forecast" && cachedScorecard) {
+        const sc = cachedScorecard;
+        const da = sc.summary.find(r => r.variable === "wind" && r.product === "day_ahead");
+        const id = sc.summary.find(r => r.variable === "wind" && r.product === "intraday");
+        $("hero-tile-copy").textContent = "Mean absolute error (MW) of Fingrid's day-ahead vs. intraday wind forecasts by hour of the day (Finnish time).";
+        $("hero-mini-kpis").children[0].replaceChildren(el("strong", {}, `${fmt(Math.round(da.mae_mw))} MW`), el("span", {}, "day-ahead avg miss"));
+        $("hero-mini-kpis").children[1].replaceChildren(el("strong", {}, `${fmt(Math.round(id.mae_mw))} MW`), el("span", {}, "intraday avg miss"));
+
+        const hours = [...Array(24).keys()];
+        const byH = p => hours.map(h => (sc.by_hour.find(x => x.variable === "wind" && x.product === p && x.hour_fi === h) || {}).mae_mw ?? NaN);
+        lineChart($("bento-hero-chart"), {
+          height: 290, directLabels: true,
+          series: [
+            { name: "Day-ahead", short: "Day-ahead", values: byH("day_ahead"), color: "var(--fc-da)", width: 2 },
+            { name: "Intraday", short: "Intraday", values: byH("intraday"), color: "var(--fc-id)", width: 2 },
+          ],
+          labels: hours.map(h => String(h).padStart(2, "0")),
+          xTick: (i, l, narrow) => i % (narrow ? 6 : 4) === 0 ? `${l}:00` : null,
+          tipTitle: l => `${l}:00 Finnish time`,
+          tipValue: v => `${fmt(Math.round(v))} MW`
+        });
       }
-    }), {threshold: 0.06});
-    items.forEach(i => io.observe(i));
-    const links = [...document.querySelectorAll(".nav a")];
-    const spy = new IntersectionObserver(es => es.forEach(e => {
-      if (e.isIntersecting) links.forEach(a => a.setAttribute("aria-current", String(a.getAttribute("href") === "#" + e.target.id)));
-    }), {rootMargin: "-45% 0px -50% 0px"});
-    document.querySelectorAll("section.chapter").forEach(s => spy.observe(s));
-  })();
+    }
+    $("hero-chart-switch").addEventListener("click", e => { const b = e.target.closest("button"); if (b) renderHeroChamber(b.dataset.view); });
 
-  /* ───────── 01 world ───────── */
-  const gridData = {};
-  function renderGrid(period) {
-    const data = gridData[period];
-    if (!data) return;
-    const recent = period === "recent";
-    const labels = data.days.map(d => d.day);
-    const first = dayFmt(`${labels[0]}T00:00:00Z`), last = dayFmt(`${labels[labels.length - 1]}T00:00:00Z`);
-    $("grid-chart-title").textContent = recent ? `Daily average power, ${first} to ${last} (MW)` : `Daily average power, ${data.year} (MW)`;
-    const prov = $("grid-prov");
-    prov.replaceChildren(el("span", {class: "badge b-real"}, recent ? `Fingrid API · daily refresh · ${dayFmt(data.generated_at)}` : `Fingrid API · full year ${data.year}`));
-    prov.firstChild.prepend(el("i"));
-    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-    lineChart($("grid-chart"), {
-      height: 350,
-      series: [
-        {name: "Consumption", short: "Consumption", values: data.days.map(d => d.consumption_mw), color: "var(--cons)", width: 1.6},
-        {name: "Wind", short: "Wind", values: data.days.map(d => d.wind_mw), color: "var(--real)", width: 1.8},
-      ],
-      labels,
-      xTick: (i, l, narrow) => {
-        if (l.slice(8) !== "01" && !(i === 0 && l.slice(8) < "08")) return null;
-        const mo = +l.slice(5, 7) - 1;
-        return narrow && mo % 2 ? null : months[mo] + (mo === 0 ? ` ${l.slice(2, 4)}` : "");
-      },
-      tipTitle: l => dayFmt(`${l}T00:00:00Z`),
-      tipValue: v => `${fmt(Math.round(v))} MW`,
-      yLabel: "Average power (MW)",
-      xLabel: "Date (one value per day)",
-    });
-    const sm = data.summary;
-    const monthName = ym => ym ? new Date(`${ym}-01T00:00:00Z`).toLocaleDateString("en-GB", {month: "short", year: "numeric", timeZone: "UTC"}) : "–";
-    const k = $("grid-kpis");
-    const base = gridData.year && gridData.year.summary;
-    // One plain-language sentence: what an energy analyst should take from the chart.
-    const byWind = [...data.days].sort((x, y) => x.wind_mw - y.wind_mw);
-    let jump = {mw: 0, day: null};
-    data.days.forEach((dd, i) => { if (i && Math.abs(dd.wind_mw - data.days[i - 1].wind_mw) > jump.mw) jump = {mw: Math.abs(dd.wind_mw - data.days[i - 1].wind_mw), day: dd.day}; });
-    const peakCons = data.days.reduce((x, y) => y.consumption_mw > x.consumption_mw ? y : x);
-    const lowCons = data.days.reduce((x, y) => y.consumption_mw < x.consumption_mw ? y : x);
-    const d = iso => dayFmt(`${iso}T00:00:00Z`);
-    const tk = $("grid-takeaway");
-    tk.replaceChildren(el("b", {}, "Reading the chart: "), document.createTextNode(
-      `consumption follows the seasons, from ${fmt(lowCons.consumption_mw)} MW (${d(lowCons.day)}) to ${fmt(peakCons.consumption_mw)} MW (${d(peakCons.day)}), ` +
-      `while daily wind ranges from ${fmt(byWind[0].wind_mw)} MW to ${fmt(byWind[byWind.length - 1].wind_mw)} MW and can move ${fmt(jump.mw)} MW from one day to the next (${d(jump.day)}). ` +
-      `Over this period, wind production equalled ${sm.wind_share_pct}% of consumption. ` +
-      (recent ? `Fetched from the Fingrid API by a scheduled GitHub Action, so the page never exposes the API key.` : `A complete calendar year, for comparison with the rolling 12 months.`)));
-    k.replaceChildren(
-      kpi(`${fmt(sm.wind_mean_mw)} MW`, "average wind production"),
-      kpi(`${fmt(sm.consumption_mean_mw)} MW`, "average consumption"),
-      kpi(`${sm.wind_share_pct}%`, recent && base ? `wind share of consumption (${gridData.year.year}: ${base.wind_share_pct}%)` : "wind share of consumption"),
-      kpi(`${monthName(sm.windiest_month)}`, `windiest month · calmest ${monthName(sm.calmest_month)}`),
-    );
-  }
-  // Newest 15-minute values, refreshed by the hourly Pages deploy. Times are shown in
-  // Finnish time so they can be compared directly with fingrid.fi.
-  function renderLatest(lt) {
-    const box = $("grid-latest");
-    if (!lt || !lt.wind_production || !lt.consumption) { box.hidden = true; return; }
-    const fi = iso => new Date(iso).toLocaleTimeString("en-GB", {hour: "2-digit", minute: "2-digit", timeZone: "Europe/Helsinki"});
-    const fiDay = iso => new Date(iso).toLocaleDateString("en-GB", {day: "numeric", month: "short", timeZone: "Europe/Helsinki"});
-    const val = (v, color, name, ds) => {
-      const s = el("span", {class: "lt-val", title: `${name}, Fingrid dataset ${ds.dataset_id}, ${fiDay(ds.start_time)} ${fi(ds.start_time)}–${fi(ds.end_time)} Finnish time`});
-      const dot = el("i"); dot.style.background = color;
-      s.append(dot, el("strong", {}, `${fmt(Math.round(v))} MW`), document.createTextNode(name.toLowerCase()));
-      return s;
-    };
-    const w = lt.wind_production, c = lt.consumption;
-    const ageMin = Math.round((Date.now() - new Date(lt.generated_at)) / 60000);
-    const ago = ageMin < 90 ? `${Math.max(ageMin, 1)} min ago` : `${Math.round(ageMin / 60)} h ago`;
-    const sameSlot = w.start_time === c.start_time;
-    const when = sameSlot
-      ? `15 minutes ${fi(w.start_time)}–${fi(w.end_time)} Finnish time, ${fiDay(w.start_time)}`
-      : `wind ${fi(w.start_time)}–${fi(w.end_time)}, consumption ${fi(c.start_time)}–${fi(c.end_time)} Finnish time`;
-    box.replaceChildren(
-      el("span", {class: "lt-label"}, "LATEST · FINGRID"),
-      val(w.value_mw, "var(--real)", "Wind", w),
-      val(c.value_mw, "var(--cons)", "Consumption", c),
-      el("span", {class: "lt-when"}, `${when} · fetched ${ago}, refreshed hourly. A single 15-minute value, not a daily average, so it differs from the chart.`),
-    );
-    box.hidden = false;
-  }
-  /* ───────── 01 world: forecast scorecard ───────── */
-  const fc = {data: null, variable: "wind"};
-  const signed = v => `${v > 0 ? "+" : v < 0 ? "−" : ""}${fmt(Math.abs(Math.round(v)))}`;
-  const fiMonth = ym => new Date(`${ym}-15T12:00:00Z`).toLocaleDateString("en-GB", {month: "long", year: "numeric", timeZone: "UTC"});
-  function renderForecasts(sc) {
-    if (!sc || !sc.summary || sc.summary.length !== 4) { $("fc-error").textContent = "Forecast scorecard could not be loaded."; return; }
-    fc.data = sc;
-    const last = new Date(`${sc.window_end_exclusive}T00:00:00Z`); last.setUTCDate(last.getUTCDate() - 1);
-    const prov = $("fc-prov");
-    prov.replaceChildren(el("span", {class: "badge b-real"}, `Fingrid API · ${dayFmt(`${sc.window_start}T00:00:00Z`)} to ${dayFmt(last.toISOString())} · daily refresh`));
-    prov.firstChild.prepend(el("i"));
-    renderBalancing(sc.balancing);
-    drawForecasts(fc.variable);
-  }
-  function drawForecasts(v) {
-    const sc = fc.data;
-    if (!sc) return;
-    fc.variable = v;
-    document.querySelectorAll("#fc-tabs button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.var === v)));
-    const wind = v === "wind";
-    const pick = p => sc.summary.find(r => r.variable === v && r.product === p);
-    const da = pick("day_ahead"), id = pick("intraday");
-    const change = Math.round((1 - id.mae_mw / da.mae_mw) * 100);
-    $("fc-kpis").replaceChildren(
-      kpi(`${fmt(Math.round(da.mae_mw))} MW`, wind
-        ? `day-ahead average miss, ${fmt(da.mae_pct_of_capacity, 1)}% of the ${fmt(Math.round(da.mean_capacity_mw))} MW wind fleet`
-        : `day-ahead average miss, ${fmt(da.wape_pct, 1)}% of consumption`),
-      kpi(`${fmt(Math.round(id.mae_mw))} MW`, `intraday average miss, ${change >= 0 ? `${change}% smaller` : `${-change}% larger`} than day-ahead`),
-      kpi(`${signed(da.bias_mw)} MW`, da.bias_mw >= 0 ? "day-ahead bias: reality came in above the forecast" : "day-ahead bias: the forecast was too high"),
-      kpi(`${fmt(Math.round(da.p95_abs_error_mw))} MW`, "day-ahead: 95 in 100 quarter-hours missed by less than this"),
-    );
+    function renderLatestTicker(lt) {
+      if (!lt || !lt.wind_production || !lt.consumption) return;
+      const fiClock = iso => new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Helsinki" });
+      $("live-ticker").hidden = false;
+      $("tick-wind").textContent = `${fmt(Math.round(lt.wind_production.value_mw))} MW`;
+      $("tick-cons").textContent = `${fmt(Math.round(lt.consumption.value_mw))} MW`;
+      const ageMin = Math.max(1, Math.round((Date.now() - new Date(lt.generated_at)) / 60000));
+      $("tick-age").textContent = `${fiClock(lt.wind_production.start_time)}–${fiClock(lt.wind_production.end_time)} Finnish time`;
+      $("live-ticker").title = `Fetched from Fingrid ${ageMin < 90 ? `${ageMin} min` : `${Math.round(ageMin / 60)} h`} ago by the hourly GitHub Action`;
+    }
 
-    const hours = [...Array(24).keys()];
-    const byHour = p => hours.map(h => { const r = sc.by_hour.find(x => x.variable === v && x.product === p && x.hour_fi === h); return r ? r.mae_mw : NaN; });
-    const daH = byHour("day_ahead"), idH = byHour("intraday");
-    $("fc-hour-title").textContent = `Average ${wind ? "wind" : "consumption"} forecast miss by hour of the day, Finnish time (MW)`;
-    lineChart($("fc-hour-chart"), {
-      height: 300,
-      series: [
-        {name: "Day-ahead forecast", short: "Day-ahead", values: daH, color: "var(--fc-da)", width: 2},
-        {name: "Intraday forecast", short: "Intraday", values: idH, color: "var(--fc-id)", width: 2},
-      ],
-      labels: hours.map(h => String(h).padStart(2, "0")),
-      xTick: (i, l, narrow) => i % (narrow ? 6 : 3) === 0 ? `${l}:00` : null,
-      tipTitle: l => `${l}:00–${l}:59 Finnish time`,
-      tipValue: x => `${fmt(Math.round(x))} MW`,
-      yLabel: "Average absolute miss (MW)",
-      xLabel: "Hour of the day (Finnish time)",
-    });
+    /* Forecast Drawer */
+    const fcState = { data: null, variable: "wind" };
+    function renderForecasts(sc) {
+      if (!sc || !sc.summary) return;
+      fcState.data = sc;
+      const b = sc.balancing;
+      const label = r => r.bin_from_mw == null ? `below −1,500 MW` : r.bin_to_mw == null ? `+1,500 MW or more` : `${signed(r.bin_from_mw)} to ${signed(r.bin_to_mw)} MW`;
+      $("fc-balancing").replaceChildren(...b.bins.filter(r => r.slots >= 20).map(r => {
+        const tr = el("tr");
+        [[label(r)], [fmt(r.slots), "r"], [`${signed(r.mean_mfrr_need_mw)} MW`, "r"], [`${fmt(Math.round(r.mean_mfrr_up_mw))} MW`, "r"], [`${signed(r.mean_mfrr_down_mw)} MW`, "r"],
+        [r.median_imbalance_price == null ? "–" : `${fmt(r.median_imbalance_price, 1)} €/MWh`, "r"]].forEach(([t, c]) => tr.appendChild(el("td", c ? { class: c } : {}, t)));
+        return tr;
+      }));
+      $("fc-balancing-note").textContent = `Surprise = wind error minus consumption error. Fingrid's mFRR need tracks surprise (r = ${fmt(b.r_surprise_vs_mfrr_need, 2)}), while intraday market trading absorbs most actual activation (r = ${fmt(b.r_surprise_vs_net_mfrr, 2)}).`;
+      drawForecastDrawer("wind");
+    }
+    function drawForecastDrawer(v) {
+      const sc = fcState.data; if (!sc) return;
+      fcState.variable = v;
+      document.querySelectorAll("#fc-tabs button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.var === v)));
+      const wind = v === "wind";
+      const da = sc.summary.find(r => r.variable === v && r.product === "day_ahead");
+      const id = sc.summary.find(r => r.variable === v && r.product === "intraday");
+      const change = Math.round((1 - id.mae_mw / da.mae_mw) * 100);
+      $("fc-kpis").replaceChildren(
+        kpi(`${fmt(Math.round(da.mae_mw))} MW`, wind ? `day-ahead miss (${fmt(da.mae_pct_of_capacity, 1)}% fleet)` : `day-ahead miss (${fmt(da.wape_pct, 1)}%)`),
+        kpi(`${fmt(Math.round(id.mae_mw))} MW`, `intraday miss (${change >= 0 ? `${change}% smaller` : `${-change}% larger`})`),
+        kpi(`${signed(da.bias_mw)} MW`, "day-ahead bias"),
+        kpi(`${fmt(Math.round(da.p95_abs_error_mw))} MW`, "95th percentile error"),
+      );
+      const hours = [...Array(24).keys()];
+      const byH = p => hours.map(h => (sc.by_hour.find(x => x.variable === v && x.product === p && x.hour_fi === h) || {}).mae_mw ?? NaN);
+      const daH = byH("day_ahead"), idH = byH("intraday");
+      lineChart($("fc-hour-chart"), {
+        height: 230, directLabels: true,
+        series: [{ name: "Day-ahead", values: daH, color: "var(--fc-da)" }, { name: "Intraday", values: idH, color: "var(--fc-id)" }],
+        labels: hours.map(h => String(h).padStart(2, "0")),
+        xTick: (i, l) => i % 3 === 0 ? `${l}:00` : null,
+        tipTitle: l => `${l}:00 Finnish time`, tipValue: x => `${fmt(Math.round(x))} MW`
+      });
+      const worstH = hours.reduce((a, b) => daH[b] > daH[a] ? b : a, 0), bestH = hours.reduce((a, b) => daH[b] < daH[a] ? b : a, 0);
+      $("fc-takeaway").replaceChildren(el("b", {}, "Takeaway: "), document.createTextNode(`Day-ahead ${v} forecast misses most around ${hrs(worstH)} (${fmt(Math.round(daH[worstH]))} MW) and least around ${hrs(bestH)} (${fmt(Math.round(daH[bestH]))} MW).`));
+      $("fc-misses").replaceChildren(...sc.biggest_misses.filter(r => r.variable === v).map(r => {
+        const tr = el("tr");
+        [[dayFmt(`${r.day_fi}T12:00:00Z`)], [`${fmt(Math.round(r.mean_actual_mw))} MW`, "r"], [`${fmt(Math.round(r.mean_forecast_mw))} MW`, "r"], [`${fmt(Math.round(r.mae_mw))} MW`, "r"]].forEach(([t, c]) => tr.appendChild(el("td", c ? { class: c } : {}, t)));
+        return tr;
+      }));
+    }
+    $("fc-tabs").addEventListener("click", e => { const b = e.target.closest("button"); if (b) drawForecastDrawer(b.dataset.var); });
 
-    const worstH = hours.reduce((a, b) => daH[b] > daH[a] ? b : a, 0), bestH = hours.reduce((a, b) => daH[b] < daH[a] ? b : a, 0);
-    const months = sc.by_month.filter(r => r.variable === v && r.product === "day_ahead" && r.slots >= 2000);
-    const key = wind ? "mae_pct_of_capacity" : "wape_pct";
-    const worstM = months.reduce((a, b) => b[key] > a[key] ? b : a, months[0]);
-    const bestM = months.reduce((a, b) => b[key] < a[key] ? b : a, months[0]);
-    const hh = h => `${String(h).padStart(2, "0")}:00`;
-    $("fc-takeaway").replaceChildren(el("b", {}, "Reading the chart: "), document.createTextNode(
-      `the day-ahead ${wind ? "wind" : "consumption"} forecast misses most around ${hh(worstH)} (${fmt(Math.round(daH[worstH]))} MW on average) and least around ${hh(bestH)} (${fmt(Math.round(daH[bestH]))} MW). ` +
-      (worstM ? `By month it was hardest in ${fiMonth(worstM.month_fi)} (${fmt(worstM[key], 1)}% ${wind ? "of the fleet" : "of consumption"}) and easiest in ${fiMonth(bestM.month_fi)} (${fmt(bestM[key], 1)}%). ` : "") +
-      `Updating the forecast during the day cuts the average miss ${change >= 0 ? `by ${change}%` : `by nothing: it grows ${-change}%`}.`));
+    /* CO2 Tile & Drawer */
+    function renderCo2(c) {
+      if (!c || !c.hours) return;
+      const g = v => `${fmt(v, 1)} g`;
+      const when = c.target_is_tomorrow ? "tomorrow" : "today";
+      $("co2-tile-when").textContent = `Hours ${when[0].toUpperCase() + when.slice(1)}.`;
+      $("co2-title").textContent = `When is electricity cleanest ${when}?`;
+      $("mk-co2-best").textContent = hourSpan(c.best_3h.hour_fi, 3);
+      $("mk-co2-low").textContent = `${g(c.cleanest_hour.co2)}/kWh`;
 
-    $("fc-misses").replaceChildren(...sc.biggest_misses.filter(r => r.variable === v).map(r => {
-      const tr = el("tr");
-      [[dayFmt(`${r.day_fi}T12:00:00Z`)], [`${fmt(Math.round(r.mean_actual_mw))} MW`, "r"], [`${fmt(Math.round(r.mean_forecast_mw))} MW`, "r"], [`${fmt(Math.round(r.mae_mw))} MW`, "r"]]
-        .forEach(([t, c]) => tr.appendChild(el("td", c ? {class: c} : {}, t)));
-      return tr;
-    }));
-  }
-  function renderBalancing(b) {
-    const label = r => r.bin_from_mw == null ? `below −1,500 MW` : r.bin_to_mw == null ? `+1,500 MW or more`
-      : `${signed(r.bin_from_mw)} to ${signed(r.bin_to_mw)} MW`;
-    $("fc-balancing").replaceChildren(...b.bins.filter(r => r.slots >= 20).map(r => {
-      const tr = el("tr");
-      [[label(r)], [fmt(r.slots), "r"], [`${signed(r.mean_mfrr_need_mw)} MW`, "r"], [`${fmt(Math.round(r.mean_mfrr_up_mw))} MW`, "r"], [`${signed(r.mean_mfrr_down_mw)} MW`, "r"],
-       [r.median_imbalance_price == null ? "–" : `${fmt(r.median_imbalance_price, 1)} €/MWh`, "r"]]
-        .forEach(([t, c]) => tr.appendChild(el("td", c ? {class: c} : {}, t)));
-      return tr;
-    }));
-    $("fc-balancing-note").textContent =
-      `Surprise = wind error minus consumption error of the day-ahead forecasts: negative means less wind or more demand than expected, so the grid is short. ` +
-      `Fingrid's own estimate of the mFRR balancing energy needed follows the surprise (r = ${fmt(b.r_surprise_vs_mfrr_need, 2)}): the shorter the grid runs, the more upward balancing it expects. ` +
-      `Actually activated balancing barely does (net up + down: r = ${fmt(b.r_surprise_vs_net_mfrr, 2)}), and neither does the imbalance price (r = ${fmt(b.r_surprise_vs_price, 2)}), which mostly follows the market price level. ` +
-      `A plausible reading: market parties trade away most of the surprise in the intraday market before real time. This is an association, not proof of cause. ` +
-      `Columns are averages, except the median imbalance price; Fingrid publishes downward activation as negative MW. Bins with fewer than 20 quarter-hours are hidden.`;
-  }
-  $("fc-tabs").addEventListener("click", e => { const b = e.target.closest("button"); if (b) drawForecasts(b.dataset.var); });
+      const H = c.hours, idx = h => H.findIndex(x => x.hour_start === h.hour_start);
+      const chartCfg = {
+        height: 150,
+        series: [{ name: "CO₂ Forecast", values: H.map(x => x.co2_forecast), color: "var(--fc-da)", width: 2 }],
+        labels: H.map(x => hrs(x.hour_fi)),
+        points: [
+          { i: idx(c.cleanest_hour), v: c.cleanest_hour.co2, color: "var(--real)", label: `clean ${hrs(c.cleanest_hour.hour_fi)}`, dy: 14 },
+          { i: idx(c.dirtiest_hour), v: c.dirtiest_hour.co2, color: "var(--fault)", label: `peak ${hrs(c.dirtiest_hour.hour_fi)}`, dy: -7 },
+        ],
+        xTick: (i, l) => i % 6 === 0 ? l : null,
+        tipTitle: l => `${l} Finnish time`, tipValue: v => `${fmt(v, 1)} gCO₂/kWh`
+      };
+      lineChart($("bento-co2-chart"), chartCfg);
+      lineChart($("co2-chart"), { ...chartCfg, height: 220 });
 
-  /* ───────── 01 world: CO2 forecast ───────── */
-  const hrs = h => `${String(h).padStart(2, "0")}:00`;
-  const hourSpan = (h, n = 1) => `${hrs(h)}–${hrs((h + n) % 24)}`;
-  function renderCo2(c) {
-    if (!c || !c.hours || c.hours.length < 23) { $("co2-error").textContent = "The CO2 forecast could not be loaded."; return; }
-    const g = v => `${fmt(v, 1)} g`;
-    const dayLabel = d => new Date(`${d}T12:00:00Z`).toLocaleDateString("en-GB", {weekday: "long", day: "numeric", month: "long", timeZone: "UTC"});
-    const when = c.target_is_tomorrow ? "tomorrow" : "today";
-    $("co2-title").textContent = `When is electricity cleanest ${when}?`;
-    const prov = $("co2-prov");
-    prov.replaceChildren(el("span", {class: "badge b-real"}, `Forecast for ${dayLabel(c.target_day)} · from Fingrid day-ahead data · daily refresh`));
-    prov.firstChild.prepend(el("i"));
-    $("co2-kpis").replaceChildren(
-      kpi(hourSpan(c.cleanest_hour.hour_fi), `cleanest hour, about ${g(c.cleanest_hour.co2)} CO₂/kWh`),
-      kpi(hourSpan(c.best_3h.hour_fi, 3), `cleanest 3 hours in a row, about ${g(c.best_3h.co2)}/kWh on average`),
-      kpi(hourSpan(c.dirtiest_hour.hour_fi), `dirtiest hour, about ${g(c.dirtiest_hour.co2)}/kWh`),
-      kpi(g(c.day_mean_forecast), `average expected for ${when}, per kWh`),
-    );
+      $("co2-kpis").replaceChildren(
+        kpi(hourSpan(c.cleanest_hour.hour_fi), `cleanest hour (${g(c.cleanest_hour.co2)}/kWh)`),
+        kpi(hourSpan(c.best_3h.hour_fi, 3), `best 3h window (${g(c.best_3h.co2)}/kWh)`),
+        kpi(hourSpan(c.dirtiest_hour.hour_fi), `dirtiest hour (${g(c.dirtiest_hour.co2)}/kWh)`),
+        kpi(g(c.day_mean_forecast), "daily average forecast"),
+      );
+      $("co2-takeaway").replaceChildren(el("b", {}, "Impact: "), document.createTextNode(`Charging a 50 kWh EV during the cleanest 3h window instead of the dirtiest hour avoids ~${fmt(50 * (c.dirtiest_hour.co2 - c.best_3h.co2) / 1000, 2)} kg of CO₂.`));
 
-    const H = c.hours, idx = h => H.findIndex(x => x.hour_start === h.hour_start);
-    const label = x => hrs(x.hour_fi);
-    $("co2-chart-title").textContent = `Forecast CO₂ intensity by hour, ${dayLabel(c.target_day)}, Finnish time (gCO₂/kWh)`;
-    lineChart($("co2-chart"), {
-      height: 280,
-      series: [{name: "Forecast", short: "Forecast", values: H.map(x => x.co2_forecast), color: "var(--fc-da)", width: 2}],
-      labels: H.map(label),
-      directLabels: false,
-      points: [
-        {i: idx(c.cleanest_hour), v: c.cleanest_hour.co2, color: "var(--real)", label: `cleanest ${hrs(c.cleanest_hour.hour_fi)}`, dy: 18},
-        {i: idx(c.dirtiest_hour), v: c.dirtiest_hour.co2, color: "var(--fault)", label: `dirtiest ${hrs(c.dirtiest_hour.hour_fi)}`, dy: -8},
-      ],
-      xTick: (i, l, narrow) => i % (narrow ? 6 : 3) === 0 ? l : null,
-      tipTitle: l => `${l} Finnish time`,
-      tipValue: v => `${fmt(v, 1)} gCO₂/kWh`,
-      yLabel: "gCO₂ per kWh consumed",
-      xLabel: "Hour of the day (Finnish time)",
-    });
-    const range = c.dirtiest_hour.co2 - c.cleanest_hour.co2;
-    $("co2-takeaway").replaceChildren(el("b", {}, "In short: "), document.createTextNode(
-      `the same kilowatt-hour is expected to emit about ${fmt(c.dirtiest_hour.co2 / c.cleanest_hour.co2, 1)}× as much CO₂ at ${hrs(c.dirtiest_hour.hour_fi)} as at ${hrs(c.cleanest_hour.hour_fi)} ` +
-      `(${g(range)} difference). Charging a 50 kWh electric car in the cleanest three hours instead of the dirtiest hour would avoid roughly ` +
-      `${fmt(50 * (c.dirtiest_hour.co2 - c.best_3h.co2) / 1000, 2)} kg of CO₂.`));
+      const P = c.yesterday.hours;
+      lineChart($("co2-past-chart"), {
+        height: 195, directLabels: true,
+        series: [
+          { name: "Measured", short: "Actual", values: P.map(x => x.co2_actual ?? NaN), color: "var(--ink)", width: 2 },
+          { name: "Forecast", short: "Forecast", values: P.map(x => x.co2_forecast), color: "var(--fc-da)", width: 2, dash: "4 4" },
+        ],
+        labels: P.map(x => hrs(x.hour_fi)),
+        xTick: (i, l) => i % 4 === 0 ? l : null,
+        tipTitle: l => `${l} Finnish time`, tipValue: v => `${fmt(v, 1)} gCO₂/kWh`
+      });
 
-    const P = c.yesterday.hours;
-    $("co2-past-title").textContent = `Yesterday, ${dayLabel(c.yesterday.day)}: forecast against what happened` +
-      (c.yesterday.mae_g != null ? ` (average miss ${g(c.yesterday.mae_g)})` : "");
-    lineChart($("co2-past-chart"), {
-      height: 240,
-      series: [
-        {name: "Measured", short: "Measured", values: P.map(x => x.co2_actual ?? NaN), color: "var(--ink)", width: 2},
-        {name: "Forecast", short: "Forecast", values: P.map(x => x.co2_forecast), color: "var(--fc-da)", width: 2, dash: "5 4"},
-      ],
-      labels: P.map(label),
-      xTick: (i, l, narrow) => i % (narrow ? 6 : 3) === 0 ? l : null,
-      tipTitle: l => `${l} Finnish time`,
-      tipValue: v => `${fmt(v, 1)} gCO₂/kWh`,
-      yLabel: "gCO₂ per kWh consumed",
-    });
+      const b = c.backtest;
+      $("co2-record").replaceChildren(
+        kpi(g(b.mae_model_g), `SQL model MAE (vs ${g(b.mae_naive_g)} naive)`),
+        kpi(`${fmt(b.pick_in_top3_pct, 0)}%`, "days picked hour was in top 3 cleanest"),
+        kpi(`${fmt(b.saving_pct, 1)}%`, `CO₂ saved vs average hour`),
+        kpi(fmt(b.days), "replayed backtest days"),
+      );
+      $("co2-note").textContent = `Refitted daily in PostgreSQL using 60-day rolling linear regression (regr_slope) of CO₂ intensity against residual load (consumption minus wind and solar).`;
+    }
 
-    const b = c.backtest;
-    $("co2-record").replaceChildren(
-      kpi(g(b.mae_model_g), `average miss per hour, against ${g(b.mae_naive_g)} for "same hour two days earlier"`),
-      kpi(`${fmt(b.pick_in_top3_pct, 0)}%`, "of days, the hour picked as cleanest was really among the 3 cleanest"),
-      kpi(`${fmt(b.saving_pct, 1)}%`, `less CO₂ in the picked hour than in an average hour (a perfect pick: ${fmt(b.achievable_pct, 1)}%)`),
-      kpi(fmt(b.days), "days replayed, each with only the data available at the time"),
-    );
-    $("co2-note").textContent =
-      `Backtest ${dayFmt(`${b.window_start}T00:00:00Z`)} to ${dayFmt(`${b.window_end_exclusive}T00:00:00Z`)}. ` +
-      `Model, refitted for every day in SQL: a straight line of CO₂ intensity against residual load (consumption minus wind and solar, all Fingrid day-ahead forecasts) over the 60 days ending two days earlier, ` +
-      `shifted by its error on the last fully known day, and never below the lowest intensity seen in those 60 days. ` +
-      `It does not know about plant outages or import changes announced after that, so treat the numbers as a guide to which hours are cleaner, not as exact values. ` +
-      `Intensity: Fingrid's estimate for electricity consumed in Finland, including imports (dataset 396).`;
-  }
+    /* Grid Events Tile & Drawer */
+    function renderEvents(d) {
+      if (!d || !d.counts) return;
+      const c = d.counts, freqYear = c.frequency_low.year + c.frequency_high.year;
+      const M = d.frequency_by_minute;
+      const worst = M.reduce((a, m) => m.pct_outside > a.pct_outside ? m : a, M[0]);
 
-  /* ───────── 01 world: grid events ───────── */
-  function renderEvents(d) {
-    if (!d || !d.counts) { $("ev-error").textContent = "The grid event log could not be loaded."; return; }
-    const fiTime = iso => new Date(iso).toLocaleString("en-GB", {day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Helsinki"});
-    const label = k => d.counts[k].label;
-    const peak = e => e.unit === "Hz" ? `${fmt(e.peak, 3)} Hz` : e.unit === "MW" ? `${signed(e.peak)} MW`
-      : e.unit === "GWs" ? `${fmt(e.peak, 0)} GWs` : `${fmt(e.peak, 0)} €/MWh`;
-    const lasted = e => { const m = Math.round((new Date(e.end_time) - new Date(e.start_time)) / 60000); return m >= 120 ? `${fmt(m / 60, 1)} h` : `${m} min`; };
-    const last = new Date(`${d.window_end_exclusive}T00:00:00Z`); last.setUTCDate(last.getUTCDate() - 1);
-    const prov = $("ev-prov");
-    prov.replaceChildren(el("span", {class: "badge b-real"}, `Fingrid API · ${dayFmt(`${d.window_start}T00:00:00Z`)} to ${dayFmt(last.toISOString())} · daily refresh`));
-    prov.firstChild.prepend(el("i"));
-    const c = d.counts, freqYear = c.frequency_low.year + c.frequency_high.year, freq30 = c.frequency_low.last_30_days + c.frequency_high.last_30_days;
-    $("ev-kpis").replaceChildren(
-      kpi(fmt(freqYear), `frequency excursions outside 49.9–50.1 Hz (${fmt(freq30)} in the last 30 days)`),
-      kpi(fmt(c.nuclear_drop.year), `fast drops of 400 MW or more in nuclear output (${fmt(c.nuclear_drop.last_30_days)} in 30 days)`),
-      kpi(fmt(c.low_inertia.year), `periods of very low system inertia (${fmt(c.low_inertia.last_30_days)} in 30 days)`),
-      kpi(fmt(c.price_spike.year), `imbalance price spikes of €1,000/MWh or more (${fmt(c.price_spike.last_30_days)} in 30 days)`),
-    );
-    const row = cells => { const tr = el("tr"); cells.forEach(([t, cl]) => tr.appendChild(el("td", cl ? {class: cl} : {}, t))); return tr; };
-    $("ev-recent").replaceChildren(...d.recent.map(e => row([[fiTime(e.start_time)], [label(e.kind)], [peak(e), "r"], [lasted(e), "r"]])));
-    $("ev-top").replaceChildren(...Object.keys(d.top).filter(k => d.top[k].length).map(k => { const e = d.top[k][0]; return row([[label(k)], [fiTime(e.start_time)], [peak(e), "r"]]); }));
+      $("mk-ev-freq").textContent = fmt(freqYear);
+      $("mk-ev-peak-min").textContent = `:${String(worst.minute_of_hour).padStart(2, "0")} (${fmt(worst.pct_outside, 1)}%)`;
 
-    const M = d.frequency_by_minute, base = M.reduce((a, m) => a + m.pct_outside, 0) / M.length;
-    const worst = M.reduce((a, m) => m.pct_outside > a.pct_outside ? m : a, M[0]);
-    lineChart($("ev-minute-chart"), {
-      height: 240,
-      series: [{name: "Outside the band", short: "Outside", values: M.map(m => m.pct_outside), color: "var(--fc-da)", width: 2}],
-      labels: M.map(m => `:${String(m.minute_of_hour).padStart(2, "0")}`),
-      directLabels: false,
-      points: [{i: M.indexOf(worst), v: worst.pct_outside, color: "var(--fault)", label: `minute ${worst.minute_of_hour}: ${fmt(worst.pct_outside, 2)}%`, dy: 4}],
-      xTick: (i, l, narrow) => i % (narrow ? 15 : 5) === 0 ? l : null,
-      tipTitle: l => `Minute ${l} of the hour`,
-      tipValue: v => `${fmt(v, 2)}% of samples outside 49.9–50.1 Hz`,
-      yLabel: "% of 1-minute samples outside the band",
-      xLabel: "Minute of the hour",
-    });
-    $("ev-takeaway").replaceChildren(el("b", {}, "Reading the chart: "), document.createTextNode(
-      `at minute ${worst.minute_of_hour} the frequency is outside its normal band in ${fmt(worst.pct_outside, 2)}% of samples, about ${fmt(worst.pct_outside / base, 1)}× the average minute (${fmt(base, 2)}%). ` +
-      `Most likely the grid feels the step when generation schedules change on the hour.`));
+      const minCfg = {
+        height: 150,
+        series: [{ name: "Outside 49.9–50.1 Hz", values: M.map(m => m.pct_outside), color: "var(--fc-da)", width: 2 }],
+        labels: M.map(m => `:${String(m.minute_of_hour).padStart(2, "0")}`),
+        points: [{ i: M.indexOf(worst), v: worst.pct_outside, color: "var(--fault)", label: `:${worst.minute_of_hour}`, dy: -6 }],
+        xTick: (i, l) => i % 15 === 0 ? l : null,
+        tipTitle: l => `Minute ${l} of the hour`, tipValue: v => `${fmt(v, 2)}% outside band`
+      };
+      lineChart($("bento-ev-chart"), minCfg);
+      lineChart($("ev-minute-chart"), { ...minCfg, height: 200 });
 
-    const nc = d.nuclear_crosscheck, q = d.data_quality;
-    $("ev-note").textContent =
-      (nc.length ? `Cross-check between two independent sensors: during the ${nc.length} fast nuclear drops the lowest nearby frequency was ` +
-        `${nc.map(e => `${fmt(e.freq_min_nearby, 2)} Hz`).join(", ")}. The frequency is shared by the whole Nordic grid, and either these drops were controlled ` +
-        `or their brief lowest point fell between the one-minute samples, so the two sensors rarely confirm each other. ` : "") +
-      `Data quality: frequency samples exist for ${fmt(100 * q.valid / q.minutes_in_window, 1)}% of the minutes in the year, and ${fmt(q.invalid)} samples of 0 Hz (Fingrid's marker for a gap) were skipped. ` +
-      `Low inertia means the lowest 1% of quarter-hours in the window, so the threshold moves with the data.`;
-  }
+      $("ev-kpis").replaceChildren(
+        kpi(fmt(freqYear), "frequency excursions (<49.9 or >50.1 Hz)"),
+        kpi(fmt(c.nuclear_drop.year), "fast nuclear drops (≥400 MW)"),
+        kpi(fmt(c.low_inertia.year), "low Nordic inertia periods"),
+        kpi(fmt(c.price_spike.year), "imbalance price spikes (≥€1,000)"),
+      );
+      const fiTime = iso => new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Helsinki" });
+      const peak = e => e.unit === "Hz" ? `${fmt(e.peak, 3)} Hz` : e.unit === "MW" ? `${signed(e.peak)} MW` : e.unit === "GWs" ? `${fmt(e.peak, 0)} GWs` : `${fmt(e.peak, 0)} €/MWh`;
+      const lasted = e => { const m = Math.round((new Date(e.end_time) - new Date(e.start_time)) / 60000); return m >= 120 ? `${fmt(m / 60, 1)} h` : `${m} min`; };
+      const row = cells => { const tr = el("tr"); cells.forEach(([t, cl]) => tr.appendChild(el("td", cl ? { class: cl } : {}, t))); return tr; };
+      $("ev-recent").replaceChildren(...d.recent.map(e => row([[fiTime(e.start_time)], [c[e.kind].label], [peak(e), "r"], [lasted(e), "r"]])));
+      $("ev-top").replaceChildren(...Object.keys(d.top).filter(k => d.top[k].length).map(k => { const e = d.top[k][0]; return row([[c[k].label], [fiTime(e.start_time)], [peak(e), "r"]]); }));
+      $("ev-takeaway").replaceChildren(el("b", {}, "Grid Physics: "), document.createTextNode(`At minute :${worst.minute_of_hour} of the hour, frequency exits its band most frequently as hourly generation schedules step.`));
+    }
 
-  /* ───────── 05 cold: temperature sensitivity ───────── */
-  function renderCold(t) {
-    if (!t || !t.fits || t.fits.length !== 2) { $("cold-error").textContent = "The temperature analysis could not be loaded."; return; }
-    const wd = t.fits.find(f => f.day_type === "weekday"), we = t.fits.find(f => f.day_type === "weekend");
-    const deg = v => `${v < 0 ? "−" : ""}${fmt(Math.abs(v), 1)} °C`;
-    const last = new Date(`${t.window_end_exclusive}T00:00:00Z`); last.setUTCDate(last.getUTCDate() - 1);
-    const prov = $("cold-prov");
-    prov.replaceChildren(el("span", {class: "badge b-real"}, `Fingrid API · ${dayFmt(`${t.window_start}T00:00:00Z`)} to ${dayFmt(last.toISOString())} · ${fmt(t.days)} days`));
-    prov.firstChild.prepend(el("i"));
-    const c = t.coldest_day, w = t.warmest_day;
-    $("cold-kpis").replaceChildren(
-      kpi(`+${fmt(Math.round(wd.mw_per_degree))} MW`, `for each degree below ${wd.balance_point_c} °C on a weekday (${fmt(wd.pct_per_degree, 1)}% of average use)`),
-      kpi(`+${fmt(Math.round(we.mw_per_degree))} MW`, `for each degree below ${we.balance_point_c} °C at the weekend (${fmt(we.pct_per_degree, 1)}%)`),
-      kpi(`${fmt(Math.round(c.consumption_mw))} MW`, `on the coldest day, ${dayFmt(`${c.day_fi}T12:00:00Z`)} (${deg(c.temp_c)})`),
-      kpi(`${fmt(wd.r2, 2)}`, `r² of the weekday model: temperature alone explains ${fmt(100 * wd.r2, 0)}% of the day-to-day variation`),
-    );
-    const B = t.bins, labels = B.map(b => `${b.from_c}`);
-    const model = B.map(b => wd.base_mw + wd.mw_per_degree * Math.max(wd.balance_point_c - (b.from_c + b.to_c) / 2, 0));
-    lineChart($("cold-chart"), {
-      height: 300,
-      series: [
-        {name: "Weekdays", short: "Weekdays", values: B.map(b => b.weekday_mw ?? NaN), color: "var(--fc-da)", width: 2, dots: true},
-        {name: "Weekends", short: "Weekends", values: B.map(b => b.weekend_mw ?? NaN), color: "var(--fc-id)", width: 2, dots: true},
-        {name: "Model (weekdays)", short: "Model", values: model, color: "var(--ink-2)", width: 1.5, dash: "5 4"},
-      ],
-      labels,
-      forceZero: false,
-      xTick: (i, l, narrow) => (narrow ? i % 3 === 0 : true) ? `${(+l < 0 ? "−" : "") + Math.abs(+l)}°` : null,
-      tipTitle: l => { const b = B[labels.indexOf(l)]; return `${deg(b.from_c)} to ${deg(b.to_c)} · ${b.weekday_days} weekdays, ${b.weekend_days} weekend days`; },
-      tipValue: v => `${fmt(Math.round(v))} MW`,
-      yLabel: "Average consumption (MW)",
-      xLabel: "Daily mean temperature (°C)",
-    });
-    const span = wd.balance_point_c - c.temp_c;
-    $("cold-takeaway").replaceChildren(el("b", {}, "In short: "), document.createTextNode(
-      `above about ${wd.balance_point_c} °C the temperature hardly matters, and Finland uses about ${fmt(Math.round(wd.base_mw))} MW on a weekday. ` +
-      `Below it, each degree adds about ${fmt(Math.round(wd.mw_per_degree))} MW, so a day at ${deg(c.temp_c)} needs roughly ${fmt(Math.round(span * wd.mw_per_degree))} MW more than a mild one. ` +
-      `The coldest day of the period used ${fmt(Math.round(c.consumption_mw))} MW, ${fmt(c.consumption_mw / w.consumption_mw, 1)}× the warmest (${fmt(Math.round(w.consumption_mw))} MW at ${deg(w.temp_c)}).`));
-    $("cold-note").textContent =
-      `Each point is a 3-degree band of daily averages, placed at its colder end; temperature is the plain mean of Helsinki, Jyväskylä, Oulu and Rovaniemi (Helsinki alone fits about as well). ` +
-      `The balance point is not chosen by hand: SQL fits the model for every degree from 5 to 20 °C and keeps the best fit. Public holidays count as weekdays, and daily means hide the hourly peaks.`;
-  }
+    /* Cold Sensitivity Tile & Drawer */
+    function renderCold(t) {
+      if (!t || !t.fits) return;
+      const wd = t.fits.find(f => f.day_type === "weekday"), we = t.fits.find(f => f.day_type === "weekend");
+      const deg = v => `${v < 0 ? "−" : ""}${fmt(Math.abs(v), 1)} °C`;
+      $("mk-cold-slope").textContent = `+${fmt(Math.round(wd.mw_per_degree))} MW`;
+      $("mk-cold-r2").textContent = `${fmt(wd.r2, 2)}`;
 
-  function kpi(value, label) { const d = el("div", {class: "kpi"}); d.append(el("strong", {}, value), el("span", {}, label)); return d; }
+      const B = t.bins, labels = B.map(b => `${b.from_c}`);
+      const model = B.map(b => wd.base_mw + wd.mw_per_degree * Math.max(wd.balance_point_c - (b.from_c + b.to_c) / 2, 0));
+      const coldCfg = {
+        height: 150, forceZero: false,
+        series: [
+          { name: "Weekdays", short: "Weekday", values: B.map(b => b.weekday_mw ?? NaN), color: "var(--fc-da)", width: 2, dots: true },
+          { name: "Weekends", short: "Weekend", values: B.map(b => b.weekend_mw ?? NaN), color: "var(--fc-id)", width: 1.5 },
+          { name: "Model", short: "Fit", values: model, color: "var(--ink-2)", width: 1.2, dash: "4 3" },
+        ],
+        labels,
+        xTick: (i, l) => i % 3 === 0 ? `${(+l < 0 ? "−" : "") + Math.abs(+l)}°` : null,
+        tipTitle: l => `${l}°C band`, tipValue: v => `${fmt(Math.round(v))} MW`
+      };
+      lineChart($("bento-cold-chart"), coldCfg);
+      lineChart($("cold-chart"), { ...coldCfg, height: 230, directLabels: true });
 
-  /* ───────── 05 craft: pipeline ───────── */
-  const STAGES = [
-    ["Source", "Fingrid Open Data API", "<b>One API, many datasets.</b> Actuals, Fingrid's day-ahead and intraday forecasts, the capacity behind them, balancing (mFRR, imbalance price), CO<sub>2</sub> intensity, nuclear output, frequency, system inertia and the temperature in four cities, at 1-minute to 1-hour resolution. Listed with their purpose in <code>src/fingrid_catalog.py</code>."],
-    ["Sync", "incremental, idempotent", "<b>Only what is new.</b> <code>sync_fingrid.py</code> re-reads the last 7 days of each dataset (Fingrid revises recent values), in windows sized to fit one API page. It stores a slot only once it has ended, and an upsert that skips unchanged rows makes a second run change nothing."],
-    ["Warehouse", "PostgreSQL, monthly partitions", "<b>Raw values, as published.</b> <code>fingrid_observation</code> keeps one row per dataset and time slot, with no resampling or gap filling, partitioned by month on a primary key of (dataset_id, start_time)."],
-    ["Quality gate", "5 checks", "<b>Stop bad data early.</b> Rows in the default partition, datasets without data or gone stale, coverage of the last 30 days, and Fingrid's 0 Hz gap markers. A failing check fails the run and CI."],
-    ["Analytics SQL", "views, functions, sql/analysis", "<b>The logic lives in SQL.</b> The forecast scorecard, the CO<sub>2</sub> model (<code>regr_slope</code> refitted per day) and the grid event detector (gaps and islands) are plain <code>.sql</code> files and SQL functions, run by the API, the reports and the page export alike."],
-    ["Daily refresh", "GitHub Actions", "<b>No server to keep alive.</b> Every day after Fingrid's noon publication a workflow starts PostgreSQL, restores yesterday's warehouse from a release asset, syncs, publishes the new snapshot and commits the page data. CI tests every pull request against the same snapshot."],
-    ["Serving", "static page + FastAPI", "<b>Fast for every visitor.</b> This page reads small JSON files built by the SQL, so it never waits for a database. The same SQL is also served by a FastAPI service (<code>make api</code>), tested in CI."],
-  ];
-  (function pipeline() {
-    const wrap = $("pipeline");
-    STAGES.forEach(([name, meta], i) => {
-      const b = el("button", {type: "button", class: "step", role: "listitem", "aria-controls": "inspector"});
-      b.append(el("small", {}, `0${i + 1}`), el("b", {}, name), el("small", {}, meta));
-      b.addEventListener("click", () => pick(i));
-      wrap.appendChild(b);
-    });
-    const pick = i => {
-      wrap.querySelectorAll(".step").forEach((b, k) => k === i ? b.setAttribute("aria-current", "step") : b.removeAttribute("aria-current"));
-      $("inspector").innerHTML = STAGES[i][2];  // static, trusted strings defined above
-    };
-    pick(0);
-  })();
+      const c = t.coldest_day;
+      $("cold-kpis").replaceChildren(
+        kpi(`+${fmt(Math.round(wd.mw_per_degree))} MW`, `per °C below ${wd.balance_point_c} °C (weekday)`),
+        kpi(`+${fmt(Math.round(we.mw_per_degree))} MW`, `per °C below ${we.balance_point_c} °C (weekend)`),
+        kpi(`${fmt(Math.round(c.consumption_mw))} MW`, `coldest day (${deg(c.temp_c)})`),
+        kpi(`${fmt(wd.r2, 2)}`, `r² explained by outdoor temperature`),
+      );
+      $("cold-takeaway").replaceChildren(el("b", {}, "Thermodynamics: "), document.createTextNode(`Below ${wd.balance_point_c} °C, every 1 °C drop adds ~${fmt(Math.round(wd.mw_per_degree))} MW across Finland (mean of Helsinki, Jyväskylä, Oulu, and Rovaniemi).`));
+    }
 
-  function renderPartitions(eng) {
-    if (!eng) return;
-    const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-    const parts = eng.partitioning.partitions.filter(p => p.partition !== "fingrid_observation_default").map(p => {
-      const m = /FROM \('(\d{4}-\d{2}-\d{2})[^']*'\) TO \('(\d{4}-\d{2}-\d{2})/.exec(p.bounds || "");
-      return {...p, from: m ? m[1] : null, to: m ? m[2] : null,
-              label: m ? `${MON[+m[1].slice(5, 7) - 1]} ${m[1].slice(0, 4)}` : p.partition};
-    });
-    const total = parts.length;
-    const maxRows = Math.max(1, ...parts.map(p => p.rows || 0));
-    let mode = "month";
-    const withData = parts.map((p, i) => p.rows > 0 ? i : -1).filter(i => i >= 0);
-    let pick = withData.length > 1 ? withData[withData.length - 2] : Math.max(0, withData[0] ?? 0);   // the last full month
-    const list = $("parts");
-    const draw = () => {
-      document.querySelectorAll("#parts-mode button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.mode === mode)));
-      list.replaceChildren(...parts.map((p, i) => {
-        const scanned = mode === "all" || i === pick;
-        const row = el("button", {type: "button", class: `prow ${scanned ? "scan" : "pruned"}`, "aria-pressed": String(mode === "month" && i === pick),
-                                  title: `${p.partition}: ${p.bounds}`});
-        const fill = el("span", {class: "fill"});
-        fill.append(el("i", {style: `width:${p.rows ? Math.max(2, p.rows / maxRows * 70) : 0}%`}), el("span", {}, `${fmt(p.rows)} rows`));
-        row.append(el("span", {class: "m"}, p.label), fill, el("span", {class: "st"}, scanned ? "scanned" : "skipped"));
-        row.addEventListener("click", () => { mode = "month"; pick = i; draw(); });
+    /* Craft, Pipeline, Partitions & SQL Drawer */
+    const STAGES = [
+      ["01 · Source", "Fingrid Open Data API", "<b><span class=\"n-datasets\">25</span> datasets at 1-min to 1-hr resolution.</b> Actuals, day-ahead/intraday forecasts, balancing mFRR, CO₂ intensity, nuclear, frequency, inertia, and 4-city temperatures."],
+      ["02 · Sync", "Incremental & Idempotent", "<b>Zero duplicate writes.</b> Re-reads trailing 7 days to capture Fingrid revisions and executes idempotent PostgreSQL upserts skipping unchanged rows."],
+      ["03 · Warehouse", "Partitioned PostgreSQL", "<b>Monthly table partitioning.</b> <code>fingrid_observation</code> partitions by month on composite primary key <code>(dataset_id, start_time)</code>."],
+      ["04 · Quality", "5 Automated Gates", "<b>Fail-fast validation.</b> Checks default partition leakage, stale datasets, 30-day completeness, and 0 Hz sensor gap markers."],
+      ["05 · SQL Logic", "Pure SQL Analytics", "<b>Database-native modeling.</b> Forecast scorecards, rolling <code>regr_slope</code> CO₂ regressions, and islands-and-gaps anomaly detectors live in versioned <code>.sql</code> files."],
+      ["06 · CI / CD", "GitHub Actions", "<b>Serverless daily refresh.</b> Restores the warehouse snapshot, syncs the last 7 days and Fingrid's new day-ahead forecasts, rebuilds the JSON files and redeploys this page. CI runs the full test suite against PostgreSQL 14–16 on every push."],
+      ["07 · Serving", "Static JSON + FastAPI", "<b>Static and fast.</b> Precomputed JSON files power this page with no server behind it. The same SQL is also served by a FastAPI app when you run the project locally (<code>make api</code>)."],
+    ];
+    let datasetCount = null;
+    (function initPipeline() {
+      const wrap = $("pipeline");
+      STAGES.forEach(([name, meta], i) => {
+        const b = el("button", { type: "button", class: "step", role: "listitem" });
+        b.append(el("b", {}, name), el("small", {}, meta));
+        b.addEventListener("click", () => {
+          wrap.querySelectorAll(".step").forEach((s, k) => k === i ? s.setAttribute("aria-current", "step") : s.removeAttribute("aria-current"));
+          $("inspector").innerHTML = STAGES[i][2];
+          if (datasetCount != null) $("inspector").querySelectorAll(".n-datasets").forEach(n => { n.textContent = datasetCount; });
+        });
+        wrap.appendChild(b);
+      });
+      wrap.firstChild.click();
+    })();
+
+    function renderEngineering(eng) {
+      if (!eng) return;
+      const b = eng.benchmark;
+      $("mk-craft-speedup").textContent = `${fmt(Math.round(b.speedup_index_vs_none))}×`;
+      $("mk-craft-tests").textContent = `${eng.tests.total}`;
+
+      $("bench-title").textContent = `Index Benchmark (${fmt(Math.round(b.speedup_index_vs_none))}× faster)`;
+      const max = b.no_index_ms;
+      const rows = [
+        ["No index", b.no_index_ms, "--muted"],
+        ["Primary-key index", b.indexed_ms, "--real"],
+        ["Monthly partitions + index", b.partitioned_ms, "--fc-da"],
+      ];
+      $("bench").replaceChildren(...rows.map(([name, ms, c]) => {
+        const row = el("div", { class: "bar-row" });
+        row.append(el("div", {}, name));
+        const bar = el("div", { class: "bar" });
+        bar.append(el("i", { style: `width:${Math.max(4, ms / max * 75)}%; background:var(${c})` }), el("span", { class: "mono" }, `${fmt(ms, 2)} ms`));
+        row.append(bar);
         return row;
       }));
-      const p = parts[pick];
-      $("parts-query").textContent = mode === "month"
-        ? `SELECT * FROM fingrid_observation\nWHERE dataset_id = 75        -- wind\n  AND start_time >= '${p.from}'\n  AND start_time <  '${p.to}';`
-        : `SELECT * FROM fingrid_observation\nWHERE dataset_id = 75;   -- no time filter`;
-      const sum = $("parts-summary");
-      sum.replaceChildren();
-      if (mode === "month") {
-        const skippedRows = parts.reduce((a, q, i) => a + (i === pick ? 0 : q.rows || 0), 0);
-        sum.append("Reads ", el("b", {}, "1"), ` of ${total} partitions (${p.label}, `, el("b", {}, fmt(p.rows)), ` rows) and skips the other ${total - 1}` +
-          (skippedRows ? `, so ${fmt(skippedRows)} rows elsewhere are never read.` : "."));
-        if (!p.rows) sum.append(` ${p.label} holds no data yet: the query returns nothing, and costs almost nothing to answer.`);
-      }
-      else sum.append("Reads ", el("b", {}, `all ${total}`), " partitions: without a time filter there is nothing to prune.");
-    };
-    $("parts-mode").addEventListener("click", e => { const b = e.target.closest("button"); if (b) { mode = b.dataset.mode; draw(); } });
-    draw();
-    const filled = parts.filter(p => p.rows > 0);
-    $("parts-note").textContent = `${fmt(filled.length)} of ${total} partitions hold data (${fmt(eng.partitioning.total_rows)} rows); empty ones are created ahead for the coming months, and a default partition catches anything outside them (it stays empty). tests/test_performance.py checks with EXPLAIN that a one-month query touches exactly one partition.`;
-  }
 
-  /* ───────── 06 craft ───────── */
-  function renderEngineering(eng) {
-    if (!eng) return;
-    const b = eng.benchmark;
-    $("bench-title").textContent = `One index, ${fmt(Math.round(b.speedup_index_vs_none))} times faster`;
-    const max = b.no_index_ms;
-    const rows = [
-      ["No index", `reads and discards ${fmt(b.rows_discarded_without_index)} rows`, b.no_index_ms, "--muted"],
-      ["Primary-key index", "(dataset_id, start_time)", b.indexed_ms, "--real"],
-      ["Monthly partitions + index", `reads only ${b.partitions_read.join(", ")}`, b.partitioned_ms, "--fc-da"],
-    ];
-    $("bench").replaceChildren(...rows.map(([name, meta, ms, c]) => {
-      const row = el("div", {class: "bar-row"});
-      const n = el("div", {class: "name"}); n.append(el("b", {}, name), el("span", {class: "mono", style: "font-size:12px"}, meta));
-      const bar = el("div", {class: "bar"});
-      const i = el("i", {style: `width:0; background:var(${c})`});
-      bar.append(i, el("span", {}, `${fmt(ms, 2)} ms`));
-      requestAnimationFrame(() => requestAnimationFrame(() => { i.style.width = `calc(${ms / max} * (100% - 90px))`; }));
-      row.append(n, bar);
-      return row;
-    }));
-    $("bench-sub").textContent = `Execution time of one query: ${b.query}.`;
-    $("bench-note").textContent = "The speed-up comes from the index. Partitioning is about as fast on a single lookup like this; it pays off as the table grows (each month's index stays small, old months can be dropped whole). Source: benchmarks/index_benchmark.md, written by scripts/benchmark_warehouse.py; absolute times vary by machine.";
+      const entries = Object.entries(eng.tests.by_layer).sort((a, b) => b[1] - a[1]);
+      const top = Math.max(...entries.map(e => e[1]));
+      $("tests-title").textContent = `${eng.tests.total} Automated CI Tests`;
+      $("tests").replaceChildren(...entries.map(([k, v]) => {
+        const row = el("div", { class: "bar-row" });
+        row.append(el("div", {}, k));
+        const bar = el("div", { class: "bar" });
+        bar.append(el("i", { style: `width:${Math.max(5, v / top * 75)}%; background:var(--rec)` }), el("span", { class: "mono" }, String(v)));
+        row.append(bar);
+        return row;
+      }));
+      $("tests-note").textContent = `Matrix: ${eng.tests.ci_matrix} · Verified ${dayFmt(eng.generated_at)}.`;
 
-    const t = eng.tests;
-    const LAYERS = {smoke: "Smoke", api: "API contract", integration: "Integration", regression: "Regression (golden data)",
-                    performance: "Performance (query plans)", security: "Security", e2e: "End-to-end (browser)", data: "Data contract"};
-    const entries = Object.entries(t.by_layer).sort((a, b) => b[1] - a[1]);
-    const top = Math.max(...entries.map(e => e[1]));
-    $("tests").replaceChildren(...entries.map(([k, v]) => {
-      const row = el("div", {class: "bar-row"});
-      row.append(el("div", {class: "name"}, LAYERS[k] || k));
-      const bar = el("div", {class: "bar"});
-      const i = el("i", {style: `width:0; background:var(--rec)`});
-      bar.append(i, el("span", {}, String(v)));
-      requestAnimationFrame(() => requestAnimationFrame(() => { i.style.width = `calc(${v / top} * (100% - 40px))`; }));
-      row.append(bar);
-      return row;
-    }));
-    $("tests-title").textContent = `${t.total} automated tests`;
-    $("tests-note").textContent = `Plus a Locust load test and a CI matrix (${t.ci_matrix}). Counted with pytest on ${dayFmt(eng.generated_at)}.`;
-    $("glance-tests").textContent = `${t.total} automated tests in ${Object.keys(t.by_layer).length} layers, bandit and pip-audit, run in CI on PostgreSQL 14 to 16.`;
-    $("proof-rows").textContent = fmt(eng.partitioning.total_rows);
-    document.querySelectorAll(".n-datasets").forEach(n => { n.textContent = fmt(eng.datasets); });
-    $("proof-rows-sub").textContent = `${fmt(eng.datasets)} Fingrid datasets in ${fmt(eng.partitioning.partitions.filter(p => p.rows > 0).length)} monthly partitions`;
-    $("foot-gen").textContent = `Data files generated ${dayFmt(eng.generated_at)}.`;
-  }
+      // Partition Pruning Interactive Simulator
+      const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+      const parts = eng.partitioning.partitions.filter(p => p.partition !== "fingrid_observation_default").map(p => {
+        const m = /FROM \('(\d{4}-\d{2}-\d{2})[^']*'\) TO \('(\d{4}-\d{2}-\d{2})/.exec(p.bounds || "");
+        return { ...p, from: m ? m[1] : null, to: m ? m[2] : null, label: m ? `${MON[+m[1].slice(5, 7) - 1]} ${m[1].slice(0, 4)}` : p.partition };
+      });
+      const maxRows = Math.max(1, ...parts.map(p => p.rows || 0));
+      let mode = "month";
+      const withData = parts.map((p, i) => p.rows > 0 ? i : -1).filter(i => i >= 0);
+      let pick = withData.length > 1 ? withData[withData.length - 2] : 0;
 
-  function renderSql(src) {
-    if (!src) return;
-    const map = {"sql/schema/15_grid_events.sql": "sql-15", "sql/schema/14_co2_forecast.sql": "sql-14",
-                 "sql/analysis/13_forecast_scorecard.sql": "sql-13", "sql/analysis/17_forecast_error_vs_balancing.sql": "sql-17",
-                 "sql/analysis/23_temperature_sensitivity.sql": "sql-23"};
-    src.files.forEach(f => {
-      const d = $(map[f.path]); if (!d) return;
-      d.querySelector("pre").textContent = f.sql;
-      const links = el("div", {class: "links"});
-      const a = el("a", {href: f.url, target: "_blank", rel: "noopener noreferrer"}, `Open ${f.path} on GitHub ↗`);
-      links.appendChild(a);
-      d.appendChild(links);
+      const drawParts = () => {
+        document.querySelectorAll("#parts-mode button").forEach(btn => btn.setAttribute("aria-pressed", String(btn.dataset.mode === mode)));
+        $("parts").replaceChildren(...parts.map((p, i) => {
+          const scanned = mode === "all" || i === pick;
+          const row = el("button", { type: "button", class: `prow ${scanned ? "scan" : "pruned"}` });
+          const fill = el("span", { class: "fill" });
+          fill.append(el("i", { style: `width:${p.rows ? Math.max(2, p.rows / maxRows * 70) : 0}%` }), el("span", { class: "mono", style: "font-size:11px" }, `${fmt(p.rows)}`));
+          row.append(el("span", { class: "mono", style: "font-size:11.5px" }, p.label), fill, el("span", { class: "st" }, scanned ? "scanned" : "skipped"));
+          row.addEventListener("click", () => { mode = "month"; pick = i; drawParts(); });
+          return row;
+        }));
+        const p = parts[pick];
+        $("parts-query").textContent = mode === "month"
+          ? `SELECT * FROM fingrid_observation\nWHERE dataset_id = 75\n  AND start_time >= '${p.from}' AND start_time < '${p.to}';`
+          : `SELECT * FROM fingrid_observation\nWHERE dataset_id = 75; -- scans all partitions`;
+        $("parts-summary").textContent = mode === "month"
+          ? `PostgreSQL prunes ${parts.length - 1} partitions and reads only ${p.label} (${fmt(p.rows)} rows).`
+          : `Without a time predicate, PostgreSQL must scan all ${parts.length} partitions.`;
+      };
+      $("parts-mode").addEventListener("click", e => { const btn = e.target.closest("button"); if (btn) { mode = btn.dataset.mode; drawParts(); } });
+      drawParts();
+    }
+
+    function renderSql(src) {
+      if (!src) return;
+      const map = {
+        "sql/schema/15_grid_events.sql": "sql-15", "sql/schema/14_co2_forecast.sql": "sql-14",
+        "sql/analysis/13_forecast_scorecard.sql": "sql-13", "sql/analysis/17_forecast_error_vs_balancing.sql": "sql-17",
+        "sql/analysis/23_temperature_sensitivity.sql": "sql-23"
+      };
+      src.files.forEach(f => {
+        const d = $(map[f.path]); if (!d) return;
+        d.querySelector("pre").textContent = f.sql;
+      });
+    }
+
+    $("copy-cmd").addEventListener("click", async e => {
+      const btn = e.currentTarget;
+      try { await navigator.clipboard.writeText($("cmd-text").textContent); btn.textContent = "Copied!"; }
+      catch (err) { btn.textContent = "Copy"; }
+      setTimeout(() => { btn.textContent = "Copy"; }, 1800);
     });
-  }
 
-  $("copy-cmd").addEventListener("click", async e => {
-    const btn = e.currentTarget;
-    try { await navigator.clipboard.writeText($("cmd-text").textContent); btn.textContent = "Copied"; }
-    catch (err) { btn.textContent = "Select and copy"; }
-    setTimeout(() => { btn.textContent = "Copy"; }, 1800);
-  });
+    /* ───────── 5. BOOTSTRAP DATA PIPELINE ───────── */
+    (async function main() {
+      const files = ["fingrid_recent_daily", "forecast_scorecard", "co2_forecast", "grid_events", "temperature", "sql_sources", "engineering"];
+      const [recent, scorecard, co2, events, temperature, sql, eng] = await Promise.all(files.map(f => safe(getJSON(`data/${f}.json`))));
+      safe(getJSON("data/fingrid_latest.json", { cache: "no-store" })).then(renderLatestTicker);
 
-  /* ───────── load everything (static files only: the page never waits for a server) ───────── */
-  (async function main() {
-    const files = ["fingrid_recent_daily", "forecast_scorecard", "co2_forecast", "grid_events", "temperature", "sql_sources", "engineering"];
-    const [recent, scorecard, co2, events, temperature, sql, eng] = await Promise.all(files.map(f => safe(getJSON(`data/${f}.json`))));
-    safe(getJSON("data/fingrid_latest.json", {cache: "no-store"})).then(renderLatest);
+      const failed = (data, file, id) => { if (!data && id) $(id).textContent = `data/${file}.json could not be loaded; the rest of the page still works.`; };
+      [[scorecard, "forecast_scorecard", "fc-error"], [co2, "co2_forecast", "co2-error"], [events, "grid_events", "ev-error"],
+       [temperature, "temperature", "cold-error"]].forEach(([d, f, id]) => failed(d, f, id));
+      if (eng) { datasetCount = eng.datasets; document.querySelectorAll(".n-datasets").forEach(n => { n.textContent = eng.datasets; }); }
+      if (!recent) $("hero-tile-copy").textContent = "data/fingrid_recent_daily.json could not be loaded.";
 
-    if (recent) { gridData.recent = recent; renderGrid("recent"); }
-    else $("grid-error").textContent = "Grid data could not be loaded.";
-    renderForecasts(scorecard);
-    renderCo2(co2);
-    renderEvents(events);
-    renderCold(temperature);
-    renderEngineering(eng);
-    renderPartitions(eng);
-    renderSql(sql);
+      cachedGrid = recent;
+      cachedScorecard = scorecard;
+      renderHeroChamber("grid");
+      renderForecasts(scorecard);
+      renderCo2(co2);
+      renderEvents(events);
+      renderCold(temperature);
+      renderEngineering(eng);
+      renderSql(sql);
 
-    // Hero tiles: one headline number from each chapter.
-    const wind = scorecard && scorecard.summary.find(r => r.variable === "wind" && r.product === "day_ahead");
-    if (wind) {
-      $("proof-wind").textContent = `${fmt(Math.round(wind.mae_mw))} MW`;
-      $("proof-wind-sub").textContent = `${fmt(wind.mae_pct_of_capacity, 1)}% of the wind fleet; the intraday update halves it`;
-    }
-    if (co2) {
-      $("proof-co2").textContent = `${fmt(co2.backtest.saving_pct, 1)}%`;
-      $("proof-co2-sub").textContent = `vs an average hour, over ${fmt(co2.backtest.days)} replayed days (a perfect pick: ${fmt(co2.backtest.achievable_pct, 1)}%)`;
-    }
-    if (events) $("proof-events").textContent = fmt(Object.values(events.counts).reduce((a, c) => a + c.year, 0));
-  })();
+      // Top Thesis Proof Numbers
+      if (eng) $("proof-rows").textContent = fmt(eng.partitioning.total_rows);
+      const wind = scorecard && scorecard.summary.find(r => r.variable === "wind" && r.product === "day_ahead");
+      if (wind) $("proof-wind").textContent = `${fmt(Math.round(wind.mae_mw))} MW`;
+      if (co2) $("proof-co2").textContent = `${fmt(co2.backtest.saving_pct, 1)}%`;
+      if (events) $("proof-events").textContent = fmt(Object.values(events.counts).reduce((a, c) => a + c.year, 0));
+    })();
   </script>
 </body>
+
 </html>
