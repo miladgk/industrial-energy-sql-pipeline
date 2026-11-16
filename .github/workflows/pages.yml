@@ -10,7 +10,7 @@ on:
   push:
     branches: [main]
   schedule:
-    - cron: "41 * * * *"     # every hour at :41 UTC (Fingrid publishes 15-minute values with a short delay)
+    - cron: "23 * * * *"     # every hour at :23 UTC (Fingrid publishes 15-minute values with a short delay)
   workflow_dispatch:
 
 permissions:

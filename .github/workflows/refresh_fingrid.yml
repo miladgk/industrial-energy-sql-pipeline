@@ -10,7 +10,7 @@ name: Refresh the Fingrid warehouse and dashboard data
 #      forecast_scorecard.json, co2_forecast.json and grid_events.json; commit
 #      them if they changed and redeploy GitHub Pages
 #
-# It runs at 10:47 UTC because Fingrid publishes the next day's day-ahead
+# It runs at 10:53 UTC because Fingrid publishes the next day's day-ahead
 # forecasts at 12:00 Finnish time (10:00 UTC in winter, 09:00 UTC in summer),
 # and the CO2 forecast for tomorrow is built from them.
 #
@@ -29,7 +29,7 @@ name: Refresh the Fingrid warehouse and dashboard data
 
 on:
   schedule:
-    - cron: "47 10 * * *"    # every day 10:47 UTC, after Fingrid's 12:00 Finnish-time publication
+    - cron: "53 10 * * *"    # every day 10:53 UTC, after Fingrid's 12:00 Finnish-time publication
   workflow_dispatch:
 
 permissions:
