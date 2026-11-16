@@ -1,8 +1,14 @@
-name: Refresh Fingrid data for the dashboard
+name: Refresh the Fingrid warehouse and dashboard data
 
-# Fetches the last 365 complete days of real Fingrid data (wind production and
-# electricity consumption in Finland), writes docs/data/fingrid_recent_daily.json,
-# commits it if it changed, and redeploys GitHub Pages.
+# Once a day:
+#   1. start an empty PostgreSQL and restore yesterday's warehouse snapshot
+#      (release "warehouse-snapshot", asset fingrid_observation.csv.gz)
+#   2. sync from Fingrid: only the last 7 days per dataset (Fingrid revises
+#      recent values); with no snapshot it backfills 400 days instead
+#   3. publish the new snapshot, so the next run starts from it
+#   4. run the SQL analyses and write docs/data/fingrid_recent_daily.json and
+#      docs/data/forecast_scorecard.json; commit them if they changed and
+#      redeploy GitHub Pages
 #
 # Requires the repository secret FINGRID_API_KEY
 # (Settings -> Secrets and variables -> Actions -> New repository secret).
@@ -23,17 +29,39 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write            # commit the refreshed JSON
+  contents: write            # commit the refreshed JSON and publish the snapshot release asset
   actions: write             # start the Pages deploy (pushes made with GITHUB_TOKEN do not trigger workflows)
 
 concurrency:
   group: refresh-fingrid
   cancel-in-progress: false
 
+env:
+  SNAPSHOT_TAG: warehouse-snapshot
+  SNAPSHOT_FILE: fingrid_observation.csv.gz
+
 jobs:
   refresh:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 45      # a full backfill (no snapshot) takes about 15 minutes
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: admin
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: energy_analytics
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U admin -d energy_analytics"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://admin:password@localhost:5432/energy_analytics
+      DATABASE_SSLMODE: disable
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
 
@@ -43,9 +71,7 @@ jobs:
           cache: pip
 
       - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install pandas pyyaml numpy
+        run: pip install -r requirements.txt
 
       - name: Check that the API key secret exists
         env:
@@ -56,30 +82,53 @@ jobs:
             exit 1
           fi
 
-      - name: Fetch the last 365 days from Fingrid
+      - name: Create the schema
+        run: python src/setup_db.py
+
+      - name: Restore the previous warehouse snapshot
+        run: |
+          if gh release download "$SNAPSHOT_TAG" --pattern "$SNAPSHOT_FILE" --dir /tmp/snapshot; then
+            python src/warehouse_snapshot.py restore "/tmp/snapshot/$SNAPSHOT_FILE"
+          else
+            echo "::notice::No snapshot yet: the sync will backfill from Fingrid."
+          fi
+
+      - name: Sync from Fingrid
         env:
           FINGRID_API_KEY: ${{ secrets.FINGRID_API_KEY }}
-        run: python scripts/export_dashboard_data.py --parts fingrid-recent
+        run: python src/sync_fingrid.py
+
+      - name: Publish the new snapshot
+        run: |
+          python src/warehouse_snapshot.py dump "/tmp/$SNAPSHOT_FILE"
+          if ! gh release view "$SNAPSHOT_TAG" > /dev/null 2>&1; then
+            gh release create "$SNAPSHOT_TAG" --latest=false \
+              --title "Fingrid warehouse snapshot" \
+              --notes "Every row of fingrid_observation as CSV (dataset_id, start_time, end_time, value), replaced daily by .github/workflows/refresh_fingrid.yml. Source: Fingrid Open Data, CC BY 4.0 (https://data.fingrid.fi)."
+          fi
+          gh release upload "$SNAPSHOT_TAG" "/tmp/$SNAPSHOT_FILE" --clobber
+
+      - name: Build the dashboard data
+        run: python scripts/export_dashboard_data.py --parts fingrid-recent forecast-scorecard
 
       - name: Commit if the data changed
         id: commit
         run: |
-          if git diff --quiet -- docs/data/fingrid_recent_daily.json; then
-            echo "No change in Fingrid data."
+          files="docs/data/fingrid_recent_daily.json docs/data/forecast_scorecard.json"
+          git add $files
+          if git diff --cached --quiet; then
+            echo "No change in the dashboard data."
             echo "changed=false" >> "$GITHUB_OUTPUT"
           else
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add docs/data/fingrid_recent_daily.json
             git commit -m "Refresh Fingrid dashboard data ($(date -u +%Y-%m-%d))"
             git push
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Redeploy GitHub Pages
-        if: steps.commit.outputs.changed == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
+        if: steps.commit.outputs.changed == 'true' && github.ref == 'refs/heads/main'
         run: gh workflow run pages.yml --ref main
 
   keepalive:

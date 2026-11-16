@@ -114,7 +114,8 @@ energy-analytics-sql/
 ├── sql/
 │   ├── schema/
 │   │   ├── 01_create_tables.sql
-│   │   └── 10_partition_readings.sql # Declarative range partitioning (monthly)
+│   │   ├── 10_partition_readings.sql # Declarative range partitioning (monthly)
+│   │   └── 13_fingrid_warehouse.sql  # Raw Fingrid observations + forecast_vs_actual view
 │   ├── etl/
 │   │   └── 02_data_quality_checks.sql
 │   └── analysis/
@@ -124,7 +125,12 @@ energy-analytics-sql/
 │       ├── 06_monthly_report.sql
 │       ├── 08_real_vs_synthetic_comparison.sql
 │       ├── 09_top_readings_per_sensor.sql # Correlated LATERAL join queries
-│       └── 11_detection_quality.sql # Precision / recall of the z-score detector
+│       ├── 11_detection_quality.sql # Precision / recall of the z-score detector
+│       ├── 13_forecast_scorecard.sql      # How far Fingrid's forecasts were from reality
+│       ├── 14_forecast_error_by_hour.sql  # ... by hour of the day (Finnish time)
+│       ├── 15_forecast_error_by_month.sql # ... by month
+│       ├── 16_forecast_biggest_misses.sql # The worst day-ahead days
+│       └── 17_forecast_error_vs_balancing.sql # Forecast surprise vs mFRR activation and imbalance price
 │
 ├── src/
 │   ├── setup_db.py             # Runs 01_create_tables.sql (fallback for non-Docker setups)
@@ -134,6 +140,10 @@ energy-analytics-sql/
 │   ├── migrate_to_partitioned.py # Live table migration to range-partitioned schema
 │   ├── fetch_grid_data.py      # Real Fingrid API ingestion client
 │   ├── ingest_grid_data.py     # Grid data PostgreSQL loader
+│   ├── fingrid_catalog.py      # The 19 Fingrid datasets the warehouse keeps
+│   ├── sync_fingrid.py         # Incremental, idempotent Fingrid → fingrid_observation sync
+│   ├── warehouse_snapshot.py   # Dump / restore fingrid_observation as CSV.gz
+│   ├── analysis_window.py      # Default 365-day window for the parameterised analyses
 │   ├── run_quality_checks.py   # Runs 02_data_quality_checks.sql, prints results
 │   ├── run_report.py           # Runs all analysis SQL → timestamped CSVs
 │   └── api.py                  # FastAPI service (overview, trend, anomalies, detector scoring, rankings)
@@ -149,6 +159,8 @@ energy-analytics-sql/
 │   ├── test_security.py        # Injection, error-leak, secrets and read-only checks
 │   ├── test_regression.py      # Golden dataset with hand-computed expected values
 │   ├── test_detection_quality.py  # Detector scorecard consistency
+│   ├── test_fingrid_warehouse.py  # Sync, snapshot and forecast SQL against a fake Fingrid API
+│   ├── test_dashboard_data.py  # Consistency of the published docs/data/*.json files
 │   ├── test_data_quality.py    # pytest suite for post-ingestion assertions
 │   └── test_incremental.py     # Two-layer idempotency verification tests
 │
@@ -399,15 +411,44 @@ Rebuild them after regenerating data or re-running the analysis:
 ```bash
 python scripts/export_dashboard_data.py                  # all files (calls the hosted API)
 python scripts/export_dashboard_data.py --skip-snapshot  # local files only
-python scripts/export_dashboard_data.py --parts fingrid-recent  # last 365 days from Fingrid
 ```
 
-The last-12-months Fingrid view is refreshed automatically by
-`.github/workflows/refresh_fingrid.yml` every day at 05:17 UTC (or on demand from the
-Actions tab). It needs the repository secret `FINGRID_API_KEY`
+#### The Fingrid warehouse
+
+Real grid data lives in `fingrid_observation`: one row per Fingrid dataset and
+time slot, exactly as published (no resampling or gap filling). The 19 datasets
+are listed with their purpose in `src/fingrid_catalog.py`: actuals, Fingrid's
+day-ahead and intraday forecasts, the capacity behind them, balancing (mFRR,
+imbalance price), CO2 intensity and system stability.
+
+```bash
+python src/setup_db.py           # creates the tables (13_fingrid_warehouse.sql)
+python src/sync_fingrid.py       # first run: backfills 400 days (~15 min); later: the last 7 days
+python scripts/export_dashboard_data.py --parts fingrid-recent forecast-scorecard
+```
+
+The sync is incremental and idempotent: each dataset is re-fetched from its newest
+stored slot minus 7 days (Fingrid revises recent values), only slots that have
+already ended are stored, and unchanged rows are not rewritten.
+
+`.github/workflows/refresh_fingrid.yml` runs this every day at 05:17 UTC (or on
+demand from the Actions tab). It starts an empty PostgreSQL, restores the previous
+warehouse from the `warehouse-snapshot` release (`fingrid_observation.csv.gz`, also
+a free download of the whole dataset), syncs the last week, publishes the new
+snapshot, runs the analyses and commits `fingrid_recent_daily.json` and
+`forecast_scorecard.json`. It needs the repository secret `FINGRID_API_KEY`
 (Settings → Secrets and variables → Actions). The key is read from the
 environment only inside that job; locally, `fingrid_api_key` in the git-ignored
 `config.yaml` is used instead.
+
+#### Forecast scorecard
+
+`sql/analysis/13-17` score Fingrid's own forecasts against what happened, per
+15-minute slot over the last 365 complete days: mean absolute error, bias, RMSE,
+95th-percentile miss, error by hour (Finnish time) and month, the five worst
+day-ahead days, and how activated mFRR balancing power and the imbalance price
+behave when the day-ahead forecast was wrong. Solar is not scored: Fingrid publishes
+solar forecasts but no measured solar production.
 
 The newest 15-minute wind and consumption values (the "Latest" row above the chart)
 are fetched by `.github/workflows/pages.yml`, which also runs every hour. It makes two

@@ -238,6 +238,14 @@
 
     .latest { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 18px; margin: 14px 0 0; padding: 10px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); font-size: 13px; color: var(--muted); }
     .latest[hidden] { display: none; }
+
+    /* forecast scorecard: day-ahead and intraday keep these colours in every chart */
+    :root { --fc-da: var(--rec); --fc-id: var(--prec); }
+    .fc { margin-top: 16px; }
+    .fc-intro { max-width: 78ch; margin: 10px 0 0; }
+    .fc-h { margin: 22px 0 8px; font-size: 15px; font-weight: 600; }
+    .fc-tables { margin-top: 6px; }
+    .fc details.sql { margin-top: 12px; }
     .latest .lt-label { font: 500 11px/1.35 "JetBrains Mono", monospace; letter-spacing: .03em; color: var(--ink-2); }
     .latest .lt-val { display: inline-flex; align-items: baseline; gap: 6px; }
     .latest .lt-val i { width: 7px; height: 7px; border-radius: 50%; display: inline-block; align-self: center; }
@@ -512,6 +520,50 @@
           <div class="chart-box"><svg id="grid-chart" class="chart" role="img" aria-label="Daily average wind production and electricity consumption in Finland"><desc>Two lines in megawatts, one value per day.</desc></svg></div>
           <p class="takeaway" id="grid-takeaway"></p>
           <p id="grid-error" class="error"></p>
+        </div>
+
+        <div class="card panel reveal fc" id="forecasts">
+          <div class="panel-top">
+            <div>
+              <h3>How good are Fingrid's own forecasts?</h3>
+              <div class="prov" id="fc-prov"></div>
+            </div>
+            <div class="seg" id="fc-tabs" role="group" aria-label="Forecast variable">
+              <button type="button" data-var="wind" aria-pressed="true">Wind</button>
+              <button type="button" data-var="consumption" aria-pressed="false">Consumption</button>
+            </div>
+          </div>
+          <p class="sub fc-intro">Fingrid publishes its forecasts and the measured values as separate datasets, but not how far apart they were. Here every 15-minute forecast of the last 12 months is lined up with what actually happened, and the gap is scored in SQL. Two forecasts are compared: the <b>day-ahead</b> one, fixed at noon the day before, and the <b>intraday</b> one, updated every 15 minutes until the moment itself.</p>
+          <div class="kpis" id="fc-kpis"></div>
+          <h4 class="fc-h" id="fc-hour-title">Average miss by hour of the day (MW)</h4>
+          <div class="legend" id="fc-legend"><span><i style="background:var(--fc-da)"></i>Day-ahead forecast</span><span><i style="background:var(--fc-id)"></i>Intraday forecast</span></div>
+          <div class="chart-box"><svg id="fc-hour-chart" class="chart" role="img" aria-label="Mean absolute forecast error by hour of the day, Finnish time"><desc>Two lines, one per forecast, with the average absolute error in megawatts for each hour of the day.</desc></svg></div>
+          <p class="takeaway" id="fc-takeaway"></p>
+
+          <div class="fc-tables">
+            <div>
+              <h4 class="fc-h">The five worst day-ahead days</h4>
+              <div class="table-wrap">
+                <table>
+                  <thead><tr><th scope="col">Day</th><th scope="col" class="r">Actual avg</th><th scope="col" class="r">Forecast avg</th><th scope="col" class="r">Avg miss</th></tr></thead>
+                  <tbody id="fc-misses"><tr><td colspan="4" class="loading">Loading…</td></tr></tbody>
+                </table>
+              </div>
+            </div>
+            <div>
+              <h4 class="fc-h">When the forecast is wrong, the grid has to react</h4>
+              <div class="table-wrap">
+                <table>
+                  <thead><tr><th scope="col">Day-ahead surprise</th><th scope="col" class="r">Quarter-hours</th><th scope="col" class="r">mFRR need</th><th scope="col" class="r">Activated up</th><th scope="col" class="r">Activated down</th><th scope="col" class="r">Imbalance price</th></tr></thead>
+                  <tbody id="fc-balancing"><tr><td colspan="6" class="loading">Loading…</td></tr></tbody>
+                </table>
+              </div>
+              <p class="note" id="fc-balancing-note"></p>
+            </div>
+          </div>
+          <p id="fc-error" class="error"></p>
+          <details class="sql" id="sql-13"><summary>Inspect the SQL · sql/analysis/13_forecast_scorecard.sql</summary><pre>Loading…</pre></details>
+          <details class="sql" id="sql-17"><summary>Inspect the SQL · sql/analysis/17_forecast_error_vs_balancing.sql</summary><pre>Loading…</pre></details>
         </div>
       </div>
     </section>
@@ -1163,6 +1215,93 @@ make test</pre>
     );
     box.hidden = false;
   }
+  /* ───────── 01 world: forecast scorecard ───────── */
+  const fc = {data: null, variable: "wind"};
+  const signed = v => `${v > 0 ? "+" : v < 0 ? "−" : ""}${fmt(Math.abs(Math.round(v)))}`;
+  const fiMonth = ym => new Date(`${ym}-15T12:00:00Z`).toLocaleDateString("en-GB", {month: "long", year: "numeric", timeZone: "UTC"});
+  function renderForecasts(sc) {
+    if (!sc || !sc.summary || sc.summary.length !== 4) { $("fc-error").textContent = "Forecast scorecard could not be loaded."; return; }
+    fc.data = sc;
+    const last = new Date(`${sc.window_end_exclusive}T00:00:00Z`); last.setUTCDate(last.getUTCDate() - 1);
+    const prov = $("fc-prov");
+    prov.replaceChildren(el("span", {class: "badge b-real"}, `Fingrid API · ${dayFmt(`${sc.window_start}T00:00:00Z`)} to ${dayFmt(last.toISOString())} · daily refresh`));
+    prov.firstChild.prepend(el("i"));
+    renderBalancing(sc.balancing);
+    drawForecasts(fc.variable);
+  }
+  function drawForecasts(v) {
+    const sc = fc.data;
+    if (!sc) return;
+    fc.variable = v;
+    document.querySelectorAll("#fc-tabs button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.var === v)));
+    const wind = v === "wind";
+    const pick = p => sc.summary.find(r => r.variable === v && r.product === p);
+    const da = pick("day_ahead"), id = pick("intraday");
+    const change = Math.round((1 - id.mae_mw / da.mae_mw) * 100);
+    $("fc-kpis").replaceChildren(
+      kpi(`${fmt(Math.round(da.mae_mw))} MW`, wind
+        ? `day-ahead average miss, ${fmt(da.mae_pct_of_capacity, 1)}% of the ${fmt(Math.round(da.mean_capacity_mw))} MW wind fleet`
+        : `day-ahead average miss, ${fmt(da.wape_pct, 1)}% of consumption`),
+      kpi(`${fmt(Math.round(id.mae_mw))} MW`, `intraday average miss, ${change >= 0 ? `${change}% smaller` : `${-change}% larger`} than day-ahead`),
+      kpi(`${signed(da.bias_mw)} MW`, da.bias_mw >= 0 ? "day-ahead bias: reality came in above the forecast" : "day-ahead bias: the forecast was too high"),
+      kpi(`${fmt(Math.round(da.p95_abs_error_mw))} MW`, "day-ahead: 95 in 100 quarter-hours missed by less than this"),
+    );
+
+    const hours = [...Array(24).keys()];
+    const byHour = p => hours.map(h => { const r = sc.by_hour.find(x => x.variable === v && x.product === p && x.hour_fi === h); return r ? r.mae_mw : NaN; });
+    const daH = byHour("day_ahead"), idH = byHour("intraday");
+    $("fc-hour-title").textContent = `Average ${wind ? "wind" : "consumption"} forecast miss by hour of the day, Finnish time (MW)`;
+    lineChart($("fc-hour-chart"), {
+      height: 300,
+      series: [
+        {name: "Day-ahead forecast", short: "Day-ahead", values: daH, color: "var(--fc-da)", width: 2},
+        {name: "Intraday forecast", short: "Intraday", values: idH, color: "var(--fc-id)", width: 2},
+      ],
+      labels: hours.map(h => String(h).padStart(2, "0")),
+      xTick: (i, l, narrow) => i % (narrow ? 6 : 3) === 0 ? `${l}:00` : null,
+      tipTitle: l => `${l}:00–${l}:59 Finnish time`,
+      tipValue: x => `${fmt(Math.round(x))} MW`,
+      yLabel: "Average absolute miss (MW)",
+      xLabel: "Hour of the day (Finnish time)",
+    });
+
+    const worstH = hours.reduce((a, b) => daH[b] > daH[a] ? b : a, 0), bestH = hours.reduce((a, b) => daH[b] < daH[a] ? b : a, 0);
+    const months = sc.by_month.filter(r => r.variable === v && r.product === "day_ahead" && r.slots >= 2000);
+    const key = wind ? "mae_pct_of_capacity" : "wape_pct";
+    const worstM = months.reduce((a, b) => b[key] > a[key] ? b : a, months[0]);
+    const bestM = months.reduce((a, b) => b[key] < a[key] ? b : a, months[0]);
+    const hh = h => `${String(h).padStart(2, "0")}:00`;
+    $("fc-takeaway").replaceChildren(el("b", {}, "Reading the chart: "), document.createTextNode(
+      `the day-ahead ${wind ? "wind" : "consumption"} forecast misses most around ${hh(worstH)} (${fmt(Math.round(daH[worstH]))} MW on average) and least around ${hh(bestH)} (${fmt(Math.round(daH[bestH]))} MW). ` +
+      (worstM ? `By month it was hardest in ${fiMonth(worstM.month_fi)} (${fmt(worstM[key], 1)}% ${wind ? "of the fleet" : "of consumption"}) and easiest in ${fiMonth(bestM.month_fi)} (${fmt(bestM[key], 1)}%). ` : "") +
+      `Updating the forecast during the day cuts the average miss ${change >= 0 ? `by ${change}%` : `by nothing: it grows ${-change}%`}.`));
+
+    $("fc-misses").replaceChildren(...sc.biggest_misses.filter(r => r.variable === v).map(r => {
+      const tr = el("tr");
+      [[dayFmt(`${r.day_fi}T12:00:00Z`)], [`${fmt(Math.round(r.mean_actual_mw))} MW`, "r"], [`${fmt(Math.round(r.mean_forecast_mw))} MW`, "r"], [`${fmt(Math.round(r.mae_mw))} MW`, "r"]]
+        .forEach(([t, c]) => tr.appendChild(el("td", c ? {class: c} : {}, t)));
+      return tr;
+    }));
+  }
+  function renderBalancing(b) {
+    const label = r => r.bin_from_mw == null ? `below −1,500 MW` : r.bin_to_mw == null ? `+1,500 MW or more`
+      : `${signed(r.bin_from_mw)} to ${signed(r.bin_to_mw)} MW`;
+    $("fc-balancing").replaceChildren(...b.bins.filter(r => r.slots >= 20).map(r => {
+      const tr = el("tr");
+      [[label(r)], [fmt(r.slots), "r"], [`${signed(r.mean_mfrr_need_mw)} MW`, "r"], [`${fmt(Math.round(r.mean_mfrr_up_mw))} MW`, "r"], [`${signed(r.mean_mfrr_down_mw)} MW`, "r"],
+       [r.median_imbalance_price == null ? "–" : `${fmt(r.median_imbalance_price, 1)} €/MWh`, "r"]]
+        .forEach(([t, c]) => tr.appendChild(el("td", c ? {class: c} : {}, t)));
+      return tr;
+    }));
+    $("fc-balancing-note").textContent =
+      `Surprise = wind error minus consumption error of the day-ahead forecasts: negative means less wind or more demand than expected, so the grid is short. ` +
+      `Fingrid's own estimate of the mFRR balancing energy needed follows the surprise (r = ${fmt(b.r_surprise_vs_mfrr_need, 2)}): the shorter the grid runs, the more upward balancing it expects. ` +
+      `Actually activated balancing barely does (net up + down: r = ${fmt(b.r_surprise_vs_net_mfrr, 2)}), and neither does the imbalance price (r = ${fmt(b.r_surprise_vs_price, 2)}), which mostly follows the market price level. ` +
+      `A plausible reading: market parties trade away most of the surprise in the intraday market before real time. This is an association, not proof of cause. ` +
+      `Columns are averages, except the median imbalance price; Fingrid publishes downward activation as negative MW. Bins with fewer than 20 quarter-hours are hidden.`;
+  }
+  $("fc-tabs").addEventListener("click", e => { const b = e.target.closest("button"); if (b) drawForecasts(b.dataset.var); });
+
   function kpi(value, label) { const d = el("div", {class: "kpi"}); d.append(el("strong", {}, value), el("span", {}, label)); return d; }
   $("period-tabs").addEventListener("click", e => { const b = e.target.closest("button"); if (b) renderGrid(b.dataset.period); });
 
@@ -1554,7 +1693,8 @@ make test</pre>
 
   function renderSql(src) {
     if (!src) return;
-    const map = {"sql/analysis/11_detection_quality.sql": "sql-11", "sql/analysis/12_zero_dropout_rules.sql": "sql-12", "sql/analysis/08_real_vs_synthetic_comparison.sql": "sql-08"};
+    const map = {"sql/analysis/13_forecast_scorecard.sql": "sql-13", "sql/analysis/17_forecast_error_vs_balancing.sql": "sql-17",
+                 "sql/analysis/11_detection_quality.sql": "sql-11", "sql/analysis/12_zero_dropout_rules.sql": "sql-12", "sql/analysis/08_real_vs_synthetic_comparison.sql": "sql-08"};
     src.files.forEach(f => {
       const d = $(map[f.path]); if (!d) return;
       d.querySelector("pre").textContent = f.sql;
@@ -1580,6 +1720,7 @@ make test</pre>
       "data/sql_sources.json", "data/engineering.json",
     ].map(u => safe(getJSON(u))));
     safe(getJSON("data/fingrid_latest.json", {cache: "no-store"})).then(renderLatest);
+    safe(getJSON("data/forecast_scorecard.json")).then(renderForecasts);
 
     examples = ex ? ex.examples : [];
     if (gYear) { gridData.year = gYear; $("period-year").textContent = String(gYear.year); }

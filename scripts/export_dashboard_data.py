@@ -9,8 +9,10 @@ Rebuild the static data files used by the GitHub Pages dashboard (docs/data/).
                               outputs/08_real_vs_synthetic_comparison_*.csv           [part: validation]
   api_snapshot.json           Overview, trend and detector scorecard from the API, shown
                               instantly while the free Render service wakes up        [part: snapshot]
-  fingrid_recent_daily.json   Last 365 complete days fetched live from the Fingrid
-                              API (needs FINGRID_API_KEY or config.yaml)              [part: fingrid-recent]
+  fingrid_recent_daily.json   Last 365 complete days of wind and consumption, from the
+                              Fingrid warehouse (fingrid_observation)                  [part: fingrid-recent]
+  forecast_scorecard.json     How good Fingrid's own forecasts were over the last 365
+                              days (sql/analysis/13-17 on the Fingrid warehouse)       [part: forecast-scorecard]
   fingrid_latest.json         Newest wind and consumption values from the Fingrid API.
                               Built by the hourly Pages deploy and never committed     [part: fingrid-latest]
 
@@ -27,7 +29,8 @@ Rebuild the static data files used by the GitHub Pages dashboard (docs/data/).
 Usage (from the repository root):
     python scripts/export_dashboard_data.py                          # fingrid, validation, snapshot
     python scripts/export_dashboard_data.py --skip-snapshot          # local files only
-    python scripts/export_dashboard_data.py --parts fingrid-recent   # what the daily workflow runs
+    python src/sync_fingrid.py && \
+    python scripts/export_dashboard_data.py --parts fingrid-recent forecast-scorecard   # the daily workflow
     python scripts/export_dashboard_data.py --parts fingrid-latest   # what the hourly Pages deploy runs
     python scripts/export_dashboard_data.py --api-url http://127.0.0.1:8000
     python scripts/export_dashboard_data.py --api-url http://127.0.0.1:8000 \
@@ -65,13 +68,14 @@ FINGRID_SOURCE = ("Fingrid Open Data API, dataset 75 (wind power production) and
                   "(electricity consumption), Finland, hourly values averaged per UTC day")
 
 
-def _daily_grid_payload(grid: pd.DataFrame, extra: dict) -> dict:
-    """Daily means per metric plus summary stats; days missing hours are dropped."""
+def _daily_grid_payload(grid: pd.DataFrame, extra: dict, min_rows_per_day: int = 20) -> dict:
+    """Daily means per metric plus summary stats; days with fewer rows than
+    min_rows_per_day (20 of 24 hourly, or 92 of 96 quarter-hourly) are dropped."""
     grid = grid.copy()
     grid["recorded_at"] = pd.to_datetime(grid["recorded_at"], utc=True)
     grid["day"] = grid["recorded_at"].dt.strftime("%Y-%m-%d")
     hours = grid.groupby(["day", "metric"]).size().unstack()
-    complete = hours[(hours >= 20).all(axis=1)].index        # tolerate DST / short gaps
+    complete = hours[(hours >= min_rows_per_day).all(axis=1)].index
     grid = grid[grid["day"].isin(complete)]
     daily = grid.pivot_table(index="day", columns="metric", values="value", aggfunc="mean").sort_index()
     # Rank only months with most of their days present, so a partial month at the
@@ -109,20 +113,96 @@ def export_fingrid(year: int) -> None:
 
 
 def export_fingrid_recent(days: int = 365) -> None:
+    """Daily means of the last *days* complete UTC days, read from the warehouse
+    (run src/sync_fingrid.py first). No extra API calls: the daily sync already has the data."""
     sys.path.insert(0, os.path.join(ROOT, "src"))
-    from fetch_grid_data import fetch_fingrid_data, load_api_key
+    from analysis_window import default_window
 
-    api_key = load_api_key()
-    if not api_key:
-        raise SystemExit("No Fingrid API key: set FINGRID_API_KEY or fingrid_api_key in config.yaml.")
-    end = pd.Timestamp.now(tz="UTC").normalize().tz_localize(None)    # today 00:00 UTC, exclusive
-    start = end - pd.Timedelta(days=days)
-    grid = fetch_fingrid_data(api_key, start.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d"))
-    _write("fingrid_recent_daily.json", _daily_grid_payload(grid, {
-        "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        "window_start": start.strftime("%Y-%m-%d"),
-        "window_end_exclusive": end.strftime("%Y-%m-%d"),
-    }))
+    w = default_window(days=days)
+    conn = _db()
+    try:
+        rows = _rows(conn, """
+            SELECT start_time AS recorded_at,
+                   CASE dataset_id WHEN 75 THEN 'wind_production' ELSE 'consumption' END AS metric,
+                   value
+            FROM fingrid_observation
+            WHERE dataset_id IN (75, 124) AND start_time >= %(start)s AND start_time < %(end)s
+        """, w)
+    finally:
+        conn.close()
+    if not rows:
+        raise SystemExit("fingrid_observation has no wind/consumption rows in the window: run src/sync_fingrid.py")
+    _write("fingrid_recent_daily.json", _daily_grid_payload(pd.DataFrame(rows), {
+        "source": "Fingrid Open Data API, dataset 75 (wind power production) and 124 (electricity consumption), "
+                  "Finland, 15-minute values averaged per UTC day",
+        "generated_at": _now(),
+        "window_start": w["start"].strftime("%Y-%m-%d"),
+        "window_end_exclusive": w["end"].strftime("%Y-%m-%d"),
+    }, min_rows_per_day=92))
+
+
+FORECAST_SQL = {
+    "summary": "sql/analysis/13_forecast_scorecard.sql",
+    "by_hour": "sql/analysis/14_forecast_error_by_hour.sql",
+    "by_month": "sql/analysis/15_forecast_error_by_month.sql",
+    "biggest_misses": "sql/analysis/16_forecast_biggest_misses.sql",
+    "balancing": "sql/analysis/17_forecast_error_vs_balancing.sql",
+}
+FORECAST_DATASETS = (75, 124, 165, 166, 245, 246, 268, 319, 375, 376, 377)
+
+
+def _rounded(rows: list[dict], digits: int = 1) -> list[dict]:
+    """Round floats for the page (MW and percentages to one decimal)."""
+    return [{k: round(v, digits) if isinstance(v, float) else v for k, v in r.items()} for r in rows]
+
+
+def export_forecast_scorecard(days: int = 365) -> None:
+    sys.path.insert(0, os.path.join(ROOT, "src"))
+    from analysis_window import default_window
+    from fingrid_catalog import BY_ID
+
+    w = default_window(days=days)
+    conn = _db()
+    try:
+        out = {}
+        for part, path in FORECAST_SQL.items():
+            with open(os.path.join(ROOT, path), encoding="utf-8") as fh:
+                out[part] = _rows(conn, fh.read(), w)
+        coverage = _rows(conn, """
+            SELECT dataset_id, count(*) AS slots, min(start_time) AS first_start, max(end_time) AS last_end
+            FROM fingrid_observation
+            WHERE dataset_id = ANY(%(ids)s) AND start_time >= %(start)s AND start_time < %(end)s
+            GROUP BY dataset_id ORDER BY dataset_id
+        """, {**w, "ids": list(FORECAST_DATASETS)})
+    finally:
+        conn.close()
+    if len(out["summary"]) != 4:
+        raise SystemExit(f"expected 4 forecast products in the window, got {len(out['summary'])}: "
+                         "run src/sync_fingrid.py first")
+
+    bins = out["balancing"]
+    _write("forecast_scorecard.json", {
+        "generated_at": _now(),
+        "source": "Fingrid Open Data API (CC BY 4.0), synced into fingrid_observation by src/sync_fingrid.py",
+        "window_start": w["start"].strftime("%Y-%m-%d"),
+        "window_end_exclusive": w["end"].strftime("%Y-%m-%d"),
+        "products": {
+            "day_ahead": "published the previous day at 12:00 Finnish time (datasets 246 wind, 165 consumption)",
+            "intraday": "updated every 15 minutes; the last update before each slot (datasets 245, 166)",
+        },
+        "summary": _rounded(out["summary"]),
+        "by_hour": _rounded(out["by_hour"]),
+        "by_month": _rounded(out["by_month"]),
+        "biggest_misses": _rounded(out["biggest_misses"]),
+        "balancing": {
+            "r_surprise_vs_mfrr_need": round(bins[0]["r_surprise_vs_mfrr_need"], 3) if bins else None,
+            "r_surprise_vs_net_mfrr": round(bins[0]["r_surprise_vs_net_mfrr"], 3) if bins else None,
+            "r_surprise_vs_price": round(bins[0]["r_surprise_vs_price"], 3) if bins else None,
+            "bins": _rounded([{k: v for k, v in b.items() if not k.startswith("r_")} for b in bins]),
+        },
+        "coverage": [{**c, "key": BY_ID[c["dataset_id"]][1]} for c in coverage],
+        "sql": list(FORECAST_SQL.values()),
+    })
 
 
 def export_fingrid_latest(hours: int = 6) -> None:
@@ -213,6 +293,8 @@ def export_snapshot(api_url: str) -> None:
 
 GITHUB_BLOB = "https://github.com/miladgk/industrial-energy-sql-pipeline/blob/main/"
 PAGE_SQL_FILES = [
+    "sql/analysis/13_forecast_scorecard.sql",
+    "sql/analysis/17_forecast_error_vs_balancing.sql",
     "sql/analysis/11_detection_quality.sql",
     "sql/analysis/12_zero_dropout_rules.sql",
     "sql/analysis/08_real_vs_synthetic_comparison.sql",
@@ -229,7 +311,7 @@ def _db():
     return get_connection()
 
 
-def _rows(conn, sql: str, params: tuple = ()) -> list[dict]:
+def _rows(conn, sql: str, params: tuple | dict = ()) -> list[dict]:
     with conn.cursor() as cur:
         # With no parameters, pass None so a literal % in the SQL (e.g. in a comment) is not a placeholder.
         cur.execute(sql, params or None)
@@ -470,8 +552,8 @@ def main() -> None:
     parser.add_argument("--api-url", default=DEFAULT_API, help="API base URL for the snapshot")
     parser.add_argument("--skip-snapshot", action="store_true", help="Do not call the API")
     parser.add_argument("--parts", nargs="+",
-                        choices=["fingrid", "validation", "snapshot", "fingrid-recent", "fingrid-latest", "thresholds",
-                                 "ranking", "anomalies", "blindspot", "sql", "engineering"],
+                        choices=["fingrid", "validation", "snapshot", "fingrid-recent", "fingrid-latest",
+                                 "forecast-scorecard", "thresholds", "ranking", "anomalies", "blindspot", "sql", "engineering"],
                         help="Only build these files (default: fingrid validation snapshot)")
     parser.add_argument("--year", type=int, default=2025, help="Calendar year for the fingrid part (default 2025)")
     parser.add_argument("--recent-days", type=int, default=365, help="Window for fingrid-recent (days)")
@@ -490,6 +572,8 @@ def main() -> None:
         export_fingrid_recent(args.recent_days)
     if "fingrid-latest" in parts:
         export_fingrid_latest()
+    if "forecast-scorecard" in parts:
+        export_forecast_scorecard()
 
     api_url = args.api_url.rstrip("/")
     needs_dataset = {"thresholds", "ranking", "anomalies", "blindspot", "engineering"} & set(parts)

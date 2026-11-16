@@ -17,6 +17,7 @@ import pandas as pd
 
 sys.path.insert(0, os.path.dirname(__file__))
 from db_connection import get_connection
+from analysis_window import params_for
 
 ANALYSIS_DIR = os.path.join(os.path.dirname(__file__), "..", "sql", "analysis")
 OUTPUTS_DIR  = os.path.join(os.path.dirname(__file__), "..", "outputs")
@@ -24,8 +25,9 @@ os.makedirs(OUTPUTS_DIR, exist_ok=True)
 
 
 def run_query(conn, sql: str) -> pd.DataFrame:
-    """Execute a SELECT query and return results as a DataFrame."""
-    return pd.read_sql_query(sql, conn)
+    """Execute a SELECT query and return results as a DataFrame.
+    Files with %(start)s / %(end)s get the default window (the last 365 complete days)."""
+    return pd.read_sql_query(sql, conn, params=params_for(sql))
 
 
 def main():
