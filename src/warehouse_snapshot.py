@@ -42,7 +42,9 @@ def dump(conn, path: str) -> int:
 
 
 def restore(conn, path: str) -> int:
-    """Load *path* into fingrid_observation; rows already present are kept. Returns rows added."""
+    """Load *path* into fingrid_observation; rows already present are kept. Returns rows added.
+    Rows of datasets this code's catalogue does not know (a snapshot written by newer code)
+    are skipped, so an older checkout can always restore a newer snapshot."""
     ensure_catalog(conn)
     with conn.cursor() as cur, gzip.open(path, "rt", encoding="utf-8", newline="") as fh:
         cur.execute("CREATE TEMP TABLE snapshot_rows (LIKE fingrid_observation INCLUDING DEFAULTS) ON COMMIT DROP")
@@ -51,6 +53,7 @@ def restore(conn, path: str) -> int:
         cur.execute("""
             INSERT INTO fingrid_observation (dataset_id, start_time, end_time, value)
             SELECT dataset_id, start_time, end_time, value FROM snapshot_rows
+            WHERE dataset_id IN (SELECT dataset_id FROM fingrid_dataset)
             ON CONFLICT (dataset_id, start_time) DO NOTHING
         """)
         added = cur.rowcount

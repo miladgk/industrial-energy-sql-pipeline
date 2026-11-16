@@ -15,8 +15,9 @@ For each dataset:
   * rows are upserted on (dataset_id, start_time); an unchanged value is not
     rewritten, so running the sync twice changes nothing
 
-Requests go month by month (one API page each) through fetch_dataset_chunk,
-which spaces them 2 s apart and backs off on HTTP 429.
+Requests go month by month, or in shorter windows for datasets finer than
+15 minutes, so each fits in one API page; fetch_dataset_chunk spaces them
+2 s apart and backs off on HTTP 429.
 
 Usage:
     python src/sync_fingrid.py                    # all datasets
@@ -33,7 +34,8 @@ from psycopg2.extras import execute_values
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from fingrid_catalog import BY_ID, DATASETS, STORE_FUTURE, ensure_catalog  # noqa: E402
 
-PAGE_SIZE = 20000          # fetch_dataset_chunk's pageSize; a month of 15-min data is <= 2,976 rows
+PAGE_SIZE = 20000          # fetch_dataset_chunk's pageSize
+WINDOW_ROWS = 19000        # aim below a full page; 1-minute data gives 13-day windows
 API_TIME = "%Y-%m-%dT%H:%M:%SZ"
 
 _UPSERT = """
@@ -68,6 +70,17 @@ def month_windows(start: datetime, end: datetime) -> list:
     return windows
 
 
+def request_windows(start: datetime, end: datetime, resolution: timedelta) -> list:
+    """Month windows, each split further so that no window holds more than WINDOW_ROWS slots."""
+    max_span = timedelta(days=max(1, int(WINDOW_ROWS * resolution / timedelta(days=1))))
+    out = []
+    for w_start, w_end in month_windows(start, end):
+        while w_start < w_end:
+            out.append((w_start, min(w_start + max_span, w_end)))
+            w_start += max_span
+    return out
+
+
 def _parse(ts: str) -> datetime:
     return datetime.fromisoformat(ts.replace("Z", "+00:00"))
 
@@ -82,7 +95,8 @@ def sync_dataset(conn, api_key: str, dataset_id: int, now: datetime, fetch,
     until = now + timedelta(days=2) if dataset_id in STORE_FUTURE else now
 
     fetched = changed = 0
-    for w_start, w_end in month_windows(start, until):
+    resolution = BY_ID[dataset_id][5] if dataset_id in BY_ID else timedelta(minutes=15)   # tests use ids outside the catalogue
+    for w_start, w_end in request_windows(start, until, resolution):
         # The API keeps slots with startTime >= start and endTime <= end, so
         # consecutive windows neither overlap nor leave a gap.
         rows = fetch(dataset_id, api_key, w_start.strftime(API_TIME), w_end.strftime(API_TIME))

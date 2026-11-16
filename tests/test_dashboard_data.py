@@ -166,3 +166,21 @@ def test_co2_forecast_is_complete_and_consistent():
     assert 0 <= b["pick_in_top3_pct"] <= 100
     assert date.fromisoformat(c["yesterday"]["day"]) == date.fromisoformat(c["target_day"]) - timedelta(
         days=2 if c["target_is_tomorrow"] else 1)
+
+
+def test_grid_events_file_is_consistent():
+    d = _load("grid_events.json")
+    kinds = {"frequency_low", "frequency_high", "nuclear_drop", "low_inertia", "price_spike"}
+    assert set(d["counts"]) == kinds == set(d["top"])
+    for k, c in d["counts"].items():
+        assert 0 <= c["last_30_days"] <= c["year"], k
+    assert [m["minute_of_hour"] for m in d["frequency_by_minute"]] == list(range(60))
+    assert all(0 <= m["pct_outside"] <= 100 for m in d["frequency_by_minute"])
+    for e in d["recent"] + d["recent_frequency"]:
+        assert e["start_time"] < e["end_time"] and e["kind"] in kinds
+    assert [e["start_time"] for e in d["recent"]] == sorted((e["start_time"] for e in d["recent"]), reverse=True)
+    lows = d["top"]["frequency_low"]
+    assert all(e["peak"] < 49.9 and e["peak"] >= 45 for e in lows), "invalid 0 Hz samples must never become events"
+    assert all(e["peak"] <= -400 and e["freq_min_nearby"] is not None for e in d["nuclear_crosscheck"])
+    q = d["data_quality"]
+    assert 0 < q["valid"] <= q["minutes_in_window"]
