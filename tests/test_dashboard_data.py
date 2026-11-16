@@ -140,3 +140,29 @@ def test_recent_daily_grid_file_covers_the_last_year():
     assert len(recent["days"]) >= 360
     assert recent["days"][-1]["day"] < recent["window_end_exclusive"]
     assert all(d["wind_mw"] >= 0 and d["consumption_mw"] > 0 for d in recent["days"])
+
+
+def test_co2_forecast_is_complete_and_consistent():
+    from datetime import date, timedelta
+
+    c = _load("co2_forecast.json")
+    generated = date.fromisoformat(c["generated_at"][:10])
+    target = date.fromisoformat(c["target_day"])
+    assert target - generated in (timedelta(0), timedelta(days=1), timedelta(days=2))   # today or tomorrow in Finland
+    hours = c["hours"]
+    assert 23 <= len(hours) <= 25                                  # DST days have 23 or 25 hours
+    assert [h["hour_start"] for h in hours] == sorted(h["hour_start"] for h in hours)
+    assert sorted(h["rank_cleanest"] for h in hours)[0] == 1
+    by_start = {h["hour_start"]: h for h in hours}
+    assert by_start[c["cleanest_hour"]["hour_start"]]["rank_cleanest"] == 1
+    assert all(c["cleanest_hour"]["co2"] <= h["co2_forecast"] <= c["dirtiest_hour"]["co2"] for h in hours)
+    assert min(h["co2_forecast"] for h in hours) <= c["best_3h"]["co2"] <= max(h["co2_forecast"] for h in hours)
+    assert all(h["co2_forecast"] > 0 for h in hours)
+
+    b = c["backtest"]
+    assert b["days"] >= 300 and b["hours"] >= 23 * b["days"]
+    assert b["mae_model_g"] < b["mae_naive_g"], "the model must beat the naive baseline to be published"
+    assert b["best_hour_g"] <= b["co2_at_pick_g"] and b["saving_pct"] <= b["achievable_pct"]
+    assert 0 <= b["pick_in_top3_pct"] <= 100
+    assert date.fromisoformat(c["yesterday"]["day"]) == date.fromisoformat(c["target_day"]) - timedelta(
+        days=2 if c["target_is_tomorrow"] else 1)

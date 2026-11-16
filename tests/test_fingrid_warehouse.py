@@ -218,3 +218,99 @@ def test_balancing_bins_group_the_net_surprise(known_forecasts):
 
 def test_biggest_misses_skip_incomplete_days(known_forecasts):
     assert _query(known_forecasts, "16_forecast_biggest_misses.sql") == []   # 4 slots < 90
+
+
+def test_day_ahead_forecasts_are_stored_ahead_others_only_once_ended(db, test_dataset, monkeypatch):
+    import sync_fingrid
+
+    now = datetime(2001, 3, 10, 6, 7, tzinfo=UTC)
+    api = FakeAPI(datetime(2001, 3, 1, tzinfo=UTC), datetime(2001, 3, 15, tzinfo=UTC))
+    monkeypatch.setattr(sync_fingrid, "STORE_FUTURE", {test_dataset})
+    sync_fingrid.sync_dataset(db, "key", test_dataset, now, api, backfill_days=2, revision_days=1)
+    assert max(r[1] for r in _stored(db, test_dataset)) == now.replace(minute=0) + timedelta(days=2)
+
+    monkeypatch.setattr(sync_fingrid, "STORE_FUTURE", set())
+    with db.cursor() as cur:
+        cur.execute("DELETE FROM fingrid_observation WHERE dataset_id = %s", (test_dataset,))
+    db.commit()
+    sync_fingrid.sync_dataset(db, "key", test_dataset, now, api, backfill_days=2, revision_days=1)
+    assert max(r[1] for r in _stored(db, test_dataset)) <= now
+
+
+# ── CO2 forecast (sql/schema/14_co2_forecast.sql) on exact synthetic data ──
+
+CO2_FIRST = datetime(2001, 1, 1, tzinfo=UTC)          # winter: Helsinki is UTC+2
+CO2_DAYS = 70
+
+
+def _residual_load(t: datetime) -> float:
+    return 6000 + 1000 * ((t.hour * 7 + t.day * 3) % 11)          # varies by hour and day
+
+
+@pytest.fixture
+def exact_co2(db):
+    """co2 = 10 + 0.002 * residual load, exactly, for 70 days (wind on the last day is huge)."""
+    from fingrid_catalog import ensure_catalog
+    from psycopg2.extras import execute_values
+
+    ensure_catalog(db)
+    rows, t = [], CO2_FIRST
+    while t < CO2_FIRST + timedelta(days=CO2_DAYS):
+        rl = _residual_load(t)
+        wind = 2000.0 + (20000.0 if t >= CO2_FIRST + timedelta(days=CO2_DAYS - 1) else 0.0)
+        co2 = 10 + 0.002 * (rl - (wind - 2000.0))
+        for ds, v in ((165, rl + 2000.0), (246, wind), (247, 0.0), (396, co2)):
+            rows.append((ds, t, t + Q, v))
+        t += Q
+    with db.cursor() as cur:
+        execute_values(cur, "INSERT INTO fingrid_observation (dataset_id, start_time, end_time, value) VALUES %s",
+                       rows, page_size=5000)
+    yield db
+    db.rollback()
+
+
+def _co2_rows(db, first_day, last_day):
+    with db.cursor() as cur:
+        cur.execute("SELECT * FROM co2_forecast(%s, %s) ORDER BY hour_start", (first_day, last_day))
+        names = [c.name for c in cur.description]
+        return [dict(zip(names, r)) for r in cur.fetchall()]
+
+
+def test_co2_forecast_recovers_an_exact_line(exact_co2):
+    from datetime import date
+
+    rows = _co2_rows(exact_co2, date(2001, 3, 5), date(2001, 3, 6))
+    assert len(rows) == 24
+    assert [r["hour_fi"] for r in rows] == list(range(24))          # Finnish hours, not UTC
+    assert rows[0]["hour_start"] == datetime(2001, 3, 4, 22, tzinfo=UTC)
+    for r in rows:
+        assert r["co2_forecast"] == pytest.approx(r["co2_actual"], abs=1e-6)
+        naive_time = r["hour_start"] - timedelta(hours=48)
+        assert r["co2_naive"] == pytest.approx(10 + 0.002 * _residual_load(naive_time), abs=1e-6)
+
+
+def test_co2_forecast_never_goes_below_the_training_minimum(exact_co2):
+    from datetime import date
+
+    windy_day = date(2001, 3, 11)        # the last UTC day (index 69) carries 20 GW of extra wind
+    rows = _co2_rows(exact_co2, windy_day, windy_day + timedelta(days=1))
+    with exact_co2.cursor() as cur:
+        cur.execute("SELECT min(co2_actual) FROM co2_hourly WHERE day_fi >= %s AND day_fi < %s",
+                    (windy_day - timedelta(days=61), windy_day - timedelta(days=1)))
+        floor = cur.fetchone()[0]
+    windy = [r for r in rows if r["hour_start"] >= datetime(2001, 3, 11, tzinfo=UTC)]
+    assert len(windy) == 22                                       # 00-22 UTC of the windy day, inside Finnish 11 March
+    assert all(r["co2_unclamped"] < floor for r in windy), "the line must extrapolate below anything seen"
+    assert all(r["co2_forecast"] == pytest.approx(floor) for r in windy)
+
+
+def test_co2_backtest_scores_a_perfect_model(exact_co2):
+    with open(os.path.join(ROOT, "sql", "analysis", "19_co2_forecast_backtest.sql"), encoding="utf-8") as fh, \
+            exact_co2.cursor() as cur:
+        cur.execute(fh.read(), {"start": datetime(2001, 3, 5, tzinfo=UTC), "end": datetime(2001, 3, 9, tzinfo=UTC)})
+        r = dict(zip([c.name for c in cur.description], cur.fetchone()))
+    assert r["days"] == 4
+    assert r["mae_model_g"] == pytest.approx(0, abs=1e-6)
+    assert r["mae_naive_g"] > 0
+    assert r["pick_in_top3_pct"] == 100
+    assert r["co2_at_pick_g"] == pytest.approx(r["best_hour_g"])

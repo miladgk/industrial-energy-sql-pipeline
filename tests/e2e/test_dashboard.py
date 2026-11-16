@@ -79,6 +79,17 @@ def test_forecast_scorecard_shows_the_published_numbers(open_dashboard):
     expect(page.locator("#fc-hour-title")).to_contain_text("consumption")
 
 
+def test_co2_forecast_names_the_published_cleanest_hour(open_dashboard):
+    c = _data("co2_forecast.json")
+    page = open_dashboard()
+    start = c["cleanest_hour"]["hour_fi"]
+    expect(page.locator("#co2-kpis .kpi strong").first).to_have_text(f"{start:02d}:00–{(start + 1) % 24:02d}:00")
+    expect(page.locator("#co2-title")).to_contain_text("tomorrow" if c["target_is_tomorrow"] else "today")
+    expect(page.locator("#co2-chart path").first).to_be_visible()
+    expect(page.locator("#co2-past-chart path")).to_have_count(2)
+    expect(page.locator("#co2-record .kpi")).to_have_count(4)
+
+
 # ── Live data: browser -> API -> database ──────────────────────
 
 def test_kpis_match_the_database(open_dashboard, db):

@@ -24,6 +24,7 @@ DASHBOARD_DATA = (
     "fingrid_year_daily.json",
     "fingrid_recent_daily.json",
     "forecast_scorecard.json",
+    "co2_forecast.json",
     "wind_validation.json",
     "detection_thresholds.json",
     "facility_ranking.json",
