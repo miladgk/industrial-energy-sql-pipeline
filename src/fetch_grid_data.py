@@ -185,7 +185,9 @@ def fetch_fingrid_data(api_key: str, start: str = "2025-01-01", end: str = "2026
         print(f"Fetching dataset {dataset_id} ({metric}) chunk-by-chunk ...")
         for win_start, win_end in windows:
             start_str = win_start.strftime("%Y-%m-%dT%H:%M:%SZ")
-            end_str = (win_end - pd.Timedelta(seconds=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+            # The API keeps slots with endTime <= end; ending one second early would
+            # drop the window's last 15-minute slot.
+            end_str = win_end.strftime("%Y-%m-%dT%H:%M:%SZ")
 
             print(f"  -> Pulling chunk: {win_start.date()} to {win_end.date()} ...")
             chunk_data = fetch_dataset_chunk(dataset_id, api_key, start_str, end_str)
