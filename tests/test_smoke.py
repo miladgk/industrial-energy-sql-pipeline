@@ -20,11 +20,12 @@ DASHBOARD_DATA = (
     "forecast_scorecard.json",
     "co2_forecast.json",
     "grid_events.json",
+    "temperature.json",
     "sql_sources.json",
     "engineering.json",
 )
 API_ROUTES = ("/health", "/api/datasets", "/api/latest", "/api/forecast-scorecard",
-              "/api/forecast-error-by-hour", "/api/co2-forecast", "/api/grid-events")
+              "/api/forecast-error-by-hour", "/api/co2-forecast", "/api/grid-events", "/api/temperature-sensitivity")
 
 
 def test_database_is_reachable(db):

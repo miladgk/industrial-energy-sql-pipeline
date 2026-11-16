@@ -14,6 +14,7 @@ GET /api/forecast-scorecard      error of Fingrid's day-ahead and intraday forec
 GET /api/forecast-error-by-hour  the same per hour of the day (Finnish time)
 GET /api/co2-forecast            hourly CO2 intensity forecast for one Finnish day
 GET /api/grid-events             frequency, nuclear, inertia and price events
+GET /api/temperature-sensitivity how much each degree of cold raises consumption
 
 Usage
 -----
@@ -55,6 +56,7 @@ SQL = {
     "by_hour": _sql("14_forecast_error_by_hour.sql"),
     "co2": _sql("18_co2_forecast.sql"),
     "events": _sql("20_grid_events.sql"),
+    "temperature": _sql("23_temperature_sensitivity.sql"),
 }
 
 app = FastAPI(
@@ -219,3 +221,14 @@ def grid_events(
     if kind:
         rows = [r for r in rows if r["kind"] == kind]
     return {"window": _window_json(w), "count": len(rows), "events": rows[:limit]}
+
+
+@app.get("/api/temperature-sensitivity", tags=["analytics"])
+def temperature_sensitivity(days: int = Query(365, ge=30, le=MAX_DAYS)):
+    """Extra consumption per degree of cold below the fitted balance point, per day type (sql/analysis/23)."""
+    w = _window(days)
+    try:
+        rows = _fetch_rows(SQL["temperature"], w)
+    except Exception as exc:
+        raise _internal_error(exc)
+    return {"window": _window_json(w), "fits": rows}

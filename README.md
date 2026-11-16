@@ -10,7 +10,7 @@
 
 Fingrid, Finland's electricity transmission system operator, publishes hundreds of
 measurements and forecasts as [open data](https://data.fingrid.fi), one chart at a
-time. This project keeps 21 of them in a partitioned PostgreSQL warehouse, refreshed
+time. This project keeps 25 of them in a partitioned PostgreSQL warehouse, refreshed
 every day, and answers questions no single chart does:
 
 | Question | Answer over the last 12 months | Where |
@@ -18,6 +18,7 @@ every day, and answers questions no single chart does:
 | How far off are Fingrid's own forecasts? | Day-ahead wind misses by 442 MW on average (4.7% of the fleet) and runs 171 MW too high; the intraday update halves the miss. Consumption: 328 MW (3.3%). | `sql/analysis/13-17` |
 | When will electricity be cleanest tomorrow? | A day-ahead CO2-intensity forecast in SQL. Replayed over 338 days: 4.5 g/kWh mean error vs 7.1 for a naive baseline; the hour it picks emitted 14.8% less than an average hour (19.7% for a perfect pick). | `sql/schema/14`, `sql/analysis/18-19` |
 | What unusual happened on the grid? | 802 frequency excursions, 6 fast nuclear drops, 14 low-inertia periods, 12 imbalance-price spikes. The minute before a full hour is out of band 2.1x as often as an average minute. | `sql/schema/15`, `sql/analysis/20-21` |
+| How much does cold raise demand? | Below about 15 °C each degree colder adds 154 MW on a weekday (1.5% of average use; r² 0.89). The coldest day (-25 °C) used 14.8 GW, 1.8x the warmest. | `sql/analysis/22-23` |
 
 Numbers as of November 2026; the site always shows the current ones.
 
@@ -33,7 +34,7 @@ nuclear trips are not used as labels for the event detector.
 
 ```mermaid
 flowchart LR
-    F[Fingrid Open Data API<br/>21 datasets] -->|sync_fingrid.py<br/>incremental, idempotent| W[(PostgreSQL<br/>fingrid_observation<br/>monthly partitions)]
+    F[Fingrid Open Data API<br/>25 datasets] -->|sync_fingrid.py<br/>incremental, idempotent| W[(PostgreSQL<br/>fingrid_observation<br/>monthly partitions)]
     W --> Q[Quality gate<br/>02_data_quality_checks.sql]
     W --> S[SQL views, functions<br/>sql/analysis/*.sql]
     S --> E[export_dashboard_data.py] --> J[docs/data/*.json] --> P[GitHub Pages<br/>static dashboard]
@@ -46,7 +47,7 @@ flowchart LR
 publishes the next day's forecasts at 12:00 Finnish time): start PostgreSQL, restore
 yesterday's warehouse from the release asset, sync the last 7 days from Fingrid,
 publish the new snapshot, run the analyses, commit the dashboard JSON and redeploy
-Pages. A normal run takes about 2 minutes and 21 API requests. No server runs between
+Pages. A normal run takes about 2 minutes and 25 API requests. No server runs between
 refreshes.
 
 **Hourly** (`pages.yml`): the newest wind and consumption values are fetched and
@@ -60,11 +61,12 @@ test runs against real data and needs no Fingrid key.
 ## The warehouse
 
 ```
-fingrid_dataset (21 rows)                fingrid_observation (~1.3 M rows, ~1 M more a year)
+fingrid_dataset (25 rows)                fingrid_observation (~2 M rows, ~1.8 M more a year)
   dataset_id  PK                           dataset_id  FK -> fingrid_dataset   ┐ primary key
   key, name, unit                          start_time  partition key           ┘
   kind  actual | forecast | capacity |     end_time
-        balancing | emission | system      value       exactly as published
+        balancing | emission |              value       exactly as published
+        system | weather
   resolution                               fetched_at
                                          PARTITION BY RANGE (start_time): one table per month + default
 ```
@@ -117,6 +119,7 @@ whole). `tests/test_performance.py` checks the plans with EXPLAIN in CI.
 | Capacity behind them | 267 solar, 268 wind |
 | Balancing | 319 imbalance price, 375/376 activated mFRR up/down, 377 mFRR need |
 | CO2 and stability | 396 CO2 intensity of consumption, 260 kinetic energy, 422/423 frequency deviation, 177 frequency (1-min) |
+| Weather | 178 Helsinki, 182 Jyväskylä, 196 Oulu, 185 Rovaniemi temperature (3-min) |
 
 Listed with their purpose in `src/fingrid_catalog.py`.
 
@@ -136,6 +139,8 @@ All logic lives in SQL; the API, the reports and the dashboard export run the sa
 | `sql/analysis/18-19` | tomorrow's hours and cleanest 3-hour window; the backtest | window frames, `RANK()` |
 | `sql/schema/15_grid_events.sql` | `grid_events()`: frequency outside 49.9-50.1 Hz, nuclear drops of 400 MW in 15 min, lowest-1% inertia, price spikes; each nuclear drop cross-checked against frequency | `RANGE` window frames, gaps and islands, `LATERAL` |
 | `sql/analysis/21_frequency_by_minute.sql` | out-of-band frequency by minute of the hour | `FILTER` aggregates |
+| `sql/analysis/22_temperature_daily.sql` | daily four-city temperature and national consumption | two-level aggregation, `HAVING` |
+| `sql/analysis/23_temperature_sensitivity.sql` | hinge model per day type; the balance point (5-20 °C) is searched in SQL, best r² kept | `generate_series` grid, `regr_r2`, `DISTINCT ON` |
 | `sql/etl/02_data_quality_checks.sql` | default partition empty, no empty or stale dataset, 30-day coverage, 0 Hz gap markers | |
 
 ---
@@ -152,6 +157,7 @@ All logic lives in SQL; the API, the reports and the dashboard export run the sa
 | `GET /api/forecast-error-by-hour?variable=wind` | the same per Finnish hour (14) |
 | `GET /api/co2-forecast?day=YYYY-MM-DD` | hourly CO2 forecast for one day (18); default tomorrow |
 | `GET /api/grid-events?days=30&kind=nuclear_drop` | grid events, newest first (20) |
+| `GET /api/temperature-sensitivity?days=365` | MW per degree of cold, balance point, r² per day type (23) |
 
 Every parameter is validated (ranges, allow-lists, typed dates); queries run in
 read-only transactions; database errors reach the client as a generic 500. The API is
@@ -162,7 +168,7 @@ a server.
 
 ## Tests
 
-118 tests in eight layers, all run in CI on Python 3.11/3.12 and PostgreSQL 14/15/16,
+127 tests in eight layers, all run in CI on Python 3.11/3.12 and PostgreSQL 14/15/16,
 against the restored real warehouse:
 
 | Layer | What it guards |
@@ -220,11 +226,11 @@ For the daily workflow on a fork, add the key as the repository secret
 │   └── benchmark_warehouse.py
 ├── sql/
 │   ├── schema/                 # 13 warehouse, 14 CO2 model, 15 event detector
-│   ├── analysis/               # 13-21, one query per file
+│   ├── analysis/               # 13-23, one query per file
 │   └── etl/02_data_quality_checks.sql
 ├── src/
 │   ├── fingrid_api.py          # API client (key, paging, retries, 429 back-off)
-│   ├── fingrid_catalog.py      # the 21 datasets and why
+│   ├── fingrid_catalog.py      # the 25 datasets and why
 │   ├── sync_fingrid.py         # incremental, idempotent sync
 │   ├── warehouse_snapshot.py   # dump / restore as CSV.gz
 │   ├── setup_db.py             # applies sql/schema

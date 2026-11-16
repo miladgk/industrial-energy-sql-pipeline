@@ -97,6 +97,7 @@ def _median_seconds(fn):
     ("19_co2_forecast_backtest.sql", 4.0),
     ("20_grid_events.sql", 3.0),
     ("21_frequency_by_minute.sql", 2.0),
+    ("23_temperature_sensitivity.sql", 4.0),
 ])
 def test_analysis_query_stays_within_budget(db, name, budget):
     from analysis_window import params_for

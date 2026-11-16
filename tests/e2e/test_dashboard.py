@@ -123,6 +123,16 @@ def test_grid_event_log_shows_the_published_counts(open_dashboard):
     expect(page.locator("#ev-top tr")).to_have_count(sum(1 for v in d["top"].values() if v))
 
 
+def test_cold_chapter_shows_the_fitted_model(open_dashboard):
+    t = _data("temperature.json")
+    wd = next(f for f in t["fits"] if f["day_type"] == "weekday")
+    page = open_dashboard()
+    expect(page.locator("#cold-kpis .kpi strong").first).to_have_text(f"+{round(wd['mw_per_degree']):,} MW")
+    expect(page.locator("#cold-chart path")).to_have_count(3)
+    expect(page.locator("#cold-takeaway")).to_contain_text(f"{wd['balance_point_c']} °C")
+    expect(page.locator(".n-datasets").first).to_have_text(str(_data("engineering.json")["datasets"]))
+
+
 def test_engineering_shows_partitions_benchmark_and_tests(open_dashboard):
     eng = _data("engineering.json")
     page = open_dashboard()

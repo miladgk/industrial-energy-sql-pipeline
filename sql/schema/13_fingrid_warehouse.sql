@@ -15,10 +15,13 @@ CREATE TABLE IF NOT EXISTS fingrid_dataset (
     key         VARCHAR(60) NOT NULL UNIQUE,
     name        TEXT        NOT NULL,
     unit        VARCHAR(20) NOT NULL,
-    kind        VARCHAR(20) NOT NULL
-                CHECK (kind IN ('actual', 'forecast', 'capacity', 'balancing', 'emission', 'system')),
+    kind        VARCHAR(20) NOT NULL,
     resolution  INTERVAL    NOT NULL
 );
+-- (Re)defined separately so an existing table picks up new kinds.
+ALTER TABLE fingrid_dataset DROP CONSTRAINT IF EXISTS fingrid_dataset_kind_check;
+ALTER TABLE fingrid_dataset ADD CONSTRAINT fingrid_dataset_kind_check
+    CHECK (kind IN ('actual', 'forecast', 'capacity', 'balancing', 'emission', 'system', 'weather'));
 
 -- Partitioned by month on start_time. Every query here filters one dataset and a
 -- time range, so PostgreSQL reads only the months it needs (partition pruning) and,

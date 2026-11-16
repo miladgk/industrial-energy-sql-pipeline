@@ -115,7 +115,7 @@ jobs:
           gh release upload "$SNAPSHOT_TAG" "/tmp/$SNAPSHOT_FILE" --clobber
 
       - name: Build the dashboard data
-        run: python scripts/export_dashboard_data.py --parts fingrid-recent forecast-scorecard co2-forecast grid-events
+        run: python scripts/export_dashboard_data.py --parts fingrid-recent forecast-scorecard co2-forecast grid-events temperature
 
       # Off main (a test run of a PR branch), keep the files as a run artifact instead of
       # committing: a bot commit on a PR branch leaves its CI waiting for manual approval.
@@ -129,12 +129,13 @@ jobs:
             docs/data/forecast_scorecard.json
             docs/data/co2_forecast.json
             docs/data/grid_events.json
+            docs/data/temperature.json
 
       - name: Commit if the data changed
         id: commit
         if: github.ref == 'refs/heads/main'
         run: |
-          files="docs/data/fingrid_recent_daily.json docs/data/forecast_scorecard.json docs/data/co2_forecast.json docs/data/grid_events.json"
+          files="docs/data/fingrid_recent_daily.json docs/data/forecast_scorecard.json docs/data/co2_forecast.json docs/data/grid_events.json docs/data/temperature.json"
           git add $files
           if git diff --cached --quiet; then
             echo "No change in the dashboard data."

@@ -243,3 +243,52 @@ def test_grid_events_finds_and_merges_each_kind(known_events):
 
 def test_grid_events_ignores_invalid_zero_frequency(known_events):
     assert all(not (e["kind"] == "frequency_low" and e["peak"] < 45) for e in _events(known_events))
+
+
+# ── Temperature sensitivity (sql/analysis/23) on an exact hinge ──
+
+TEMP0 = datetime(2001, 1, 1, tzinfo=UTC)                 # winter: Helsinki is UTC+2
+TEMP_DAYS = 40
+M3 = timedelta(minutes=3)
+
+
+def _temp(day: int) -> float:
+    return -20 + day * 1.0                               # -20 .. +19 °C, one degree a day
+
+
+@pytest.fixture
+def exact_hinge(db):
+    """Consumption = 8000 + 150 * max(15 - temp, 0) on every day; all four cities share the temperature."""
+    from fingrid_catalog import ensure_catalog
+    from psycopg2.extras import execute_values
+
+    ensure_catalog(db)
+    rows = []
+    for day in range(TEMP_DAYS):
+        start = TEMP0 + timedelta(days=day) - timedelta(hours=2)        # Finnish midnight
+        t = _temp(day)
+        for k in range(480):
+            for ds in (178, 182, 196, 185):
+                rows.append((ds, start + k * M3, start + (k + 1) * M3, t))
+        for q in range(96):
+            rows.append((124, start + q * Q, start + (q + 1) * Q, 8000 + 150 * max(15 - t, 0)))
+    with db.cursor() as cur:
+        execute_values(cur, "INSERT INTO fingrid_observation (dataset_id, start_time, end_time, value) VALUES %s",
+                       rows, page_size=10000)
+    yield db
+    db.rollback()
+
+
+def test_temperature_model_recovers_an_exact_hinge(exact_hinge):
+    window = {"start": TEMP0 - timedelta(hours=2), "end": TEMP0 + timedelta(days=TEMP_DAYS) - timedelta(hours=2)}
+    with open(os.path.join(ROOT, "sql", "analysis", "23_temperature_sensitivity.sql"), encoding="utf-8") as fh, \
+            exact_hinge.cursor() as cur:
+        cur.execute(fh.read(), window)
+        names = [c.name for c in cur.description]
+        fits = {r[0]: dict(zip(names, r)) for r in cur.fetchall()}
+    wd = fits["weekday"]
+    assert wd["balance_point_c"] == 15
+    assert wd["mw_per_degree"] == pytest.approx(150)
+    assert wd["base_mw"] == pytest.approx(8000)
+    assert wd["r2"] == pytest.approx(1)
+    assert fits["weekend"]["days"] + wd["days"] == TEMP_DAYS
