@@ -409,6 +409,17 @@ Actions tab). It needs the repository secret `FINGRID_API_KEY`
 environment only inside that job; locally, `fingrid_api_key` in the git-ignored
 `config.yaml` is used instead.
 
+The newest 15-minute wind and consumption values (the "Latest" row above the chart)
+are fetched by `.github/workflows/pages.yml`, which also runs every hour. It makes two
+small API requests, writes `docs/data/fingrid_latest.json` and deploys it with the
+site; that file is git-ignored, so the hourly refresh adds no commits. If Fingrid is
+unreachable the deploy still runs and the page simply hides the row.
+
+GitHub turns off scheduled workflows in a public repository after 60 days without
+activity. The daily data commit normally prevents that; if the refresh keeps failing,
+a `keepalive` job in `refresh_fingrid.yml` pushes an empty commit once `main` has been
+quiet for 45 days.
+
 ---
 
 ## SQL Techniques Demonstrated

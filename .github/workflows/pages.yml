@@ -1,8 +1,16 @@
 name: Deploy dashboard to GitHub Pages
 
+# Runs on every push to main, when refresh_fingrid.yml asks for it, and every hour.
+# Each run fetches the newest Fingrid values into docs/data/fingrid_latest.json
+# (two small API requests) and deploys it with the site. That file is git-ignored,
+# so the hourly refresh adds no commits; the 365-day history stays in
+# refresh_fingrid.yml, which runs once a day.
+
 on:
   push:
     branches: [main]
+  schedule:
+    - cron: "41 * * * *"     # every hour at :41 UTC (Fingrid publishes 15-minute values with a short delay)
   workflow_dispatch:
 
 permissions:
@@ -20,8 +28,26 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install pandas pyyaml numpy
+
+      # A Fingrid outage or a missing key must not block the deploy: the page
+      # hides the "latest" row when the file is absent.
+      - name: Fetch the newest Fingrid values
+        continue-on-error: true
+        env:
+          FINGRID_API_KEY: ${{ secrets.FINGRID_API_KEY }}
+        run: python scripts/export_dashboard_data.py --parts fingrid-latest
+
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

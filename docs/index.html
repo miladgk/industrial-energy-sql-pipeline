@@ -236,6 +236,13 @@
     .kpi span { color: var(--muted); font-size: 13px; }
     @media (max-width: 640px) { .kpis { grid-template-columns: 1fr 1fr; } }
 
+    .latest { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 18px; margin: 14px 0 0; padding: 10px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); font-size: 13px; color: var(--muted); }
+    .latest .lt-label { font: 500 11px/1.35 "JetBrains Mono", monospace; letter-spacing: .03em; color: var(--ink-2); }
+    .latest .lt-val { display: inline-flex; align-items: baseline; gap: 6px; }
+    .latest .lt-val i { width: 7px; height: 7px; border-radius: 50%; display: inline-block; align-self: center; }
+    .latest .lt-val strong { font-size: 17px; font-weight: 650; color: var(--ink); font-variant-numeric: tabular-nums; }
+    .latest .lt-when { flex-basis: 100%; }
+
     .seg { display: inline-flex; padding: 3px; gap: 2px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); flex-wrap: wrap; }
     .seg button {
       font: 500 13px/1 Inter, sans-serif; color: var(--ink-2); background: transparent; border: 0; border-radius: 7px; padding: 8px 12px; cursor: pointer;
@@ -498,6 +505,7 @@
               <button type="button" data-period="year" aria-pressed="false" id="period-year">2025</button>
             </div>
           </div>
+          <div class="latest" id="grid-latest" aria-live="polite" hidden></div>
           <div class="kpis" id="grid-kpis"></div>
           <div class="legend"><span><i style="background:var(--real)"></i>Wind production</span><span><i style="background:var(--cons)"></i>Electricity consumption</span></div>
           <div class="chart-box"><svg id="grid-chart" class="chart" role="img" aria-label="Daily average wind production and electricity consumption in Finland"><desc>Two lines in megawatts, one value per day.</desc></svg></div>
@@ -1126,6 +1134,34 @@ make test</pre>
       kpi(`${monthName(sm.windiest_month)}`, `windiest month · calmest ${monthName(sm.calmest_month)}`),
     );
   }
+  // Newest 15-minute values, refreshed by the hourly Pages deploy. Times are shown in
+  // Finnish time so they can be compared directly with fingrid.fi.
+  function renderLatest(lt) {
+    const box = $("grid-latest");
+    if (!lt || !lt.wind_production || !lt.consumption) { box.hidden = true; return; }
+    const fi = iso => new Date(iso).toLocaleTimeString("en-GB", {hour: "2-digit", minute: "2-digit", timeZone: "Europe/Helsinki"});
+    const fiDay = iso => new Date(iso).toLocaleDateString("en-GB", {day: "numeric", month: "short", timeZone: "Europe/Helsinki"});
+    const val = (v, color, name, ds) => {
+      const s = el("span", {class: "lt-val", title: `${name}, Fingrid dataset ${ds.dataset_id}, ${fiDay(ds.start_time)} ${fi(ds.start_time)}–${fi(ds.end_time)} Finnish time`});
+      const dot = el("i"); dot.style.background = color;
+      s.append(dot, el("strong", {}, `${fmt(Math.round(v))} MW`), document.createTextNode(name.toLowerCase()));
+      return s;
+    };
+    const w = lt.wind_production, c = lt.consumption;
+    const ageMin = Math.round((Date.now() - new Date(lt.generated_at)) / 60000);
+    const ago = ageMin < 90 ? `${Math.max(ageMin, 1)} min ago` : `${Math.round(ageMin / 60)} h ago`;
+    const sameSlot = w.start_time === c.start_time;
+    const when = sameSlot
+      ? `15 minutes ${fi(w.start_time)}–${fi(w.end_time)} Finnish time, ${fiDay(w.start_time)}`
+      : `wind ${fi(w.start_time)}–${fi(w.end_time)}, consumption ${fi(c.start_time)}–${fi(c.end_time)} Finnish time`;
+    box.replaceChildren(
+      el("span", {class: "lt-label"}, "LATEST · FINGRID"),
+      val(w.value_mw, "var(--real)", "Wind", w),
+      val(c.value_mw, "var(--cons)", "Consumption", c),
+      el("span", {class: "lt-when"}, `${when} · fetched ${ago}, refreshed hourly. A single 15-minute value, not a daily average, so it differs from the chart.`),
+    );
+    box.hidden = false;
+  }
   function kpi(value, label) { const d = el("div", {class: "kpi"}); d.append(el("strong", {}, value), el("span", {}, label)); return d; }
   $("period-tabs").addEventListener("click", e => { const b = e.target.closest("button"); if (b) renderGrid(b.dataset.period); });
 
@@ -1542,6 +1578,7 @@ make test</pre>
       "data/detection_thresholds.json", "data/facility_ranking.json", "data/anomaly_examples.json", "data/zero_dropout_rules.json",
       "data/sql_sources.json", "data/engineering.json",
     ].map(u => safe(getJSON(u))));
+    safe(getJSON("data/fingrid_latest.json", {cache: "no-store"})).then(renderLatest);
 
     examples = ex ? ex.examples : [];
     if (gYear) { gridData.year = gYear; $("period-year").textContent = String(gYear.year); }
