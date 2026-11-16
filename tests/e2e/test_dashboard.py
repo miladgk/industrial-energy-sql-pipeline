@@ -76,16 +76,11 @@ def test_numbers_are_not_hard_coded_in_the_html(open_dashboard):
         assert page.locator(f"#{tile}").inner_text() == "–", tile
 
 
-def test_hero_chart_shows_the_grid_and_the_forecast_miss(open_dashboard):
-    recent, sc = _data("fingrid_recent_daily.json"), _data("forecast_scorecard.json")
-    wind = next(r for r in sc["summary"] if r["variable"] == "wind" and r["product"] == "day_ahead")
+def test_hero_chart_shows_the_published_grid_summary(open_dashboard):
+    recent = _data("fingrid_recent_daily.json")
     page = open_dashboard()
-    kpi = page.locator("#hero-mini-kpis strong").first
     expect(page.locator("#bento-hero-chart path").first).to_be_visible()
-    expect(kpi).to_have_text(f"{recent['summary']['wind_mean_mw']:,.0f} MW")
-    page.locator('#hero-chart-switch button[data-view="forecast"]').click()
-    expect(kpi).to_have_text(f"{round(wind['mae_mw']):,} MW")
-    expect(page.locator('#hero-chart-switch button[data-view="forecast"]')).to_have_attribute("aria-pressed", "true")
+    expect(page.locator("#hero-mini-kpis strong").first).to_have_text(f"{recent['summary']['wind_mean_mw']:,.0f} MW")
 
 
 def test_latest_fingrid_ticker_shows_finnish_time(open_dashboard):
@@ -138,7 +133,8 @@ def test_grid_event_log_shows_the_published_counts(open_dashboard):
     page = open_dashboard()
     expect(page.locator("#mk-ev-freq")).to_have_text(freq)
     _open_pane(page, "pane-events")
-    expect(page.locator("#ev-kpis .kpi strong").first).to_have_text(freq)
+    expect(page.locator("#ev-kpis .kpi strong").first).to_have_text(f"{c['nuclear_drop']['year']:,}")
+    expect(page.locator("#ev-kpis")).not_to_contain_text("frequency")          # that count is on the tile only
     expect(page.locator("#ev-recent tr")).to_have_count(len(d["recent"]))
     expect(page.locator("#ev-top tr")).to_have_count(sum(1 for v in d["top"].values() if v))
 
@@ -148,9 +144,10 @@ def test_cold_chapter_shows_the_fitted_model(open_dashboard):
     wd = next(f for f in t["fits"] if f["day_type"] == "weekday")
     page = open_dashboard()
     expect(page.locator("#mk-cold-slope")).to_have_text(f"+{round(wd['mw_per_degree']):,} MW")
+    expect(page.locator("#bento-cold-chart path")).to_have_count(3)
+    we = next(f for f in t["fits"] if f["day_type"] == "weekend")
     _open_pane(page, "pane-cold")
-    expect(page.locator("#cold-kpis .kpi strong").first).to_have_text(f"+{round(wd['mw_per_degree']):,} MW")
-    expect(page.locator("#cold-chart path")).to_have_count(3)
+    expect(page.locator("#cold-kpis .kpi strong").first).to_have_text(f"+{round(we['mw_per_degree']):,} MW")
     expect(page.locator("#cold-takeaway")).to_contain_text(f"{wd['balance_point_c']} °C")
 
 
@@ -217,15 +214,23 @@ def test_copy_button_keeps_the_pane_open(open_dashboard):
     expect(page.locator("#pane-craft")).to_be_visible()
 
 
-def test_lens_switch_changes_what_is_shown(open_dashboard):
+def test_drawer_panes_do_not_repeat_the_tile_charts(open_dashboard):
+    """Each tile shows its headline chart; the drawer adds detail instead of drawing it again."""
     page = open_dashboard()
-    page.locator('.lens-btn[data-lens="executive"]').click()
-    expect(page.locator(".inspect-btn").first).to_be_hidden()
-    page.locator('.lens-btn[data-lens="data"]').click()
-    expect(page.locator("#pane-craft")).to_be_visible()
-    page.keyboard.press("Escape")
-    page.locator('.lens-btn[data-lens="all"]').click()
-    expect(page.locator(".inspect-btn").first).to_be_visible()
+    _open_pane(page, "pane-co2")
+    for pane in ("pane-co2", "pane-events", "pane-cold"):
+        page.locator(f'.drawer-tabs .dtab[data-pane="{pane}"]').click()
+        expect(page.locator(f"#{pane} .kpi").first).to_be_visible()
+    assert page.locator("#pane-co2 svg.chart").count() == 1                  # only yesterday's replay
+    assert page.locator("#pane-events svg.chart, #pane-cold svg.chart").count() == 0
+
+
+def test_drawer_tabs_fit_without_a_scrollbar(open_dashboard):
+    for width in (1400, 375):
+        page = open_dashboard(viewport={"width": width, "height": 800})
+        _open_pane(page, "pane-forecasts")
+        overflow = page.evaluate("(() => { const t = document.querySelector('.drawer-tabs'); return t.scrollWidth - t.clientWidth; })()")
+        assert overflow <= 0, (width, overflow)
 
 
 def test_sql_drawers_show_the_repository_sql(open_dashboard):
