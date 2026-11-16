@@ -38,13 +38,15 @@ def test_analysis_sql_file_executes(path):
     is renamed or a table changes, the broken file is named in the failure.
     Runs in a read-only transaction on its own connection, so it cannot modify data.
     """
+    from analysis_window import params_for
     from db_connection import get_connection
 
     conn = get_connection()
     try:
         conn.set_session(readonly=True)
         with conn.cursor() as cur, open(path, encoding="utf-8") as fh:
-            cur.execute(fh.read())
+            sql = fh.read()
+            cur.execute(sql, params_for(sql))
             if cur.description is not None:
                 cur.fetchall()  # force the full result to be produced
     finally:

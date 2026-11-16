@@ -102,3 +102,41 @@ def test_ranking_is_ordered():
     facilities = _load("facility_ranking.json")["facilities"]
     ranks = [f["overall_rank"] for f in facilities]
     assert ranks == sorted(ranks) and len(facilities) == _load("facility_ranking.json")["count"]
+
+
+# ── Fingrid warehouse files (built by refresh_fingrid.yml) ─────
+
+def test_forecast_scorecard_is_complete_and_consistent():
+    from datetime import date
+
+    sc = _load("forecast_scorecard.json")
+    days = (date.fromisoformat(sc["window_end_exclusive"]) - date.fromisoformat(sc["window_start"])).days
+    assert days == 365
+    products = {(r["variable"], r["product"]) for r in sc["summary"]}
+    assert products == {(v, p) for v in ("wind", "consumption") for p in ("day_ahead", "intraday")}
+    for r in sc["summary"]:
+        assert r["slots"] >= 0.9 * days * 96, f"{r['variable']}/{r['product']}: too few 15-minute slots"
+        assert r["mae_mw"] >= abs(r["bias_mw"]) - 0.1          # |mean error| can never exceed mean |error|
+        assert r["rmse_mw"] >= r["mae_mw"] - 0.1
+        assert (r["mae_pct_of_capacity"] is not None) == (r["variable"] == "wind")
+    for v, p in products:
+        hours = [r["hour_fi"] for r in sc["by_hour"] if r["variable"] == v and r["product"] == p]
+        assert sorted(hours) == list(range(24))
+    for v in ("wind", "consumption"):
+        misses = [r for r in sc["biggest_misses"] if r["variable"] == v]
+        assert [r["rank"] for r in misses] == [1, 2, 3, 4, 5]
+        assert [r["mae_mw"] for r in misses] == sorted((r["mae_mw"] for r in misses), reverse=True)
+    bins = sc["balancing"]["bins"]
+    assert bins[0]["bin_from_mw"] is None and bins[-1]["bin_to_mw"] is None
+    assert all(a["bin_to_mw"] == b["bin_from_mw"] for a, b in zip(bins, bins[1:]))
+    for key in ("r_surprise_vs_mfrr_need", "r_surprise_vs_net_mfrr", "r_surprise_vs_price"):
+        assert -1 <= sc["balancing"][key] <= 1, key
+    assert all(b["mean_mfrr_up_mw"] >= 0 >= b["mean_mfrr_down_mw"] for b in bins)   # Fingrid's sign convention
+    assert sc["sql"] and all(os.path.exists(os.path.join(ROOT, p)) for p in sc["sql"])
+
+
+def test_recent_daily_grid_file_covers_the_last_year():
+    recent = _load("fingrid_recent_daily.json")
+    assert len(recent["days"]) >= 360
+    assert recent["days"][-1]["day"] < recent["window_end_exclusive"]
+    assert all(d["wind_mw"] >= 0 and d["consumption_mw"] > 0 for d in recent["days"])

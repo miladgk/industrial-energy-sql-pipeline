@@ -63,6 +63,22 @@ def test_latest_fingrid_row_hides_without_its_file(open_dashboard):
     expect(page.locator("#grid-latest")).to_be_hidden()
 
 
+def test_forecast_scorecard_shows_the_published_numbers(open_dashboard):
+    sc = _data("forecast_scorecard.json")
+    wind = next(r for r in sc["summary"] if r["variable"] == "wind" and r["product"] == "day_ahead")
+    cons = next(r for r in sc["summary"] if r["variable"] == "consumption" and r["product"] == "day_ahead")
+    page = open_dashboard()
+    kpis = page.locator("#fc-kpis .kpi strong")
+    expect(kpis.first).to_have_text(f"{round(wind['mae_mw']):,} MW")
+    expect(page.locator("#fc-hour-chart path").first).to_be_visible()
+    expect(page.locator("#fc-misses tr")).to_have_count(5)
+    expect(page.locator("#fc-balancing tr").first).to_be_visible()
+
+    page.locator('#fc-tabs button[data-var="consumption"]').click()
+    expect(kpis.first).to_have_text(f"{round(cons['mae_mw']):,} MW")
+    expect(page.locator("#fc-hour-title")).to_contain_text("consumption")
+
+
 # ── Live data: browser -> API -> database ──────────────────────
 
 def test_kpis_match_the_database(open_dashboard, db):
@@ -238,7 +254,7 @@ def test_glance_answer_is_built_from_the_scorecard(open_dashboard):
 
 def test_sections_animate_again_when_scrolling_back(open_dashboard):
     page = open_dashboard()
-    panel = page.locator("#grid .panel")
+    panel = page.locator("#grid .panel").first      # the daily chart; the forecast scorecard is the second
     panel.scroll_into_view_if_needed()
     expect(panel).to_have_class(re.compile(r"\bin\b"))
     page.locator("#engineering").scroll_into_view_if_needed()
