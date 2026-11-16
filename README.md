@@ -43,7 +43,7 @@ flowchart LR
     R -->|restore| W
 ```
 
-**Daily refresh** (`.github/workflows/refresh_fingrid.yml`, 10:47 UTC, after Fingrid
+**Daily refresh** (`.github/workflows/refresh_fingrid.yml`, 10:53 UTC, after Fingrid
 publishes the next day's forecasts at 12:00 Finnish time): start PostgreSQL, restore
 yesterday's warehouse from the release asset, sync the last 7 days from Fingrid,
 publish the new snapshot, run the analyses, commit the dashboard JSON and redeploy
