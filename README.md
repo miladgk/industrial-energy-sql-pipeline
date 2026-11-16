@@ -168,7 +168,7 @@ a server.
 
 ## Tests
 
-127 tests in eight layers, all run in CI on Python 3.11/3.12 and PostgreSQL 14/15/16,
+128 tests in eight layers, all run in CI on Python 3.11/3.12 and PostgreSQL 14/15/16,
 against the restored real warehouse:
 
 | Layer | What it guards |
@@ -180,7 +180,7 @@ against the restored real warehouse:
 | performance | EXPLAIN shows pruning and index use; generous latency budgets |
 | security | injection payloads rejected, no error leakage, read-only sessions, no secrets in git |
 | data | published JSON is internally consistent and matches the SQL in the repo |
-| e2e | Chromium: numbers come from the data files, no foreign requests, charts, keyboard, theme, phone layout, one broken file does not break the page |
+| e2e | Chromium: numbers come from the data files, no foreign requests, charts, keyboard, inspector drawer, theme, phone layout, one broken file does not break the page |
 
 Plus a Locust load test, bandit and pip-audit in CI.
 
