@@ -116,7 +116,8 @@ energy-analytics-sql/
 │   │   ├── 01_create_tables.sql
 │   │   ├── 10_partition_readings.sql # Declarative range partitioning (monthly)
 │   │   ├── 13_fingrid_warehouse.sql  # Raw Fingrid observations + forecast_vs_actual view
-│   │   └── 14_co2_forecast.sql       # co2_hourly view + co2_forecast() model (SQL function)
+│   │   ├── 14_co2_forecast.sql       # co2_hourly view + co2_forecast() model (SQL function)
+│   │   └── 15_grid_events.sql        # grid_events() detector (gaps and islands)
 │   ├── etl/
 │   │   └── 02_data_quality_checks.sql
 │   └── analysis/
@@ -133,7 +134,9 @@ energy-analytics-sql/
 │       ├── 16_forecast_biggest_misses.sql # The worst day-ahead days
 │       ├── 17_forecast_error_vs_balancing.sql # Forecast surprise vs mFRR activation and imbalance price
 │       ├── 18_co2_forecast.sql            # Tomorrow's hourly CO2 intensity, cleanest hours
-│       └── 19_co2_forecast_backtest.sql   # The same model replayed over the past year
+│       ├── 19_co2_forecast_backtest.sql   # The same model replayed over the past year
+│       ├── 20_grid_events.sql             # Frequency, nuclear, inertia and price events of the year
+│       └── 21_frequency_by_minute.sql     # Out-of-band frequency by minute of the hour
 │
 ├── src/
 │   ├── setup_db.py             # Runs 01_create_tables.sql (fallback for non-Docker setups)
@@ -143,7 +146,7 @@ energy-analytics-sql/
 │   ├── migrate_to_partitioned.py # Live table migration to range-partitioned schema
 │   ├── fetch_grid_data.py      # Real Fingrid API ingestion client
 │   ├── ingest_grid_data.py     # Grid data PostgreSQL loader
-│   ├── fingrid_catalog.py      # The 19 Fingrid datasets the warehouse keeps
+│   ├── fingrid_catalog.py      # The 21 Fingrid datasets the warehouse keeps
 │   ├── sync_fingrid.py         # Incremental, idempotent Fingrid → fingrid_observation sync
 │   ├── warehouse_snapshot.py   # Dump / restore fingrid_observation as CSV.gz
 │   ├── analysis_window.py      # Default 365-day window for the parameterised analyses
@@ -472,6 +475,22 @@ year using only data available at each point. Over 338 days: mean absolute error
 4.5 gCO2/kWh against 7.1 for "same hour two days earlier"; the hour picked as
 cleanest was among the real 3 cleanest on 46% of days and emitted 14.8% less than
 an average hour (19.7% for a perfect pick).
+
+#### Grid event log
+
+`grid_events()` in `sql/schema/15_grid_events.sql` finds unusual moments in four
+raw series and merges consecutive flagged samples into one event (gaps and
+islands): 1-minute frequency outside the Nordic normal band 49.9-50.1 Hz, Finnish
+nuclear output at least 400 MW below its 15-minute high, kinetic energy of the
+Nordic system in the lowest 1% of the window, and imbalance prices of 1,000
+EUR/MWh or more. Frequency samples of 0 Hz are Fingrid's gap marker and are
+skipped. For each nuclear drop it also reports the lowest nearby frequency; over
+the last year the two sensors rarely confirm each other (the frequency is
+Nordic-wide, and a brief nadir can fall between 1-minute samples), which the
+dashboard states rather than hides. `21_frequency_by_minute.sql` shows that the
+last minute before a full hour is out of band about twice as often as an average
+minute. Frequency (177) arrives every minute, so the sync splits its requests
+into 13-day windows to stay within one API page.
 
 The newest 15-minute wind and consumption values (the "Latest" row above the chart)
 are fetched by `.github/workflows/pages.yml`, which also runs every hour. It makes two

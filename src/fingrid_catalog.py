@@ -3,9 +3,11 @@ fingrid_catalog.py
 ~~~~~~~~~~~~~~~~~~
 The Fingrid Open Data datasets this warehouse keeps, and why.
 
-Names, units and resolutions are copied from the API's own catalogue
-(GET https://data.fingrid.fi/api/datasets). Every dataset here is at most
-15-minute resolution, so a calendar month always fits in one API page.
+Names and units are copied from the API's own catalogue
+(GET https://data.fingrid.fi/api/datasets); resolutions are what the data
+actually contains (frequency, listed there as 3 min, arrives every minute).
+The sync uses the resolution to size its request windows so that each one
+fits in a single API page.
 
 ensure_catalog() writes the list into the fingrid_dataset table; the sync and
 the snapshot restore call it first, because observations reference it.
@@ -13,6 +15,8 @@ the snapshot restore call it first, because observations reference it.
 
 from datetime import timedelta
 
+M1 = timedelta(minutes=1)
+M3 = timedelta(minutes=3)
 Q = timedelta(minutes=15)
 H = timedelta(hours=1)
 
@@ -42,6 +46,9 @@ DATASETS = [
     (260, "kinetic_energy",          "Kinetic energy of the Nordic power system - real time data", "GWs",      "system",    Q),
     (422, "under_frequency",         "Average under-frequency deviation",                          "Hz",       "system",    Q),
     (423, "over_frequency",          "Average over-frequency deviation",                           "Hz",       "system",    Q),
+    # Grid events (sql/schema/15_grid_events.sql)
+    (188, "nuclear",                 "Nuclear power production - real-time data",                  "MW",       "actual",    M3),
+    (177, "frequency",               "Frequency - real-time data",                                 "Hz",       "system",    M1),
 ]
 
 BY_ID = {d[0]: d for d in DATASETS}

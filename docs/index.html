@@ -589,6 +589,37 @@
           <p id="co2-error" class="error"></p>
           <details class="sql" id="sql-14"><summary>Inspect the SQL · sql/schema/14_co2_forecast.sql (the model)</summary><pre>Loading…</pre></details>
         </div>
+
+        <div class="card panel reveal fc" id="events">
+          <div class="panel-top">
+            <div>
+              <h3>What happened on the grid</h3>
+              <div class="prov" id="ev-prov"></div>
+            </div>
+          </div>
+          <p class="sub fc-intro">Fingrid shows its signals live, one at a time. This log keeps the unusual moments of the last 12 months, found in SQL across four of them: the grid frequency leaving its normal band, Finnish nuclear output dropping fast, the Nordic system running with very little inertia, and the imbalance price spiking.</p>
+          <div class="kpis" id="ev-kpis"></div>
+          <h4 class="fc-h">Latest events (frequency excursions are counted above, not listed)</h4>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th scope="col">When (Finnish time)</th><th scope="col">Event</th><th scope="col" class="r">Peak</th><th scope="col" class="r">Lasted</th></tr></thead>
+              <tbody id="ev-recent"><tr><td colspan="4" class="loading">Loading…</td></tr></tbody>
+            </table>
+          </div>
+          <h4 class="fc-h">The largest of the year</h4>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th scope="col">Event</th><th scope="col">When (Finnish time)</th><th scope="col" class="r">Peak</th></tr></thead>
+              <tbody id="ev-top"><tr><td colspan="3" class="loading">Loading…</td></tr></tbody>
+            </table>
+          </div>
+          <h4 class="fc-h">When in the hour does the frequency leave its normal band?</h4>
+          <div class="chart-box"><svg id="ev-minute-chart" class="chart" role="img" aria-label="Share of one-minute frequency samples outside 49.9 to 50.1 hertz, by minute of the hour"><desc>One line with a value for each minute from 0 to 59; the last minute before the hour is marked.</desc></svg></div>
+          <p class="takeaway" id="ev-takeaway"></p>
+          <p class="note" id="ev-note"></p>
+          <p id="ev-error" class="error"></p>
+          <details class="sql" id="sql-15"><summary>Inspect the SQL · sql/schema/15_grid_events.sql (the detector)</summary><pre>Loading…</pre></details>
+        </div>
       </div>
     </section>
 
@@ -1400,6 +1431,56 @@ make test</pre>
       `Intensity: Fingrid's estimate for electricity consumed in Finland, including imports (dataset 396).`;
   }
 
+  /* ───────── 01 world: grid events ───────── */
+  function renderEvents(d) {
+    if (!d || !d.counts) { $("ev-error").textContent = "The grid event log could not be loaded."; return; }
+    const fiTime = iso => new Date(iso).toLocaleString("en-GB", {day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Helsinki"});
+    const label = k => d.counts[k].label;
+    const peak = e => e.unit === "Hz" ? `${fmt(e.peak, 3)} Hz` : e.unit === "MW" ? `${signed(e.peak)} MW`
+      : e.unit === "GWs" ? `${fmt(e.peak, 0)} GWs` : `${fmt(e.peak, 0)} €/MWh`;
+    const lasted = e => { const m = Math.round((new Date(e.end_time) - new Date(e.start_time)) / 60000); return m >= 120 ? `${fmt(m / 60, 1)} h` : `${m} min`; };
+    const last = new Date(`${d.window_end_exclusive}T00:00:00Z`); last.setUTCDate(last.getUTCDate() - 1);
+    const prov = $("ev-prov");
+    prov.replaceChildren(el("span", {class: "badge b-real"}, `Fingrid API · ${dayFmt(`${d.window_start}T00:00:00Z`)} to ${dayFmt(last.toISOString())} · daily refresh`));
+    prov.firstChild.prepend(el("i"));
+    const c = d.counts, freqYear = c.frequency_low.year + c.frequency_high.year, freq30 = c.frequency_low.last_30_days + c.frequency_high.last_30_days;
+    $("ev-kpis").replaceChildren(
+      kpi(fmt(freqYear), `frequency excursions outside 49.9–50.1 Hz (${fmt(freq30)} in the last 30 days)`),
+      kpi(fmt(c.nuclear_drop.year), `fast drops of 400 MW or more in nuclear output (${fmt(c.nuclear_drop.last_30_days)} in 30 days)`),
+      kpi(fmt(c.low_inertia.year), `periods of very low system inertia (${fmt(c.low_inertia.last_30_days)} in 30 days)`),
+      kpi(fmt(c.price_spike.year), `imbalance price spikes of €1,000/MWh or more (${fmt(c.price_spike.last_30_days)} in 30 days)`),
+    );
+    const row = cells => { const tr = el("tr"); cells.forEach(([t, cl]) => tr.appendChild(el("td", cl ? {class: cl} : {}, t))); return tr; };
+    $("ev-recent").replaceChildren(...d.recent.map(e => row([[fiTime(e.start_time)], [label(e.kind)], [peak(e), "r"], [lasted(e), "r"]])));
+    $("ev-top").replaceChildren(...Object.keys(d.top).filter(k => d.top[k].length).map(k => { const e = d.top[k][0]; return row([[label(k)], [fiTime(e.start_time)], [peak(e), "r"]]); }));
+
+    const M = d.frequency_by_minute, base = M.reduce((a, m) => a + m.pct_outside, 0) / M.length;
+    const worst = M.reduce((a, m) => m.pct_outside > a.pct_outside ? m : a, M[0]);
+    lineChart($("ev-minute-chart"), {
+      height: 240,
+      series: [{name: "Outside the band", short: "Outside", values: M.map(m => m.pct_outside), color: "var(--fc-da)", width: 2}],
+      labels: M.map(m => `:${String(m.minute_of_hour).padStart(2, "0")}`),
+      directLabels: false,
+      points: [{i: M.indexOf(worst), v: worst.pct_outside, color: "var(--fault)", label: `minute ${worst.minute_of_hour}: ${fmt(worst.pct_outside, 2)}%`, dy: 4}],
+      xTick: (i, l, narrow) => i % (narrow ? 15 : 5) === 0 ? l : null,
+      tipTitle: l => `Minute ${l} of the hour`,
+      tipValue: v => `${fmt(v, 2)}% of samples outside 49.9–50.1 Hz`,
+      yLabel: "% of 1-minute samples outside the band",
+      xLabel: "Minute of the hour",
+    });
+    $("ev-takeaway").replaceChildren(el("b", {}, "Reading the chart: "), document.createTextNode(
+      `at minute ${worst.minute_of_hour} the frequency is outside its normal band in ${fmt(worst.pct_outside, 2)}% of samples, about ${fmt(worst.pct_outside / base, 1)}× the average minute (${fmt(base, 2)}%). ` +
+      `Most likely the grid feels the step when generation schedules change on the hour.`));
+
+    const nc = d.nuclear_crosscheck, q = d.data_quality;
+    $("ev-note").textContent =
+      (nc.length ? `Cross-check between two independent sensors: during the ${nc.length} fast nuclear drops the lowest nearby frequency was ` +
+        `${nc.map(e => `${fmt(e.freq_min_nearby, 2)} Hz`).join(", ")}. The frequency is shared by the whole Nordic grid, and either these drops were controlled ` +
+        `or their brief lowest point fell between the one-minute samples, so the two sensors rarely confirm each other. ` : "") +
+      `Data quality: frequency samples exist for ${fmt(100 * q.valid / q.minutes_in_window, 1)}% of the minutes in the year, and ${fmt(q.invalid)} samples of 0 Hz (Fingrid's marker for a gap) were skipped. ` +
+      `Low inertia means the lowest 1% of quarter-hours in the window, so the threshold moves with the data.`;
+  }
+
   function kpi(value, label) { const d = el("div", {class: "kpi"}); d.append(el("strong", {}, value), el("span", {}, label)); return d; }
   $("period-tabs").addEventListener("click", e => { const b = e.target.closest("button"); if (b) renderGrid(b.dataset.period); });
 
@@ -1791,7 +1872,7 @@ make test</pre>
 
   function renderSql(src) {
     if (!src) return;
-    const map = {"sql/schema/14_co2_forecast.sql": "sql-14", "sql/analysis/13_forecast_scorecard.sql": "sql-13", "sql/analysis/17_forecast_error_vs_balancing.sql": "sql-17",
+    const map = {"sql/schema/15_grid_events.sql": "sql-15", "sql/schema/14_co2_forecast.sql": "sql-14", "sql/analysis/13_forecast_scorecard.sql": "sql-13", "sql/analysis/17_forecast_error_vs_balancing.sql": "sql-17",
                  "sql/analysis/11_detection_quality.sql": "sql-11", "sql/analysis/12_zero_dropout_rules.sql": "sql-12", "sql/analysis/08_real_vs_synthetic_comparison.sql": "sql-08"};
     src.files.forEach(f => {
       const d = $(map[f.path]); if (!d) return;
@@ -1820,6 +1901,7 @@ make test</pre>
     safe(getJSON("data/fingrid_latest.json", {cache: "no-store"})).then(renderLatest);
     safe(getJSON("data/forecast_scorecard.json")).then(renderForecasts);
     safe(getJSON("data/co2_forecast.json")).then(renderCo2);
+    safe(getJSON("data/grid_events.json")).then(renderEvents);
 
     examples = ex ? ex.examples : [];
     if (gYear) { gridData.year = gYear; $("period-year").textContent = String(gYear.year); }

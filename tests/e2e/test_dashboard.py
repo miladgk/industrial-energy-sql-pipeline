@@ -90,6 +90,16 @@ def test_co2_forecast_names_the_published_cleanest_hour(open_dashboard):
     expect(page.locator("#co2-record .kpi")).to_have_count(4)
 
 
+def test_grid_event_log_shows_the_published_counts(open_dashboard):
+    d = _data("grid_events.json")
+    page = open_dashboard()
+    c = d["counts"]
+    expect(page.locator("#ev-kpis .kpi strong").first).to_have_text(f"{c['frequency_low']['year'] + c['frequency_high']['year']:,}")
+    expect(page.locator("#ev-recent tr")).to_have_count(len(d["recent"]))
+    expect(page.locator("#ev-top tr")).to_have_count(sum(1 for v in d["top"].values() if v))
+    expect(page.locator("#ev-minute-chart path").first).to_be_visible()
+
+
 # ── Live data: browser -> API -> database ──────────────────────
 
 def test_kpis_match_the_database(open_dashboard, db):

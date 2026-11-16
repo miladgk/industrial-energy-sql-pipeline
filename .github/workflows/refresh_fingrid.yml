@@ -7,8 +7,8 @@ name: Refresh the Fingrid warehouse and dashboard data
 #      recent values); with no snapshot it backfills 400 days instead
 #   3. publish the new snapshot, so the next run starts from it
 #   4. run the SQL analyses and write docs/data/fingrid_recent_daily.json,
-#      forecast_scorecard.json and co2_forecast.json; commit them if they
-#      changed and redeploy GitHub Pages
+#      forecast_scorecard.json, co2_forecast.json and grid_events.json; commit
+#      them if they changed and redeploy GitHub Pages
 #
 # It runs at 10:47 UTC because Fingrid publishes the next day's day-ahead
 # forecasts at 12:00 Finnish time (10:00 UTC in winter, 09:00 UTC in summer),
@@ -102,7 +102,9 @@ jobs:
           FINGRID_API_KEY: ${{ secrets.FINGRID_API_KEY }}
         run: python src/sync_fingrid.py
 
+      # Only main publishes: a test run of a PR branch must not replace the snapshot main restores.
       - name: Publish the new snapshot
+        if: github.ref == 'refs/heads/main'
         run: |
           python src/warehouse_snapshot.py dump "/tmp/$SNAPSHOT_FILE"
           if ! gh release view "$SNAPSHOT_TAG" > /dev/null 2>&1; then
@@ -113,7 +115,7 @@ jobs:
           gh release upload "$SNAPSHOT_TAG" "/tmp/$SNAPSHOT_FILE" --clobber
 
       - name: Build the dashboard data
-        run: python scripts/export_dashboard_data.py --parts fingrid-recent forecast-scorecard co2-forecast
+        run: python scripts/export_dashboard_data.py --parts fingrid-recent forecast-scorecard co2-forecast grid-events
 
       # Off main (a test run of a PR branch), keep the files as a run artifact instead of
       # committing: a bot commit on a PR branch leaves its CI waiting for manual approval.
@@ -126,12 +128,13 @@ jobs:
             docs/data/fingrid_recent_daily.json
             docs/data/forecast_scorecard.json
             docs/data/co2_forecast.json
+            docs/data/grid_events.json
 
       - name: Commit if the data changed
         id: commit
         if: github.ref == 'refs/heads/main'
         run: |
-          files="docs/data/fingrid_recent_daily.json docs/data/forecast_scorecard.json docs/data/co2_forecast.json"
+          files="docs/data/fingrid_recent_daily.json docs/data/forecast_scorecard.json docs/data/co2_forecast.json docs/data/grid_events.json"
           git add $files
           if git diff --cached --quiet; then
             echo "No change in the dashboard data."

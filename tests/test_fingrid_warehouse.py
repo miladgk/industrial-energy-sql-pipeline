@@ -85,6 +85,18 @@ def test_month_windows_cover_the_range_without_gaps():
     assert all(w[0].month == (w[1] - timedelta(microseconds=1)).month for w in windows)
 
 
+def test_request_windows_fit_one_api_page():
+    from sync_fingrid import PAGE_SIZE, request_windows
+
+    start, end = datetime(2001, 1, 1, tzinfo=UTC), datetime(2001, 3, 1, tzinfo=UTC)
+    for resolution, longest in ((timedelta(minutes=1), timedelta(days=13)), (Q, timedelta(days=31))):
+        windows = request_windows(start, end, resolution)
+        assert windows[0][0] == start and windows[-1][1] == end
+        assert all(a[1] == b[0] for a, b in zip(windows, windows[1:]))
+        assert max(w[1] - w[0] for w in windows) == longest
+        assert all((w[1] - w[0]) / resolution < PAGE_SIZE for w in windows)
+
+
 def test_backfill_stores_only_ended_slots_and_rerun_changes_nothing(db, test_dataset):
     from sync_fingrid import sync_dataset
 
@@ -138,6 +150,16 @@ def test_snapshot_round_trip(db, test_dataset, tmp_path):
     assert restore(db, path) == len(before)
     assert _stored(db, test_dataset) == before
     assert restore(db, path) == 0                              # restoring twice adds nothing
+
+
+def test_restore_skips_datasets_the_catalogue_does_not_know(db, tmp_path):
+    import gzip
+    from warehouse_snapshot import restore
+
+    path = str(tmp_path / "newer.csv.gz")
+    with gzip.open(path, "wt") as fh:   # as if written by newer code with an extra dataset
+        fh.write("dataset_id,start_time,end_time,value\n999999,2001-01-01 00:00:00+00,2001-01-01 00:15:00+00,1.0\n")
+    assert restore(db, path) == 0
 
 
 # ── Forecast SQL on a tiny known dataset ───────────────────────
@@ -314,3 +336,71 @@ def test_co2_backtest_scores_a_perfect_model(exact_co2):
     assert r["mae_naive_g"] > 0
     assert r["pick_in_top3_pct"] == 100
     assert r["co2_at_pick_g"] == pytest.approx(r["best_hour_g"])
+
+
+# ── Grid events (sql/schema/15_grid_events.sql) on hand-made data ──
+
+EV0 = datetime(2001, 4, 1, tzinfo=UTC)
+M = timedelta(minutes=1)
+
+
+@pytest.fixture
+def known_events(db):
+    """Two hours of data with every event placed by hand (see the comments)."""
+    from fingrid_catalog import ensure_catalog
+    from psycopg2.extras import execute_values
+
+    ensure_catalog(db)
+    rows = []
+    freq = {10: 49.85, 11: 49.80,        # one low event (consecutive minutes)
+            30: 0.0,                     # invalid sample (Fingrid writes gaps as 0): ignored
+            40: 50.15,                   # one high event
+            50: 49.88}                   # a second low event, 39 minutes after the first
+    for m in range(120):
+        rows.append((177, EV0 + m * M, EV0 + (m + 1) * M, freq.get(m, 50.0)))
+    for k in range(40):                  # nuclear, 3-minute: 500 MW drop at minute 60 for three samples
+        t = EV0 + k * 3 * M
+        rows.append((188, t, t + 3 * M, 2500.0 if 60 <= k * 3 < 69 else 3000.0))
+    for q in range(8):                   # 15-minute series: one low-inertia quarter, a two-quarter price spike
+        t = EV0 + q * Q
+        rows.append((260, t, t + Q, 50.0 if q == 3 else 200.0))
+        rows.append((319, t, t + Q, 1200.0 if q in (5, 6) else 40.0))
+    with db.cursor() as cur:
+        execute_values(cur, "INSERT INTO fingrid_observation (dataset_id, start_time, end_time, value) VALUES %s", rows)
+    yield db
+    db.rollback()
+
+
+def _events(db):
+    with db.cursor() as cur:
+        cur.execute("SELECT * FROM grid_events(%s, %s) ORDER BY kind, start_time",
+                    (EV0, EV0 + timedelta(hours=2)))
+        names = [c.name for c in cur.description]
+        return [dict(zip(names, r)) for r in cur.fetchall()]
+
+
+def test_grid_events_finds_and_merges_each_kind(known_events):
+    ev = _events(known_events)
+    by_kind = {}
+    for e in ev:
+        by_kind.setdefault(e["kind"], []).append(e)
+    assert {k: len(v) for k, v in by_kind.items()} == {
+        "frequency_low": 2, "frequency_high": 1, "nuclear_drop": 1, "low_inertia": 1, "price_spike": 1}
+
+    low = by_kind["frequency_low"]
+    assert (low[0]["start_time"], low[0]["samples"], low[0]["peak"]) == (EV0 + 10 * M, 2, 49.80)
+    assert low[1]["start_time"] == EV0 + 50 * M
+    assert by_kind["frequency_high"][0]["peak"] == 50.15
+
+    drop = by_kind["nuclear_drop"][0]
+    assert drop["start_time"] == EV0 + 60 * M and drop["peak"] == -500 and drop["samples"] == 3
+    assert drop["freq_min_nearby"] == 49.88             # minute 50 lies within 15 min of the drop (60-69)
+    assert all(e["freq_min_nearby"] is None for e in ev if e["kind"] != "nuclear_drop")
+
+    assert by_kind["low_inertia"][0]["peak"] == 50
+    spike = by_kind["price_spike"][0]
+    assert (spike["start_time"], spike["end_time"], spike["samples"]) == (EV0 + 5 * Q, EV0 + 7 * Q, 2)
+
+
+def test_grid_events_ignores_invalid_zero_frequency(known_events):
+    assert all(not (e["kind"] == "frequency_low" and e["peak"] < 45) for e in _events(known_events))

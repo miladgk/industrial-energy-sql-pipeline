@@ -15,6 +15,8 @@ Rebuild the static data files used by the GitHub Pages dashboard (docs/data/).
                               days (sql/analysis/13-17 on the Fingrid warehouse)       [part: forecast-scorecard]
   co2_forecast.json           Hourly CO2 intensity forecast for tomorrow, yesterday's
                               forecast vs reality, and the backtest (sql/analysis/18-19)  [part: co2-forecast]
+  grid_events.json            Unusual moments on the grid over the last year: frequency,
+                              nuclear drops, low inertia, price spikes (sql/analysis/20-21) [part: grid-events]
   fingrid_latest.json         Newest wind and consumption values from the Fingrid API.
                               Built by the hourly Pages deploy and never committed     [part: fingrid-latest]
 
@@ -32,7 +34,7 @@ Usage (from the repository root):
     python scripts/export_dashboard_data.py                          # fingrid, validation, snapshot
     python scripts/export_dashboard_data.py --skip-snapshot          # local files only
     python src/sync_fingrid.py && \
-    python scripts/export_dashboard_data.py --parts fingrid-recent forecast-scorecard co2-forecast   # the daily workflow
+    python scripts/export_dashboard_data.py --parts fingrid-recent forecast-scorecard co2-forecast grid-events   # the daily workflow
     python scripts/export_dashboard_data.py --parts fingrid-latest   # what the hourly Pages deploy runs
     python scripts/export_dashboard_data.py --api-url http://127.0.0.1:8000
     python scripts/export_dashboard_data.py --api-url http://127.0.0.1:8000 \
@@ -277,6 +279,68 @@ def export_co2_forecast(days: int = 365) -> None:
     })
 
 
+EVENT_SQL = {"events": "sql/analysis/20_grid_events.sql", "by_minute": "sql/analysis/21_frequency_by_minute.sql"}
+EVENT_KINDS = {   # kind: (label, True when a higher peak is more severe)
+    "frequency_low": ("Frequency below 49.9 Hz", False),
+    "frequency_high": ("Frequency above 50.1 Hz", True),
+    "nuclear_drop": ("Fast drop in nuclear output", False),
+    "low_inertia": ("Low system inertia", False),
+    "price_spike": ("Imbalance price spike", True),
+}
+
+
+def export_grid_events(days: int = 365) -> None:
+    sys.path.insert(0, os.path.join(ROOT, "src"))
+    from analysis_window import default_window
+
+    w = default_window(days=days)
+    conn = _db()
+    try:
+        out = {}
+        for part, path in EVENT_SQL.items():
+            with open(os.path.join(ROOT, path), encoding="utf-8") as fh:
+                out[part] = _rows(conn, fh.read(), w)
+        quality = _rows(conn, """
+            SELECT count(*) FILTER (WHERE value >= 45) AS valid, count(*) FILTER (WHERE value < 45) AS invalid,
+                   (extract(epoch FROM %(end)s::timestamptz - %(start)s::timestamptz) / 60)::int AS minutes_in_window
+            FROM fingrid_observation WHERE dataset_id = 177 AND start_time >= %(start)s AND start_time < %(end)s
+        """, w)[0]
+    finally:
+        conn.close()
+    events = _rounded(out["events"], 3)
+    if not out["by_minute"]:
+        raise SystemExit("no frequency data in the window: run src/sync_fingrid.py first")
+
+    cutoff = (w["end"] - timedelta(days=30)).isoformat()
+    counts = {k: {"label": label,
+                  "year": sum(e["kind"] == k for e in events),
+                  "last_30_days": sum(e["kind"] == k and e["start_time"] >= cutoff for e in events)}
+              for k, (label, _) in EVENT_KINDS.items()}
+    top = {k: sorted((e for e in events if e["kind"] == k), key=lambda e: e["peak"], reverse=higher)[:3]
+           for k, (_, higher) in EVENT_KINDS.items()}
+    _write("grid_events.json", {
+        "generated_at": _now(),
+        "source": "Fingrid Open Data API (CC BY 4.0): frequency (177), nuclear production (188), kinetic energy "
+                  "of the Nordic system (260), imbalance price (319)",
+        "window_start": w["start"].strftime("%Y-%m-%d"),
+        "window_end_exclusive": w["end"].strftime("%Y-%m-%d"),
+        "thresholds": {
+            "frequency": "outside the Nordic normal band 49.9-50.1 Hz (1-minute samples)",
+            "nuclear_drop": "at least 400 MW below the highest value of the previous 15 minutes",
+            "low_inertia": "kinetic energy in the lowest 1% of the window",
+            "price_spike": "imbalance price of 1,000 EUR/MWh or more",
+        },
+        "counts": counts,
+        "recent": [e for e in events if e["kind"] != "frequency_high" and e["kind"] != "frequency_low"][:8],
+        "recent_frequency": [e for e in events if e["kind"] in ("frequency_low", "frequency_high")][:5],
+        "top": top,
+        "nuclear_crosscheck": [e for e in events if e["kind"] == "nuclear_drop"],
+        "frequency_by_minute": _rounded(out["by_minute"], 3),
+        "data_quality": quality,
+        "sql": ["sql/schema/15_grid_events.sql", *EVENT_SQL.values()],
+    })
+
+
 def export_fingrid_latest(hours: int = 6) -> None:
     """Newest raw value of each dataset in the last few hours: two small requests, no history."""
     sys.path.insert(0, os.path.join(ROOT, "src"))
@@ -365,6 +429,7 @@ def export_snapshot(api_url: str) -> None:
 
 GITHUB_BLOB = "https://github.com/miladgk/industrial-energy-sql-pipeline/blob/main/"
 PAGE_SQL_FILES = [
+    "sql/schema/15_grid_events.sql",
     "sql/schema/14_co2_forecast.sql",
     "sql/analysis/13_forecast_scorecard.sql",
     "sql/analysis/17_forecast_error_vs_balancing.sql",
@@ -626,7 +691,7 @@ def main() -> None:
     parser.add_argument("--skip-snapshot", action="store_true", help="Do not call the API")
     parser.add_argument("--parts", nargs="+",
                         choices=["fingrid", "validation", "snapshot", "fingrid-recent", "fingrid-latest",
-                                 "forecast-scorecard", "co2-forecast", "thresholds", "ranking", "anomalies", "blindspot", "sql", "engineering"],
+                                 "forecast-scorecard", "co2-forecast", "grid-events", "thresholds", "ranking", "anomalies", "blindspot", "sql", "engineering"],
                         help="Only build these files (default: fingrid validation snapshot)")
     parser.add_argument("--year", type=int, default=2025, help="Calendar year for the fingrid part (default 2025)")
     parser.add_argument("--recent-days", type=int, default=365, help="Window for fingrid-recent (days)")
@@ -649,6 +714,8 @@ def main() -> None:
         export_forecast_scorecard()
     if "co2-forecast" in parts:
         export_co2_forecast()
+    if "grid-events" in parts:
+        export_grid_events()
 
     api_url = args.api_url.rstrip("/")
     needs_dataset = {"thresholds", "ranking", "anomalies", "blindspot", "engineering"} & set(parts)
