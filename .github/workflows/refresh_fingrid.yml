@@ -115,8 +115,21 @@ jobs:
       - name: Build the dashboard data
         run: python scripts/export_dashboard_data.py --parts fingrid-recent forecast-scorecard co2-forecast
 
+      # Off main (a test run of a PR branch), keep the files as a run artifact instead of
+      # committing: a bot commit on a PR branch leaves its CI waiting for manual approval.
+      - name: Keep the data as an artifact (test runs off main)
+        if: github.ref != 'refs/heads/main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: dashboard-data
+          path: |
+            docs/data/fingrid_recent_daily.json
+            docs/data/forecast_scorecard.json
+            docs/data/co2_forecast.json
+
       - name: Commit if the data changed
         id: commit
+        if: github.ref == 'refs/heads/main'
         run: |
           files="docs/data/fingrid_recent_daily.json docs/data/forecast_scorecard.json docs/data/co2_forecast.json"
           git add $files
