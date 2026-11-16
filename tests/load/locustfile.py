@@ -6,7 +6,7 @@ Locust simulates virtual users who repeatedly call the endpoints the way the
 dashboard does, and measures response times and failures.
 
 Task weights mimic real traffic: cheap endpoints are hit often, the heavy
-z-score queries (/api/anomalies, /api/detection-quality) less often.
+year-long analyses (/api/forecast-scorecard) less often.
 
 Pass/fail thresholds (checked when the run ends; exit code 1 if exceeded):
     LOAD_MAX_FAIL_RATIO   default 0.01   (1 % of requests may fail)
@@ -32,24 +32,27 @@ class DashboardUser(HttpUser):
     wait_time = between(0.5, 2)  # think time between actions, like a real person
 
     @task(5)
-    def overview(self):
-        self.client.get("/api/overview", name="/api/overview")
+    def latest(self):
+        self.client.get("/api/latest", name="/api/latest")
 
     @task(3)
-    def output_trend(self):
-        self.client.get("/api/output-trend?hours=24", name="/api/output-trend")
+    def co2_forecast(self):
+        # tomorrow until Fingrid publishes it at 12:00 Finnish time; a 404 then is expected
+        with self.client.get("/api/co2-forecast", name="/api/co2-forecast", catch_response=True) as r:
+            if r.status_code in (200, 404):
+                r.success()
 
     @task(2)
-    def ranking(self):
-        self.client.get("/api/facilities/ranking", name="/api/facilities/ranking")
+    def grid_events(self):
+        self.client.get("/api/grid-events?days=30", name="/api/grid-events")
 
     @task(2)
-    def anomalies(self):
-        self.client.get("/api/anomalies?limit=50", name="/api/anomalies")
+    def datasets(self):
+        self.client.get("/api/datasets", name="/api/datasets")
 
     @task(1)
-    def detection_quality(self):
-        self.client.get("/api/detection-quality", name="/api/detection-quality")
+    def forecast_scorecard(self):
+        self.client.get("/api/forecast-scorecard", name="/api/forecast-scorecard")
 
     @task(1)
     def health(self):

@@ -38,7 +38,7 @@ def main():
 
     conn = get_connection()
 
-    # Collect SQL files in lexicographic order (03_, 04_, 05_, 06_)
+    # Collect SQL files in lexicographic order (13_, 14_, ...)
     sql_files = sorted(glob.glob(os.path.join(ANALYSIS_DIR, "*.sql")))
 
     if not sql_files:
@@ -47,8 +47,8 @@ def main():
         return
 
     for sql_path in sql_files:
-        filename   = os.path.basename(sql_path)               # e.g. 03_rolling_averages.sql
-        query_name = os.path.splitext(filename)[0]             # e.g. 03_rolling_averages
+        filename   = os.path.basename(sql_path)               # e.g. 13_forecast_scorecard.sql
+        query_name = os.path.splitext(filename)[0]             # e.g. 13_forecast_scorecard
         short_name = query_name.replace("_", " ").title()
 
         with open(sql_path, "r") as fh:
@@ -65,21 +65,6 @@ def main():
         df.to_csv(out_path, index=False)
 
         print(f"  ✓ {short_name}: {len(df):,} rows → outputs/{out_filename}")
-
-        if query_name == "08_real_vs_synthetic_comparison":
-            try:
-                from scipy import stats
-                r, pval = stats.pearsonr(df['real_avg'], df['synthetic_avg'])
-                dof = len(df) - 2
-                print(f"    └─ Daily Correlation Significance Test:")
-                print(f"       • Sample size (n)        : {len(df)}")
-                print(f"       • Degrees of Freedom (df): {dof}")
-                print(f"       • Pearson r              : {r:.4f}")
-                print(f"       • p-value                : {pval:.4e} (Alpha = 0.05)")
-                sig = "Statistically Significant" if pval < 0.05 else "Not Statistically Significant"
-                print(f"       • Conclusion             : {sig}")
-            except Exception as e:
-                print(f"    └─ Error running significance test: {e}")
 
     conn.close()
     print("=" * 60)

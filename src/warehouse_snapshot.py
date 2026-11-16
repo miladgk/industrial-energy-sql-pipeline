@@ -50,6 +50,9 @@ def restore(conn, path: str) -> int:
         cur.execute("CREATE TEMP TABLE snapshot_rows (LIKE fingrid_observation INCLUDING DEFAULTS) ON COMMIT DROP")
         cur.copy_expert("COPY snapshot_rows (dataset_id, start_time, end_time, value) "
                         "FROM STDIN WITH (FORMAT csv, HEADER true)", fh)
+        # Only the months that hold rows: a stray old row must not create every month in between.
+        cur.execute("SELECT ensure_fingrid_partitions(m, m) "
+                    "FROM (SELECT DISTINCT date_trunc('month', start_time)::date AS m FROM snapshot_rows) months")
         cur.execute("""
             INSERT INTO fingrid_observation (dataset_id, start_time, end_time, value)
             SELECT dataset_id, start_time, end_time, value FROM snapshot_rows

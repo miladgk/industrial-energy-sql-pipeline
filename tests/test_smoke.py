@@ -1,12 +1,9 @@
 """
 test_smoke.py: SMOKE TESTS
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
-Goal: answer one question quickly, "is the system alive at all?". If any of
-these fail there is no point running the slower suites.
-
-Smoke tests are shallow and wide: touch every critical piece (DB, API,
-dashboard files) but verify only that it exists and responds, not that its
-numbers are right (that is the job of the API / integration / regression tests).
+Fast "is anything alive at all?" checks, run first in CI: the database answers,
+the warehouse holds data, the API starts and registers its routes, and the
+dashboard page and its data files exist.
 
 Run only these:  pytest -m smoke
 """
@@ -18,22 +15,16 @@ import pytest
 
 pytestmark = pytest.mark.smoke
 
-CORE_TABLES = ("facilities", "sensors", "readings")
 DASHBOARD_DATA = (
-    "api_snapshot.json",
-    "fingrid_year_daily.json",
     "fingrid_recent_daily.json",
     "forecast_scorecard.json",
     "co2_forecast.json",
     "grid_events.json",
-    "wind_validation.json",
-    "detection_thresholds.json",
-    "facility_ranking.json",
-    "anomaly_examples.json",
-    "zero_dropout_rules.json",
     "sql_sources.json",
     "engineering.json",
 )
+API_ROUTES = ("/health", "/api/datasets", "/api/latest", "/api/forecast-scorecard",
+              "/api/forecast-error-by-hour", "/api/co2-forecast", "/api/grid-events")
 
 
 def test_database_is_reachable(db):
@@ -42,11 +33,12 @@ def test_database_is_reachable(db):
         assert cur.fetchone()[0] == 1
 
 
-@pytest.mark.parametrize("table", CORE_TABLES)
-def test_core_table_has_rows(db, table):
+def test_warehouse_has_data(db):
     with db.cursor() as cur:
-        cur.execute(f"SELECT COUNT(*) FROM {table}")  # table comes from a constant
-        assert cur.fetchone()[0] > 0, f"{table} is empty: was the pipeline run?"
+        cur.execute("SELECT COUNT(*), COUNT(DISTINCT dataset_id) FROM fingrid_observation")
+        rows, datasets = cur.fetchone()
+    db.rollback()
+    assert rows > 0 and datasets > 0, "fingrid_observation is empty: restore the snapshot or run src/sync_fingrid.py"
 
 
 def test_api_health_endpoint(client):
@@ -55,27 +47,18 @@ def test_api_health_endpoint(client):
     assert response.json() == {"status": "ok"}
 
 
-def test_api_main_endpoint_responds(client):
-    assert client.get("/api/overview").status_code == 200
-
-
 def test_openapi_schema_is_served(client):
-    """Swagger UI depends on this; also proves every route registered cleanly."""
+    """Swagger UI depends on this; it also proves every route registered."""
     response = client.get("/openapi.json")
     assert response.status_code == 200
-    paths = response.json()["paths"]
-    for route in ("/health", "/api/overview", "/api/anomalies",
-                  "/api/detection-quality", "/api/facilities/ranking"):
-        assert route in paths
+    assert set(API_ROUTES) <= set(response.json()["paths"])
 
 
 def test_dashboard_page_exists(project_root):
-    index = os.path.join(project_root, "docs", "index.html")
-    assert os.path.getsize(index) > 1000
+    assert os.path.getsize(os.path.join(project_root, "docs", "index.html")) > 1000
 
 
 @pytest.mark.parametrize("name", DASHBOARD_DATA)
 def test_dashboard_data_is_valid_json(project_root, name):
-    path = os.path.join(project_root, "docs", "data", name)
-    with open(path, encoding="utf-8") as fh:
+    with open(os.path.join(project_root, "docs", "data", name), encoding="utf-8") as fh:
         assert json.load(fh), f"{name} parsed but is empty"

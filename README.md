@@ -1,620 +1,242 @@
-# Energy Facility Performance & Anomaly Analytics Platform
+# Grid in SQL: Finland's electricity grid in a PostgreSQL warehouse
 
-[![CI Pipeline](https://github.com/miladgk/energy-grid-sql-pipeline/actions/workflows/ci.yml/badge.svg)](https://github.com/miladgk/energy-grid-sql-pipeline/actions/workflows/ci.yml)
-![Python 3.11](https://img.shields.io/badge/python-3.11-blue.svg)
-![PostgreSQL 15](https://img.shields.io/badge/postgres-15-blue.svg)
+[![CI Pipeline](https://github.com/miladgk/industrial-energy-sql-pipeline/actions/workflows/ci.yml/badge.svg)](https://github.com/miladgk/industrial-energy-sql-pipeline/actions/workflows/ci.yml)
+![Python 3.11 | 3.12](https://img.shields.io/badge/python-3.11%20%7C%203.12-blue.svg)
+![PostgreSQL 14-16](https://img.shields.io/badge/postgres-14--16-blue.svg)
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
-[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
 **Live site:** [miladgk.github.io/industrial-energy-sql-pipeline](https://miladgk.github.io/industrial-energy-sql-pipeline/)
-· **API:** [industrial-energy-api.onrender.com/docs](https://industrial-energy-api.onrender.com/docs)
-(free tier: the first request after a quiet period can take up to a minute)
+· **Data download:** [warehouse snapshot](https://github.com/miladgk/industrial-energy-sql-pipeline/releases/tag/warehouse-snapshot) (CSV)
 
-A local data engineering project that ingests, transforms, and analyses
-operational time-series data from a fictional network of 20 industrial energy
-facilities (wind farms, solar plants, substations) across Scandinavia.
-The project demonstrates a production-oriented pipeline: synthetic data
-generation → PostgreSQL (Docker) → chunked Python ingestion → advanced SQL
-analysis → automated CSV reporting → FastAPI JSON endpoint.
+Fingrid, Finland's electricity transmission system operator, publishes hundreds of
+measurements and forecasts as [open data](https://data.fingrid.fi), one chart at a
+time. This project keeps 21 of them in a partitioned PostgreSQL warehouse, refreshed
+every day, and answers questions no single chart does:
+
+| Question | Answer over the last 12 months | Where |
+|---|---|---|
+| How far off are Fingrid's own forecasts? | Day-ahead wind misses by 442 MW on average (4.7% of the fleet) and runs 171 MW too high; the intraday update halves the miss. Consumption: 328 MW (3.3%). | `sql/analysis/13-17` |
+| When will electricity be cleanest tomorrow? | A day-ahead CO2-intensity forecast in SQL. Replayed over 338 days: 4.5 g/kWh mean error vs 7.1 for a naive baseline; the hour it picks emitted 14.8% less than an average hour (19.7% for a perfect pick). | `sql/schema/14`, `sql/analysis/18-19` |
+| What unusual happened on the grid? | 802 frequency excursions, 6 fast nuclear drops, 14 low-inertia periods, 12 imbalance-price spikes. The minute before a full hour is out of band 2.1x as often as an average minute. | `sql/schema/15`, `sql/analysis/20-21` |
+
+Numbers as of November 2026; the site always shows the current ones.
+
+Everything is real data. Where the data does not support a claim, the site says so:
+solar forecasts are not scored because Fingrid publishes no measured solar output;
+the CO2 forecast is a guide to *which* hours are cleaner, not an exact value; and
+Finnish nuclear drops and the Nordic-wide frequency rarely confirm each other, so
+nuclear trips are not used as labels for the event detector.
 
 ---
 
 ## Architecture
 
 ```mermaid
-flowchart TD
-    A[generate_data.py<br/>Pandas + NumPy] -->|Creates ~6.3 M rows<br/>5-minute resolution| B[(data/raw/*.csv)]
-    B --> C[ingest.py<br/>psycopg2]
-    C -->|Chunked loading<br/>ON CONFLICT DO NOTHING| D[(PostgreSQL 15<br/>Docker)]
-    D -->|pandas.read_sql_query| E[run_report.py<br/>SQL → CSV]
-    E --> F[outputs/*.csv]
-    D -->|psycopg2| G[api.py<br/>FastAPI :8000]
-    G --> H[GET /api/anomalies]
-    G --> I[GET /api/detection-quality]
+flowchart LR
+    F[Fingrid Open Data API<br/>21 datasets] -->|sync_fingrid.py<br/>incremental, idempotent| W[(PostgreSQL<br/>fingrid_observation<br/>monthly partitions)]
+    W --> Q[Quality gate<br/>02_data_quality_checks.sql]
+    W --> S[SQL views, functions<br/>sql/analysis/*.sql]
+    S --> E[export_dashboard_data.py] --> J[docs/data/*.json] --> P[GitHub Pages<br/>static dashboard]
+    S --> A[FastAPI<br/>src/api.py]
+    W -->|warehouse_snapshot.py dump| R[Release asset<br/>fingrid_observation.csv.gz]
+    R -->|restore| W
 ```
+
+**Daily refresh** (`.github/workflows/refresh_fingrid.yml`, 10:47 UTC, after Fingrid
+publishes the next day's forecasts at 12:00 Finnish time): start PostgreSQL, restore
+yesterday's warehouse from the release asset, sync the last 7 days from Fingrid,
+publish the new snapshot, run the analyses, commit the dashboard JSON and redeploy
+Pages. A normal run takes about 2 minutes and 21 API requests. No server runs between
+refreshes.
+
+**Hourly** (`pages.yml`): the newest wind and consumption values are fetched and
+deployed with the page, without a commit.
+
+**CI** (`ci.yml`, every pull request): restores the same public snapshot, so every
+test runs against real data and needs no Fingrid key.
 
 ---
 
-## Entity-Relationship Diagram (ERD)
-
-The database schema consists of three normalized core tables (`facilities`, `sensors`, `readings`) linked via foreign keys (`1:N` cardinality), alongside a standalone national-grid data table (`grid_data`). Note that `grid_data` is not FK-linked to `facilities` or `sensors` because it stores country-level macro measurements from Fingrid rather than individual facility sensor readings.
-
-```mermaid
-erDiagram
-    facilities ||--o{ sensors : "1:N"
-    sensors ||--o{ readings : "1:N"
-
-    facilities {
-        SERIAL facility_id PK
-        VARCHAR facility_name
-        VARCHAR facility_type
-        VARCHAR country
-        NUMERIC capacity_mw
-        SMALLINT commissioned_year
-    }
-    sensors {
-        SERIAL sensor_id PK
-        INT facility_id FK
-        VARCHAR sensor_type
-        VARCHAR unit
-    }
-    readings {
-        BIGSERIAL reading_id PK
-        INT sensor_id FK
-        TIMESTAMPTZ recorded_at PK
-        NUMERIC value
-        BOOLEAN is_anomaly
-    }
-    grid_data {
-        SERIAL id PK
-        INTEGER dataset_id
-        VARCHAR country
-        TIMESTAMPTZ recorded_at
-        NUMERIC value
-        VARCHAR metric
-        VARCHAR source
-    }
-```
-
-*(Note: `readings.value` and `readings.is_anomaly` are nullable in the live schema)*
-
----
-
-## Tech Stack
-
-| Layer         | Technology                          |
-|---------------|-------------------------------------|
-| Database      | PostgreSQL 15 (Docker Compose)      |
-| Language      | Python 3.11                         |
-| DB connector  | psycopg2                            |
-| Data wrangling| pandas, NumPy                       |
-| API           | FastAPI + Uvicorn                   |
-| Testing       | pytest                              |
-| Environment   | Conda                               |
-
----
-
-## Project Structure
+## The warehouse
 
 ```
-energy-analytics-sql/
-│
-├── benchmarks/
-│   └── index_benchmark.md      # Composite index & range partitioning EXPLAIN ANALYZE proof
-├── docker-compose.yml          # PostgreSQL 15 & Metabase containers — one command setup
-├── environment.yaml            # Conda environment
-├── config_template.yaml        # DB credentials template (config.yaml is git-ignored)
-├── .gitignore
-├── README.md
-│
-├── data/
-│   ├── raw/                    # Generated CSVs (git-ignored due to size)
-│   └── processed/              # Optional hand-crafted exports
-│
-├── sql/
-│   ├── schema/
-│   │   ├── 01_create_tables.sql
-│   │   ├── 10_partition_readings.sql # Declarative range partitioning (monthly)
-│   │   ├── 13_fingrid_warehouse.sql  # Raw Fingrid observations + forecast_vs_actual view
-│   │   ├── 14_co2_forecast.sql       # co2_hourly view + co2_forecast() model (SQL function)
-│   │   └── 15_grid_events.sql        # grid_events() detector (gaps and islands)
-│   ├── etl/
-│   │   └── 02_data_quality_checks.sql
-│   └── analysis/
-│       ├── 03_rolling_averages.sql
-│       ├── 04_anomaly_detection.sql
-│       ├── 05_facility_ranking.sql
-│       ├── 06_monthly_report.sql
-│       ├── 08_real_vs_synthetic_comparison.sql
-│       ├── 09_top_readings_per_sensor.sql # Correlated LATERAL join queries
-│       ├── 11_detection_quality.sql # Precision / recall of the z-score detector
-│       ├── 13_forecast_scorecard.sql      # How far Fingrid's forecasts were from reality
-│       ├── 14_forecast_error_by_hour.sql  # ... by hour of the day (Finnish time)
-│       ├── 15_forecast_error_by_month.sql # ... by month
-│       ├── 16_forecast_biggest_misses.sql # The worst day-ahead days
-│       ├── 17_forecast_error_vs_balancing.sql # Forecast surprise vs mFRR activation and imbalance price
-│       ├── 18_co2_forecast.sql            # Tomorrow's hourly CO2 intensity, cleanest hours
-│       ├── 19_co2_forecast_backtest.sql   # The same model replayed over the past year
-│       ├── 20_grid_events.sql             # Frequency, nuclear, inertia and price events of the year
-│       └── 21_frequency_by_minute.sql     # Out-of-band frequency by minute of the hour
-│
-├── src/
-│   ├── setup_db.py             # Runs 01_create_tables.sql (fallback for non-Docker setups)
-│   ├── generate_data.py        # Synthetic & incremental data generator
-│   ├── db_connection.py        # Credential-safe psycopg2 factory
-│   ├── ingest.py               # Chunked & incremental CSV → PostgreSQL pipeline
-│   ├── migrate_to_partitioned.py # Live table migration to range-partitioned schema
-│   ├── fetch_grid_data.py      # Real Fingrid API ingestion client
-│   ├── ingest_grid_data.py     # Grid data PostgreSQL loader
-│   ├── fingrid_catalog.py      # The 21 Fingrid datasets the warehouse keeps
-│   ├── sync_fingrid.py         # Incremental, idempotent Fingrid → fingrid_observation sync
-│   ├── warehouse_snapshot.py   # Dump / restore fingrid_observation as CSV.gz
-│   ├── analysis_window.py      # Default 365-day window for the parameterised analyses
-│   ├── run_quality_checks.py   # Runs 02_data_quality_checks.sql, prints results
-│   ├── run_report.py           # Runs all analysis SQL → timestamped CSVs
-│   └── api.py                  # FastAPI service (overview, trend, anomalies, detector scoring, rankings)
-│
-├── tests/
-│   ├── conftest.py             # Shared fixtures (API TestClient, DB connection)
-│   ├── test_smoke.py           # Smoke: DB, API and dashboard files are alive
-│   ├── test_api.py             # API contract: shapes, validation, SQL-injection safety
-│   ├── test_integration.py     # SQL files, FK integrity, partitions, API <-> DB consistency
-│   ├── load/locustfile.py      # Locust load test (virtual dashboard users, pass/fail thresholds)
-│   ├── test_performance.py     # EXPLAIN plan checks (index, partition pruning) + latency budgets
-│   ├── e2e/                    # Playwright browser tests of docs/index.html (conftest + test_dashboard)
-│   ├── test_security.py        # Injection, error-leak, secrets and read-only checks
-│   ├── test_regression.py      # Golden dataset with hand-computed expected values
-│   ├── test_detection_quality.py  # Detector scorecard consistency
-│   ├── test_fingrid_warehouse.py  # Sync, snapshot and forecast SQL against a fake Fingrid API
-│   ├── test_dashboard_data.py  # Consistency of the published docs/data/*.json files
-│   ├── test_data_quality.py    # pytest suite for post-ingestion assertions
-│   └── test_incremental.py     # Two-layer idempotency verification tests
-│
-└── outputs/                    # Auto-generated report CSVs land here
+fingrid_dataset (21 rows)                fingrid_observation (~1.3 M rows, ~1 M more a year)
+  dataset_id  PK                           dataset_id  FK -> fingrid_dataset   ┐ primary key
+  key, name, unit                          start_time  partition key           ┘
+  kind  actual | forecast | capacity |     end_time
+        balancing | emission | system      value       exactly as published
+  resolution                               fetched_at
+                                         PARTITION BY RANGE (start_time): one table per month + default
 ```
 
----
-
-## Setup Instructions
-
-### 1 — Clone and create the Conda environment
-
-```bash
-git clone https://github.com/miladgk/energy-grid-sql-pipeline.git
-cd energy-grid-sql-pipeline
-
-conda env create -f environment.yaml
-conda activate energy-analytics
-```
-
-> [!NOTE]
-> **Python-only setup:** If you are not using Conda, you can create a virtual environment and install the pinned dependencies using pip:
-> ```bash
-> pip install -r requirements.txt
-> ```
-
-
-### 2 — Start PostgreSQL with Docker Compose
-
-```bash
-docker-compose up -d
-```
-
-This spins up a PostgreSQL 15 container on `localhost:5432` and
-automatically runs `sql/schema/01_create_tables.sql` on first boot
-(via the `docker-entrypoint-initdb.d` mount).
-
-To verify it is healthy:
-
-```bash
-docker-compose ps
-# State should show "healthy"
-```
-
-> **Non-Docker / schema reset:** If you are using a bare-metal Postgres
-> install, or you need to reset the schema after a `docker volume rm`,
-> run the schema script manually:
->
-> ```bash
-> python src/setup_db.py
-> ```
->
-> This reads and executes `sql/schema/01_create_tables.sql` directly.
-> It is idempotent — safe to re-run on an existing database.
-
-### 3 — Configure database credentials
-
-```bash
-cp config_template.yaml config.yaml
-```
-
-Edit `config.yaml` with the credentials from `docker-compose.yml`:
-
-```yaml
-database:
-  host: localhost
-  port: 5432
-  dbname: energy_analytics
-  user: admin
-  password: password
-```
-
-> `config.yaml` is in `.gitignore` and is **never committed**.
-
-### 4 — Generate synthetic data
-
-```bash
-python src/generate_data.py
-```
-
-This writes ~6.3 million rows to `data/raw/readings.csv` (and the two
-smaller files). Expect ~45 seconds on a modern laptop.
-
-Each facility gets three sensors that match its type: every facility has
-`power_output` (MW) and `temperature` (°C); wind farms add `wind_speed` (m/s),
-solar plants add `irradiance` (W/m²) and substations add bus `voltage` (kV).
-Values are drawn uniformly within each sensor's normal range (for power,
-between zero and nameplate capacity, so every facility averages about 50 %
-of capacity), and about 2 % of readings are replaced by injected sensor-fault
-values (zero, or three times the normal maximum).
-
-`python src/generate_data.py --days 30` produces the 30-day dataset
-(518,400 rows) that is loaded into the hosted demo database.
-
-### 5 — Ingest into PostgreSQL
-
-```bash
-python src/ingest.py
-```
-
-Reads each CSV in 5,000-row chunks and bulk-inserts into PostgreSQL.
-Expect 3–8 minutes for the full readings table.
-
-`ingest.py` automatically calls `run_quality_checks.py` when it
-finishes, so `02_data_quality_checks.sql` is always executed immediately
-after a load. The process exits with code `1` if any check fails.
-
-### 5a — Incremental Ingestion & Idempotency Verification
-
-The pipeline employs a **two-layered defense** against duplicate data insertion:
-
-1. **Application-Level High-Watermark Filter (`--incremental` mode):**
-   Before loading CSV chunks, `ingest.py` queries `SELECT MAX(recorded_at) FROM readings;` and preemptively filters out incoming rows where `recorded_at <= watermark`. This saves database CPU, I/O, and transaction log overhead when re-running against historical files.
-2. **Database-Level Constraint Deduplication (`ON CONFLICT`):**
-   If duplicate rows arrive within a new batch (or if the application watermark is bypassed via `--no-watermark`), `ON CONFLICT DO NOTHING` drops them without aborting the transaction. The conflict target is read from the table's primary key at run time, because PostgreSQL requires it to match a unique constraint exactly: `(reading_id)` on the plain table, `(reading_id, recorded_at)` after `migrate_to_partitioned.py` (a partitioned table's key must include the partition column).
-
-Incremental batches continue the `reading_id` sequence after the base dataset (offset by the number of days after it), so a new day never reuses an existing ID, and regenerating the same day yields the same IDs. `test_incremental.py` checks this explicitly.
-
-```bash
-# Generate one new day of data for Jan 1, 2026
-python src/generate_data.py --incremental --date 2026-01-01
-
-# 1. First run: Ingests the 17,280 incremental rows normally
-python src/ingest.py --incremental
-
-# 2. Second run: Inserts 0 rows because the Application High-Watermark filter catches them
-python src/ingest.py --incremental
-
-# 3. Third run: Bypasses the watermark to prove Database-level ON CONFLICT DO NOTHING rejects duplicates
-python src/ingest.py --incremental --no-watermark
-```
-
-### 6 — Run data quality checks (standalone)
-
-The quality checks also run independently at any time:
-
-```bash
-python src/run_quality_checks.py
-```
-
-This executes `sql/etl/02_data_quality_checks.sql` and prints a
-formatted table for each of the four checks. It exits with code `1` if
-any check detects a problem, making it usable as a CI gate.
-
-### 7 — Run pytest assertions
-
-```bash
-pytest tests/ -v
-
-```
-
-All six assertions should pass across both test suites (`test_data_quality.py` and `test_incremental.py`):
-
-- No sensors without readings
-- Zero NULL values
-- Anomaly rate in [1 %, 4 %]
-- 365+ days of coverage
-- Row count within 5 % of 6,307,200
-- Strict idempotency on duplicate batch loads (Watermark & ON CONFLICT), with no reused `reading_id` values
-
-#### Test layers
-
-Tests are tagged with pytest markers, so each layer can run on its own:
-
-| Command | Layer | What it answers |
-|---|---|---|
-| `pytest -m smoke` | Smoke | Is the system alive at all? (seconds) |
-| `pytest -m api` | API contract | Do the endpoints keep their promises: shape, validation, safety? |
-| `pytest -m integration` | Integration | Do SQL files, schema, partitions and API agree with the real database? |
-| `pytest -m regression` | Regression | Do a hand-built dataset's results still match the written-down golden values? |
-| `pytest -m performance` | Performance | Does the composite index still exist and get used? Does a one-month query still touch one partition? Are endpoints within latency budgets? |
-| `pytest -m e2e` | End-to-end | Does the real dashboard in a real browser show the right numbers from the live API, switch tabs, show tooltips, fall back when the API is down, and fit a phone screen? |
-| `pytest -m security` | Security | Are SQL-injection payloads rejected, DB errors hidden from clients, secrets untracked, the API read-only? |
-
-The regression suite builds a tiny dataset in a throw-away schema, points the API at it
-and checks z-scores, rankings and precision/recall against numbers worked out by hand,
-so any accidental change to the SQL fails loudly. The same layers run in CI, in this order.
-
-CI also runs a **compatibility matrix** (Python 3.11 / 3.12 on PostgreSQL 15, plus
-PostgreSQL 14 and 16 on Python 3.11) and a separate **security job**: `bandit` static analysis
-(fails on high-severity findings) and a `pip-audit` dependency CVE scan (informational). Run them locally with `make security`.
-
-**End-to-end tests** (`tests/e2e/`) start the real FastAPI app and serve `docs/` like GitHub Pages, then drive
-Chromium with Playwright. The dashboard hard-codes the production API address, so the browser's requests to it
-are forwarded to the local API (the page is not modified). One-time setup:
-`pip install playwright && playwright install chromium`; without it these tests are skipped.
-
-**Performance tests** automate `benchmarks/index_benchmark.md`. Timing is noisy, so the core checks are
-deterministic query-plan assertions (composite index exists and is used; a one-month query prunes to one
-partition); latency budgets are generous and use the median of 5 runs. They are calibrated for the CI-sized
-dataset; on the full 6.3 M-row dataset run `PERF_BUDGET_FACTOR=10 pytest -m performance`.
-
-**Load test:** `tests/load/locustfile.py` simulates 20 dashboard users hitting every endpoint
-(heavy z-score queries less often than cheap ones). With the API running (`make api`), `make load-test`
-runs it headless and fails if the 95th-percentile latency exceeds 5 s or more than 1 % of requests fail
-(`LOAD_MAX_P95_MS` / `LOAD_MAX_FAIL_RATIO`). On the CI-sized dataset it measured p95 ≈ 190 ms, 0 failures.
-Use `locust -f tests/load/locustfile.py --host http://localhost:8000` for the live web UI.
-`make test-smoke`, `make test-api`, `make test-integration` and `make test-regression` are shortcuts.
-
-The coverage and row-count targets are the defaults for a full-year run. For a
-smaller dataset, set `DAYS_EXPECTED` and `ROWS_EXPECTED` (CI uses 3 days and
-50,000 rows).
-
-### 8 — Run the analysis report
-
-```bash
-python src/run_report.py
-```
-
-Executes every analysis SQL file in `sql/analysis/` in order and writes timestamped
-CSVs to `outputs/`.
-
-### 9 — Start the API
-
-```bash
-uvicorn src.api:app --reload --port 8000
-```
-
-Open `http://localhost:8000/docs` for the auto-generated Swagger UI.
-
-### 10 — Start and Provision Executive Dashboard (Metabase)
-
-Start the Metabase Docker container alongside PostgreSQL:
-
-```bash
-docker compose up -d metabase
-```
-
-Once running (`http://localhost:3000`), provision the database connection and native SQL charts automatically via the REST API:
-
-*(Note: The Metabase provisioning and screenshot scripts require additional dependencies. Install them first with `pip install -r requirements-dev.txt`)*
-
-```bash
-python scripts/setup_metabase.py
-```
-
-> **Security Caveat**: Metabase runs locally inside Docker (`http://localhost:3000`) and connects securely to the PostgreSQL container via Docker networking (`energy_analytics_db:5432`). For privacy and safety, no public unauthenticated endpoint or external sharing link is exposed.
-
----
-
-### 11 — Refresh the dashboard data files
-
-The GitHub Pages dashboard (`docs/`) reads three static files besides the live API:
-the daily Fingrid series, the real-vs-synthetic validation result, and a snapshot of
-the API responses that is shown instantly while the free Render service wakes up.
-Rebuild them after regenerating data or re-running the analysis:
-
-```bash
-python scripts/export_dashboard_data.py                  # all files (calls the hosted API)
-python scripts/export_dashboard_data.py --skip-snapshot  # local files only
-```
-
-#### The Fingrid warehouse
-
-Real grid data lives in `fingrid_observation`: one row per Fingrid dataset and
-time slot, exactly as published (no resampling or gap filling). The 19 datasets
-are listed with their purpose in `src/fingrid_catalog.py`: actuals, Fingrid's
-day-ahead and intraday forecasts, the capacity behind them, balancing (mFRR,
-imbalance price), CO2 intensity and system stability.
-
-```bash
-python src/setup_db.py           # creates the tables (13_fingrid_warehouse.sql)
-python src/sync_fingrid.py       # first run: backfills 400 days (~15 min); later: the last 7 days
-python scripts/export_dashboard_data.py --parts fingrid-recent forecast-scorecard co2-forecast
-```
-
-The sync is incremental and idempotent: each dataset is re-fetched from its newest
-stored slot minus 7 days (Fingrid revises recent values), only slots that have
-already ended are stored, and unchanged rows are not rewritten.
-
-`.github/workflows/refresh_fingrid.yml` runs this every day at 10:47 UTC, after
-Fingrid publishes the next day's day-ahead forecasts at 12:00 Finnish time (or on
-demand from the Actions tab). It starts an empty PostgreSQL, restores the previous
-warehouse from the `warehouse-snapshot` release (`fingrid_observation.csv.gz`, also
-a free download of the whole dataset), syncs the last week, publishes the new
-snapshot, runs the analyses and commits `fingrid_recent_daily.json` and
-`forecast_scorecard.json`. It needs the repository secret `FINGRID_API_KEY`
-(Settings → Secrets and variables → Actions). The key is read from the
-environment only inside that job; locally, `fingrid_api_key` in the git-ignored
-`config.yaml` is used instead.
-
-#### Forecast scorecard
-
-`sql/analysis/13-17` score Fingrid's own forecasts against what happened, per
-15-minute slot over the last 365 complete days: mean absolute error, bias, RMSE,
-95th-percentile miss, error by hour (Finnish time) and month, the five worst
-day-ahead days, and how activated mFRR balancing power and the imbalance price
-behave when the day-ahead forecast was wrong. Solar is not scored: Fingrid publishes
-solar forecasts but no measured solar production.
-
-#### CO2 forecast: the cleanest hours of tomorrow
-
-Fingrid publishes the CO2 intensity of electricity consumed in Finland (dataset
-396) only as it happens. `co2_forecast()` in `sql/schema/14_co2_forecast.sql`
-predicts it per hour of a Finnish day from Fingrid's own day-ahead forecasts: a
-least-squares line (`regr_slope`, `regr_intercept`) of intensity against residual
-load (consumption - wind - solar), refitted for every day on the 60 days ending two
-days earlier, shifted by its error on the last fully known day, and never below the
-lowest intensity in those 60 days. The day-ahead forecasts it needs for tomorrow
-are the only values the sync stores before their slot has ended
-(`fingrid_catalog.STORE_FUTURE`): they are published once and never revised.
-
-`18_co2_forecast.sql` gives tomorrow's hours with the cleanest hour and 3-hour
-window; `19_co2_forecast_backtest.sql` replays the same function over the past
-year using only data available at each point. Over 338 days: mean absolute error
-4.5 gCO2/kWh against 7.1 for "same hour two days earlier"; the hour picked as
-cleanest was among the real 3 cleanest on 46% of days and emitted 14.8% less than
-an average hour (19.7% for a perfect pick).
-
-#### Grid event log
-
-`grid_events()` in `sql/schema/15_grid_events.sql` finds unusual moments in four
-raw series and merges consecutive flagged samples into one event (gaps and
-islands): 1-minute frequency outside the Nordic normal band 49.9-50.1 Hz, Finnish
-nuclear output at least 400 MW below its 15-minute high, kinetic energy of the
-Nordic system in the lowest 1% of the window, and imbalance prices of 1,000
-EUR/MWh or more. Frequency samples of 0 Hz are Fingrid's gap marker and are
-skipped. For each nuclear drop it also reports the lowest nearby frequency; over
-the last year the two sensors rarely confirm each other (the frequency is
-Nordic-wide, and a brief nadir can fall between 1-minute samples), which the
-dashboard states rather than hides. `21_frequency_by_minute.sql` shows that the
-last minute before a full hour is out of band about twice as often as an average
-minute. Frequency (177) arrives every minute, so the sync splits its requests
-into 13-day windows to stay within one API page.
-
-The newest 15-minute wind and consumption values (the "Latest" row above the chart)
-are fetched by `.github/workflows/pages.yml`, which also runs every hour. It makes two
-small API requests, writes `docs/data/fingrid_latest.json` and deploys it with the
-site; that file is git-ignored, so the hourly refresh adds no commits. If Fingrid is
-unreachable the deploy still runs and the page simply hides the row.
-
-GitHub turns off scheduled workflows in a public repository after 60 days without
-activity. The daily data commit normally prevents that; if the refresh keeps failing,
-a `keepalive` job in `refresh_fingrid.yml` pushes an empty commit once `main` has been
-quiet for 45 days.
-
----
-
-## SQL Techniques Demonstrated
-
-| Technique | Where |
+- **Raw values only.** One row per dataset and time slot, as Fingrid publishes it: no
+  resampling, no gap filling, no clamping. Analyses decide how to treat gaps.
+- **Incremental and idempotent** (`src/sync_fingrid.py`): an empty dataset is backfilled
+  400 days; otherwise the sync re-reads from the newest stored slot minus 7 days, because
+  Fingrid revises recent values. Rows are upserted on the primary key and an unchanged
+  value is not rewritten, so a second run changes nothing. Request windows are sized
+  from each dataset's resolution so one window fits one API page (1-minute frequency
+  goes in 13-day windows).
+- **Only ended slots**, except the three day-ahead forecasts (consumption, wind, solar),
+  which are published once for the next day and never revised; the CO2 forecast for
+  tomorrow needs them (`fingrid_catalog.STORE_FUTURE`).
+- **Partitioned by month.** Every query filters one dataset and a time range, so
+  PostgreSQL reads only the months it needs. `ensure_fingrid_partitions()` creates
+  months on demand (the sync and the restore call it before writing); a default
+  partition catches anything else and is checked to stay empty.
+- **JIT off** for every session (`src/db_connection.py`): on the partitioned table the
+  planner's cost estimate crossed the JIT threshold and compiling cost more than it
+  saved, making the analyses 3-6x slower.
+- **Snapshot** (`src/warehouse_snapshot.py`): the whole table as one gzip CSV (~9 MB).
+  Restoring keeps rows already present, creates only the months it needs, and skips
+  datasets the running code does not know, so an older checkout can always read a
+  newer snapshot. Only `main` publishes it.
+
+### Benchmark
+
+`scripts/benchmark_warehouse.py` runs the same query (one week of 1-minute frequency,
+10,068 of 1,304,158 rows) on three layouts of the real data and writes
+[`benchmarks/index_benchmark.md`](benchmarks/index_benchmark.md):
+
+| Layout | Median |
+|---|---:|
+| Flat table, no index (reads and discards 1.29 M rows) | 52.3 ms |
+| Flat table, primary-key index | 2.3 ms |
+| Monthly partitions + index (reads one partition) | 2.0 ms |
+
+The index makes the query ~23x faster. Partitioning is about as fast on a single
+lookup; it pays off as the table grows (small per-month indexes, old months dropped
+whole). `tests/test_performance.py` checks the plans with EXPLAIN in CI.
+
+### The datasets
+
+| Purpose | Fingrid datasets |
 |---|---|
-| **CTEs** (`WITH` clauses) | All analysis files — multi-step transformations broken into readable named steps |
-| **Window functions** (`AVG OVER`, `ROWS BETWEEN`) | `03_rolling_averages.sql` — 24-hour trailing average per facility |
-| **`RANK()`, `DENSE_RANK()`, `NTILE()`, `PERCENT_RANK()`** | `05_facility_ranking.sql` — global rank, within-type rank, performance quartile |
-| **`LAG()` for time-series** | `06_monthly_report.sql` — month-over-month energy change |
-| **Z-score anomaly detection** | `04_anomaly_detection.sql` — statistical outlier detection via `STDDEV()` and CTE pipeline |
-| **`FILTER` aggregation** | `02_data_quality_checks.sql`, `06_monthly_report.sql` — conditional counts without subqueries |
-| **`NULLIF` for safe division** | `05_facility_ranking.sql`, `06_monthly_report.sql` — prevents division-by-zero |
-| **`DATE_TRUNC` + `TO_CHAR`** | All analysis files — period aggregation and formatted output |
-| **Composite indexes** | Schema — `(sensor_id, recorded_at)` index cuts query execution time from 12.8 ms to 0.22 ms (about 58× faster, 98.3% reduction). See [index_benchmark.md](benchmarks/index_benchmark.md) for execution plans. |
-| **`ON CONFLICT DO NOTHING`** | `ingest.py` — idempotent ingestion; safe to re-run the pipeline |
-| **LATERAL joins** | `09_top_readings_per_sensor.sql` — per-sensor top-N without a window function subquery |
-| **Range Partitioning** | `10_partition_readings.sql` — time-based declarative table partitioning. See [index_benchmark.md](benchmarks/index_benchmark.md) for partition pruning benefits. |
+| What happened | 74 production, 75 wind, 124 consumption, 188 nuclear (3-min) |
+| Fingrid's forecasts | 165/166 consumption, 245/246 wind, 247/248 solar (day-ahead / every 15 min) |
+| Capacity behind them | 267 solar, 268 wind |
+| Balancing | 319 imbalance price, 375/376 activated mFRR up/down, 377 mFRR need |
+| CO2 and stability | 396 CO2 intensity of consumption, 260 kinetic energy, 422/423 frequency deviation, 177 frequency (1-min) |
+
+Listed with their purpose in `src/fingrid_catalog.py`.
 
 ---
 
-## Sample Output — Facility Ranking (05)
+## The analyses
 
-From the 30-day demo dataset (the one served by the API). Because power is drawn
-uniformly between zero and capacity, every facility lands close to 50 % and the
-differences between facilities are small by construction.
+All logic lives in SQL; the API, the reports and the dashboard export run the same files.
+
+| File | What it does | Techniques |
+|---|---|---|
+| `sql/schema/13_fingrid_warehouse.sql` | tables, partitions, `forecast_vs_actual` view | declarative partitioning, PL/pgSQL, in-place migration |
+| `sql/analysis/13_forecast_scorecard.sql` | MAE, bias, RMSE, P95, WAPE per forecast | ordered-set aggregates |
+| `sql/analysis/14-16` | error by Finnish hour, by month, the worst days | `AT TIME ZONE`, `ROW_NUMBER()` |
+| `sql/analysis/17_forecast_error_vs_balancing.sql` | day-ahead surprise vs mFRR need and activation, imbalance price | binning, `corr()` |
+| `sql/schema/14_co2_forecast.sql` | `co2_forecast()`: line of CO2 intensity on residual load, refitted per day on the 60 days ending two days earlier, level-corrected, floored at the training minimum | set-returning SQL function, `regr_slope`, `regr_intercept` |
+| `sql/analysis/18-19` | tomorrow's hours and cleanest 3-hour window; the backtest | window frames, `RANK()` |
+| `sql/schema/15_grid_events.sql` | `grid_events()`: frequency outside 49.9-50.1 Hz, nuclear drops of 400 MW in 15 min, lowest-1% inertia, price spikes; each nuclear drop cross-checked against frequency | `RANGE` window frames, gaps and islands, `LATERAL` |
+| `sql/analysis/21_frequency_by_minute.sql` | out-of-band frequency by minute of the hour | `FILTER` aggregates |
+| `sql/etl/02_data_quality_checks.sql` | default partition empty, no empty or stale dataset, 30-day coverage, 0 Hz gap markers | |
+
+---
+
+## API
+
+`make api`, then open http://localhost:8000/docs.
+
+| Endpoint | Returns |
+|---|---|
+| `GET /api/datasets` | every dataset with its row count and coverage |
+| `GET /api/latest` | the newest stored value of each dataset |
+| `GET /api/forecast-scorecard?days=365` | forecast errors (13) |
+| `GET /api/forecast-error-by-hour?variable=wind` | the same per Finnish hour (14) |
+| `GET /api/co2-forecast?day=YYYY-MM-DD` | hourly CO2 forecast for one day (18); default tomorrow |
+| `GET /api/grid-events?days=30&kind=nuclear_drop` | grid events, newest first (20) |
+
+Every parameter is validated (ranges, allow-lists, typed dates); queries run in
+read-only transactions; database errors reach the client as a generic 500. The API is
+not hosted: the site reads static JSON built from the same SQL, so it never waits for
+a server.
+
+---
+
+## Tests
+
+118 tests in eight layers, all run in CI on Python 3.11/3.12 and PostgreSQL 14/15/16,
+against the restored real warehouse:
+
+| Layer | What it guards |
+|---|---|
+| smoke | database, warehouse, API routes and dashboard files are alive |
+| api | response shapes, validation, every number equals its SQL file |
+| integration | sync, idempotency, revisions, snapshot round trip, partition layout, quality gate |
+| regression | hand-made datasets with exact answers through the scorecard, CO2 model and event detector |
+| performance | EXPLAIN shows pruning and index use; generous latency budgets |
+| security | injection payloads rejected, no error leakage, read-only sessions, no secrets in git |
+| data | published JSON is internally consistent and matches the SQL in the repo |
+| e2e | Chromium: numbers come from the data files, no foreign requests, charts, keyboard, theme, phone layout, one broken file does not break the page |
+
+Plus a Locust load test, bandit and pip-audit in CI.
+
+---
+
+## Run it yourself
+
+```bash
+git clone https://github.com/miladgk/industrial-energy-sql-pipeline.git
+cd industrial-energy-sql-pipeline
+cp config_template.yaml config.yaml          # database credentials match docker-compose.yml
+pip install -r requirements.txt
+docker compose up -d                         # PostgreSQL
+make db-setup snapshot-restore quality-checks   # the published warehouse, no API key needed
+make api                                     # http://localhost:8000/docs
+make test                                    # e2e needs: pip install playwright && playwright install chromium
+```
+
+To sync new data yourself, add a free key from [data.fingrid.fi](https://data.fingrid.fi)
+as `fingrid_api_key` in `config.yaml` (git-ignored) and run `make sync`; an empty
+warehouse backfills 400 days in about 15 minutes. `make export` rebuilds the dashboard
+files, `make report` writes every analysis to `outputs/*.csv`, `make benchmark`
+re-measures the layouts.
+
+For the daily workflow on a fork, add the key as the repository secret
+`FINGRID_API_KEY` (Settings -> Secrets and variables -> Actions).
+
+---
+
+## Project structure
 
 ```
-facility_name          facility_type  country  capacity_mw  avg_efficiency_pct  overall_rank  rank_within_type  performance_quartile  percentile
----------------------  -------------  -------  -----------  ------------------  ------------  ----------------  --------------------  ----------
-SolarPlant_West_20     solar          Norway         78.48               50.65             1                 1                     1       100.0
-SolarPlant_Central_04  solar          Sweden        191.53               50.49             2                 2                     1        94.7
-SolarPlant_East_11     solar          Denmark       224.20               50.47             3                 3                     1        89.5
-SolarPlant_West_05     solar          Finland       240.08               50.42             4                 4                     1        84.2
-WindFarm_East_10       wind           Denmark       338.21               50.27             5                 1                     1        78.9
-...
+├── .github/workflows/
+│   ├── ci.yml                  # tests, security scan, load test on every PR
+│   ├── refresh_fingrid.yml     # daily: restore, sync, snapshot, analyses, redeploy
+│   └── pages.yml               # deploy + hourly latest values
+├── benchmarks/index_benchmark.md
+├── docs/                       # the static dashboard (GitHub Pages)
+│   ├── index.html
+│   └── data/*.json             # built by scripts/export_dashboard_data.py
+├── scripts/
+│   ├── export_dashboard_data.py
+│   └── benchmark_warehouse.py
+├── sql/
+│   ├── schema/                 # 13 warehouse, 14 CO2 model, 15 event detector
+│   ├── analysis/               # 13-21, one query per file
+│   └── etl/02_data_quality_checks.sql
+├── src/
+│   ├── fingrid_api.py          # API client (key, paging, retries, 429 back-off)
+│   ├── fingrid_catalog.py      # the 21 datasets and why
+│   ├── sync_fingrid.py         # incremental, idempotent sync
+│   ├── warehouse_snapshot.py   # dump / restore as CSV.gz
+│   ├── setup_db.py             # applies sql/schema
+│   ├── run_quality_checks.py   # the quality gate
+│   ├── run_report.py           # every analysis -> outputs/*.csv
+│   ├── analysis_window.py      # default parameters for the analysis SQL
+│   ├── db_connection.py
+│   └── api.py                  # FastAPI
+└── tests/                      # eight layers + load/locustfile.py
 ```
 
 ---
 
-## Sample Output — Anomaly Detection (04)
-
-Strongest detection per sensor type in the 30-day demo dataset, using the scoring
-in `04_anomaly_detection.sql` (monthly mean and standard deviation per sensor from
-non-injected readings; flag z > 3). z-scores depend on each sensor's normal spread,
-so they are comparable within a sensor, not across sensors: bus voltage varies
-only ±5 %, so an injected fault there scores far higher.
-
-```
-reading_id  sensor_id  recorded_at             value     z_score  was_flagged_in_source  facility_name          sensor_type   unit
-----------  ---------  ----------------------  --------  -------  ---------------------  ---------------------  ------------  -------
-146886      18         2025-01-01 00:25:00+00    346.50    74.98  true                   Substation_West_06     voltage       kV
-95110       12         2025-01-01 05:45:00+00   3000.00     8.72  true                   SolarPlant_Central_04  irradiance    W/m2
-224650      27         2025-01-01 00:45:00+00     75.00     8.72  true                   WindFarm_East_09       wind_speed    m/s
-155912      19         2025-01-02 08:35:00+00    220.98     8.70  true                   WindFarm_East_07       power_output  MW
-501257      59         2025-01-01 11:20:00+00    105.00     6.22  true                   SolarPlant_West_20     temperature   Celsius
-```
-
-## Sample Output — Detector Scorecard (11)
-
-Because the generator labels every fault it injects, the z-score detector can be
-scored against the truth (`11_detection_quality.sql`, served by
-`GET /api/detection-quality`). Output on the 30-day demo dataset:
-
-```
-sensor_type   injected  flagged  precision_pct  recall_pct  spikes_caught  drops_caught
-------------  --------  -------  -------------  ----------  -------------  ------------
-irradiance        1001      491          100.0        49.1  491 / 491      0 / 510
-power_output      3433     1696          100.0        49.4  1696 / 1696    0 / 1737
-temperature       3345     1700          100.0        50.8  1700 / 1700    0 / 1645
-voltage           1517     1517          100.0       100.0  757 / 757      760 / 760
-wind_speed         857      423          100.0        49.4  423 / 423      0 / 434
-```
-
-Every flag is a real fault (precision 100%), but only about half of the faults are
-found. Spikes (3× the normal maximum) are always caught. A zero value is caught only
-for bus voltage, where zero is far outside the normal 104.5 to 115.5 kV band; for
-power, temperature, irradiance and wind speed, zero lies inside the normal range, so
-a dropout to zero is statistically invisible and needs a different rule (for
-example, a value that stays identical for many intervals).
-
----
-
-## Real vs. Synthetic Wind Pattern Validation
-
-To validate the synthetic data generator against reality, daily average wind production patterns were compared against real Fingrid grid data for Finland (calendar year 2025, with a full-year synthetic run dated 2025 so the days line up) using z-score standardization. The analysis yielded a Pearson correlation coefficient of **-0.0908** over a sample size of **n = 365** days (degrees of freedom **df = 363**). With a p-value of **0.083**, this correlation is **not statistically significant** at the conventional α = 0.05 threshold. This result shows no statistically detectable relationship between the synthetic and real wind patterns — consistent with the synthetic generator's known lack of seasonal modeling, since it produces a nearly flat capacity factor year-round while real Nordic wind production varies strongly by season. Surfacing this result, rather than reporting only the earlier (statistically underpowered) monthly comparison, demonstrates how real-world API data can be used to rigorously audit simulation assumptions. The daily series is published as `docs/data/wind_validation.json` and charted on the live site.
-
-This comparison needs a full year of synthetic data, so it was run on a local
-full-year dataset (`python src/generate_data.py`, then `sql/analysis/08_real_vs_synthetic_comparison.sql`).
-The hosted demo database holds only 30 days of synthetic readings, so the live
-dashboard shows the stored result of that run rather than recomputing it.
-
----
-
-## Executive Business Intelligence Dashboard (Metabase)
-
-To make the SQL analytics accessible and actionable for executive decision-makers and data analysts, we built an interactive Metabase dashboard over our PostgreSQL warehouse.
-
-```
-+---------------------------------------------------------------------------------------------+
-|                            ENERGY ANALYTICS EXECUTIVE DASHBOARD                             |
-+------------------------------------------------------------------------+--------------------+
-|  [Bar Chart] Top 10 Facilities by Efficiency                           |  [Line Chart]      |
-|  Visualises ranking from 05_facility_ranking.sql                       |  Monthly Anomaly   |
-|  (synthetic data: every site averages ~50%, so the order is noise)     |  Rate Trend (04)   |
-+------------------------------------------------------------------------+--------------------+
-|  [Line Chart] Rolling 24h Average Power by Type                                             |
-|  Demonstrates window functions (AVG OVER 23 PRECEDING) from 03                              |
-|  Mostly flat: the synthetic generator has no daily (diurnal) cycle                          |
-+---------------------------------------------------------------------------------------------+
-```
-
-Metabase runs only on your machine (step 10 above); there is no hosted copy.
-For the public, always-up-to-date view of the results, see the
-[live site](https://miladgk.github.io/industrial-energy-sql-pipeline/).
+Data: [Fingrid Open Data](https://data.fingrid.fi), licensed
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Code: MIT.

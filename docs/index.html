@@ -3,12 +3,12 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Screams &amp; Silence · Industrial Energy SQL Pipeline</title>
-  <meta name="description" content="A working data pipeline (real Finnish grid data and 518,400 synthetic sensor readings in PostgreSQL) built to find out which machine failures SQL can hear, and honest about the ones it cannot.">
+  <title>Grid in SQL · Industrial Energy SQL Pipeline</title>
+  <meta name="description" content="Finland's electricity grid in a PostgreSQL warehouse: Fingrid's forecasts scored, tomorrow's cleanest hours forecast, and a log of grid events. Real Fingrid Open Data, refreshed daily.">
   <link rel="canonical" href="https://miladgk.github.io/industrial-energy-sql-pipeline/">
   <meta property="og:type" content="website">
-  <meta property="og:title" content="Screams & Silence · Industrial Energy SQL Pipeline">
-  <meta property="og:description" content="Which machine failures can SQL hear? A PostgreSQL + FastAPI pipeline on real Fingrid data and labelled synthetic telemetry.">
+  <meta property="og:title" content="Grid in SQL · Industrial Energy SQL Pipeline">
+  <meta property="og:description" content="Finland's electricity grid in a PostgreSQL warehouse: how good Fingrid's forecasts are, the cleanest hours of tomorrow, and a log of grid events, refreshed daily from Fingrid Open Data.">
   <meta property="og:url" content="https://miladgk.github.io/industrial-energy-sql-pipeline/">
   <meta name="twitter:card" content="summary">
   <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
@@ -167,26 +167,17 @@
       .chip[tabindex] { position: static; }
       .chip .pop { width: auto; right: 0; }
     }
-    .status-line { display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--ink-2); min-height: 22px; }
+
     .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
-    .status-line[data-state="live"] .dot { background: var(--ok); box-shadow: 0 0 0 4px color-mix(in srgb, var(--ok) 20%, transparent); }
-    .status-line[data-state="cached"] .dot { background: var(--syn); }
-    .status-line[data-state="down"] .dot { background: var(--fault); }
-    .status-line[data-state="loading"] .dot { animation: pulse 1.4s ease-in-out infinite; }
+
     @keyframes pulse { 50% { opacity: .3; } }
 
-    .duel { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 36px; }
-    .duel .card { padding: 18px 18px 10px; }
-    .duel h3 { margin: 0 0 2px; font-size: 15px; font-weight: 600; letter-spacing: -.01em; }
-    .duel .verdict { font: 500 12px/1.4 "JetBrains Mono", monospace; letter-spacing: .04em; margin-bottom: 8px; }
-    .verdict.caught { color: var(--ok); }
-    .verdict.missed { color: var(--muted); }
     .tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-top: 14px; }
     .tile { padding: 18px; }
     .tile strong { display: block; font-size: clamp(26px, 3.4vw, 36px); line-height: 1.1; letter-spacing: -.03em; font-weight: 650; }
     .tile span { color: var(--ink-2); font-size: 14px; }
     .tile small { display: block; color: var(--muted); font-size: 12px; margin-top: 6px; }
-    @media (max-width: 860px) { .tiles { grid-template-columns: 1fr 1fr; } .duel { grid-template-columns: 1fr; } }
+    @media (max-width: 860px) { .tiles { grid-template-columns: 1fr 1fr; } }
     .glance { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; margin-top: 14px; }
     .glance > div { padding: 18px; border-left: 1px solid var(--line); min-width: 0; }
     .glance > div:first-child { border-left: 0; }
@@ -194,9 +185,7 @@
     .glance b { color: var(--ink); font-weight: 600; }
     @media (max-width: 860px) { .glance { grid-template-columns: 1fr 1fr; } .glance > div:nth-child(3) { border-left: 0; } .glance > div:nth-child(n+3) { border-top: 1px solid var(--line); } }
     @media (max-width: 520px) { .glance { grid-template-columns: 1fr; } .glance > div { border-left: 0; } .glance > div + div { border-top: 1px solid var(--line); } }
-    .trend-mini { display: grid; grid-template-columns: minmax(200px, 300px) 1fr; gap: 20px; align-items: center; }
-    .mini-title { margin: 0 0 4px; font-size: 15px; font-weight: 600; letter-spacing: -.01em; }
-    @media (max-width: 760px) { .trend-mini { grid-template-columns: 1fr; gap: 6px; } }
+
     .takeaway { margin: 14px 0 0; padding: 12px 16px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--line); font-size: 14.5px; color: var(--ink-2); }
     .takeaway b { color: var(--ink); }
 
@@ -219,7 +208,7 @@
     .panel-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; margin-bottom: 6px; }
     .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
     .grid-2 > .panel { margin-bottom: 0; }
-    .stack { display: grid; gap: 16px; margin-bottom: 16px; }
+
     @media (max-width: 860px) { .grid-2 { grid-template-columns: 1fr; } .panel { padding: 18px; } }
 
     .prov { display: inline-flex; flex-wrap: wrap; gap: 6px; }
@@ -228,7 +217,7 @@
       padding: 5px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--ink-2); background: var(--surface-2); max-width: 100%; line-height: 1.35;
     }
     .badge i { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
-    .b-real i { background: var(--real); } .b-syn i { background: var(--syn); } .b-fault i { background: var(--fault); }
+    .b-real i { background: var(--real); }
 
     .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--line); border-radius: 12px; overflow: hidden; border: 1px solid var(--line); margin: 14px 0 18px; }
     .kpi { background: var(--surface); padding: 14px 16px; min-width: 0; }
@@ -242,6 +231,7 @@
     /* forecast scorecard: day-ahead and intraday keep these colours in every chart */
     :root { --fc-da: var(--rec); --fc-id: var(--prec); }
     .fc { margin-top: 16px; }
+    .fc-first { margin-top: 0; }
     .fc-intro { max-width: 78ch; margin: 10px 0 0; }
     .fc-h { margin: 22px 0 8px; font-size: 15px; font-weight: 600; }
     .fc-tables { margin-top: 6px; }
@@ -293,30 +283,17 @@
     tbody tr.pick { cursor: pointer; }
     tbody tr.pick:hover { background: var(--surface-2); }
     tbody tr[aria-selected="true"] { background: color-mix(in srgb, var(--fault) 10%, var(--surface)); }
-    .tag { font: 500 11px/1 "JetBrains Mono", monospace; padding: 4px 7px; border-radius: 6px; border: 1px solid var(--line); color: var(--ink-2); }
-    .tag.inj { color: var(--fault); border-color: color-mix(in srgb, var(--fault) 40%, transparent); }
 
     /* bars (HTML) */
     .bars { display: grid; gap: 14px; }
     .bar-row { display: grid; grid-template-columns: minmax(110px, 190px) 1fr; gap: 14px; align-items: center; }
     .bar-row .name { font-size: 14px; color: var(--ink-2); }
     .bar-row .name b { color: var(--ink); font-weight: 600; display: block; }
-    .track { display: grid; gap: 5px; }
+
     .bar { display: flex; align-items: center; gap: 8px; min-width: 0; }
     .bar > i { display: block; height: 10px; border-radius: 0 4px 4px 0; min-width: 2px; transition: width .6s cubic-bezier(.2, .7, .2, 1); }
     .bar > span { font: 12.5px "JetBrains Mono", monospace; color: var(--ink-2); white-space: nowrap; }
     @media (max-width: 560px) { .bar-row { grid-template-columns: 1fr; gap: 6px; } }
-
-    /* threshold */
-    .thr { display: grid; grid-template-columns: 300px 1fr; gap: 24px; align-items: start; }
-    .thr input[type=range] { width: 100%; accent-color: var(--rec); }
-    .readout { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 14px 0; }
-    .readout div { background: var(--surface-2); border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
-    .readout strong { display: block; font-size: 26px; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
-    .readout span { font-size: 13px; color: var(--ink-2); display: inline-flex; align-items: center; gap: 6px; }
-    .readout i { width: 10px; height: 3px; border-radius: 2px; display: inline-block; }
-    .zval { font: 600 40px/1 "JetBrains Mono", monospace; letter-spacing: -.03em; }
-    @media (max-width: 860px) { .thr { grid-template-columns: 1fr; } }
 
     /* pipeline + ERD */
     .pipeline { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; }
@@ -331,22 +308,7 @@
     .inspector { margin-top: 12px; padding: 14px 16px; border-radius: 12px; border: 1px dashed var(--line-strong); color: var(--ink-2); font-size: 14.5px; min-height: 70px; }
     .inspector b { color: var(--ink); }
     @media (max-width: 860px) { .pipeline { grid-template-columns: repeat(2, 1fr); } }
-    .erd-box { overflow-x: auto; }
-    .erd { min-width: 420px; max-width: 520px; width: 100%; height: auto; display: block; }
-    .erd-v { display: none; }
-    @media (max-width: 560px) {
-      .erd-h { display: none; }
-      .erd-v { display: block; min-width: 0; max-width: 300px; margin: 0 auto; }
-    }
-    .notes { list-style: none; padding: 0; margin: 18px 0 0; display: grid; gap: 10px; }
-    .notes li { font-size: 14px; color: var(--ink-2); padding-left: 14px; border-left: 2px solid var(--line-strong); }
-    .notes b { color: var(--ink); font-weight: 600; }
-    .erd .tbl rect.h { fill: var(--surface-2); }
-    .erd rect.b { fill: var(--surface); stroke: var(--line-strong); }
-    .erd text { font: 12px "JetBrains Mono", monospace; fill: var(--ink-2); }
-    .erd text.t { font: 600 13px Inter, sans-serif; fill: var(--ink); }
-    .erd text.k { fill: var(--muted); }
-    .erd path { stroke: var(--axis); fill: none; stroke-width: 1.5; }
+
     .query { margin: 12px 0 10px; padding: 10px 12px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 10px; font-size: 12px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ink-2); }
     .parts-summary { font-size: 14px; color: var(--ink-2); margin: 0 0 8px; min-height: 22px; }
     .parts-summary b { color: var(--ink); }
@@ -359,7 +321,7 @@
     .prow:hover { background: var(--surface-2); }
     .prow .m { font: 500 12.5px "JetBrains Mono", monospace; }
     .prow .fill { display: flex; align-items: center; gap: 8px; min-width: 0; }
-    .prow .fill i { display: block; height: 8px; border-radius: 0 4px 4px 0; background: var(--syn); }
+    .prow .fill i { display: block; height: 8px; border-radius: 0 4px 4px 0; background: var(--real); }
     .prow .fill span { font: 11.5px "JetBrains Mono", monospace; color: var(--muted); white-space: nowrap; }
     .prow .st { font: 500 11px "JetBrains Mono", monospace; letter-spacing: .03em; text-transform: uppercase; }
     .prow.scan { border-color: color-mix(in srgb, var(--real) 45%, transparent); background: color-mix(in srgb, var(--real) 9%, var(--surface)); color: var(--ink); }
@@ -376,18 +338,11 @@
     details.sql pre { margin: 0; padding: 14px 16px; border-top: 1px solid var(--line); overflow-x: auto; font-size: 12.5px; line-height: 1.55; color: var(--ink-2); max-height: 460px; }
     details.sql .links { padding: 0 16px 14px; font-size: 13px; }
 
-    /* honesty */
-    .callout {
-      border-left: 3px solid var(--syn); padding: 14px 18px; background: var(--surface-2); border-radius: 0 12px 12px 0; color: var(--ink-2); margin: 14px 0 0;
-    }
-    .callout b { color: var(--ink); }
-    .big-stat { font: 600 clamp(34px, 5vw, 52px)/1 "JetBrains Mono", monospace; letter-spacing: -.04em; }
-
     /* craft */
     .cmd { position: relative; }
     .cmd pre { margin: 0; padding: 16px; padding-right: 76px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 12px; overflow-x: auto; font-size: 13px; line-height: 1.7; color: var(--ink-2); }
     .cmd .btn { position: absolute; top: 10px; right: 10px; }
-    .layers { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+
     .layer { border: 1px solid var(--line); background: var(--surface-2); border-radius: 10px; padding: 8px 12px; font-size: 13.5px; }
     .layer b { font-family: "JetBrains Mono", monospace; margin-right: 6px; }
 
@@ -422,15 +377,14 @@
     <div class="wrap">
       <a class="brand" href="#top" aria-label="Back to top">
         <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true"><rect x="1" y="1" width="22" height="22" rx="6" fill="none" stroke="currentColor" stroke-opacity=".35"/><path d="M4 14h4l2-7 3 11 2-6 1 2h4" fill="none" stroke="var(--real)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        <span>Screams &amp; Silence</span>
+        <span>Grid in SQL</span>
       </a>
       <nav class="nav" aria-label="Chapters">
-        <a href="#grid"><span class="idx">01</span>World</a>
-        <a href="#demo"><span class="idx">02</span>Machine</a>
-        <a href="#anomaly-detection"><span class="idx">03</span>Scream</a>
-        <a href="#blind-spot"><span class="idx">04</span>Silence</a>
-        <a href="#validation"><span class="idx">05</span>Honesty</a>
-        <a href="#engineering"><span class="idx">06</span>Craft</a>
+        <a href="#grid"><span class="idx">01</span>Grid</a>
+        <a href="#forecasts-ch"><span class="idx">02</span>Forecasts</a>
+        <a href="#co2-ch"><span class="idx">03</span>Cleanest hours</a>
+        <a href="#events-ch"><span class="idx">04</span>Events</a>
+        <a href="#engineering"><span class="idx">05</span>Craft</a>
       </nav>
       <div class="actions">
         <a class="icon-btn" href="https://github.com/miladgk/industrial-energy-sql-pipeline" target="_blank" rel="noopener noreferrer" aria-label="Source code on GitHub">
@@ -447,47 +401,28 @@
     <!-- ───────────── HERO ───────────── -->
     <section class="hero">
       <div class="wrap">
-        <div class="eyebrow">A data engineering case study · PostgreSQL · FastAPI · Python</div>
-        <h1>Machines fail in two ways. They scream, <span class="serif">or they go silent.</span></h1>
-        <p class="lede">This is a working data pipeline: real Finnish grid data, and 518,400 synthetic sensor readings in PostgreSQL with a known set of deliberately broken values. It was built to find out which failures SQL can hear, and to be honest about the ones it can't.</p>
+        <div class="eyebrow">A data engineering project · PostgreSQL · SQL · Python · FastAPI</div>
+        <h1>Finland's electricity grid, <span class="serif">read in SQL.</span></h1>
+        <p class="lede">Fingrid, Finland's grid operator, publishes hundreds of measurements and forecasts as open data, one chart at a time. This pipeline keeps 21 of them in a partitioned PostgreSQL warehouse and asks what no single chart answers: how good are the forecasts, when tomorrow will electricity be cleanest, and what unusual happened on the grid.</p>
         <div class="chips">
-          <span class="chip" tabindex="0" aria-describedby="tip-real"><i style="background:var(--real)"></i>Real: Fingrid Open Data, CC BY 4.0<span class="info" aria-hidden="true">i</span>
-            <span class="pop" role="tooltip" id="tip-real"><b>Real measurements.</b> Fingrid is Finland's electricity transmission system operator. Its Open Data API publishes national wind power production and total electricity consumption; this page shows them as daily averages for the last 12 months (refreshed every day) and for the full year 2025. Licence: CC BY 4.0, free to reuse with attribution.</span></span>
-          <span class="chip" tabindex="0" aria-describedby="tip-syn"><i style="background:var(--syn)"></i>Synthetic: 30 days of sensor data, seed 42<span class="info" aria-hidden="true">i</span>
-            <span class="pop" role="tooltip" id="tip-syn"><b>Generated, not measured.</b> A Python script (src/generate_data.py) invents 20 facilities (wind farms, solar plants, substations) with 3 sensors each, one reading every 5 minutes for 30 days: 518,400 rows in PostgreSQL. Seed 42 makes every run identical. The readings cover 1 to 30 January 2025.</span></span>
-          <span class="chip" tabindex="0" aria-describedby="tip-fault"><i style="background:var(--fault)"></i>Injected faults, labelled<span class="info" aria-hidden="true">i</span>
-            <span class="pop" role="tooltip" id="tip-fault"><b>Broken on purpose.</b> The generator deliberately breaks about 2% of the synthetic readings: each one becomes either 0 (a sensor that goes silent) or 3× the sensor's maximum (a spike). Every broken reading is marked <code>is_anomaly = true</code>. The detectors never see that label; it is only used afterwards to score how many faults they found.</span></span>
-        </div>
-        <div class="status-line" id="status-line" data-state="loading">
-          <span class="dot" aria-hidden="true"></span>
-          <span id="status" role="status" data-api-state="loading">Loading data…</span>
-        </div>
-
-        <div class="duel reveal" aria-label="Two real readings from the dataset">
-          <div class="card">
-            <h3>A scream</h3>
-            <div class="verdict caught" id="duel-scream-verdict">–</div>
-            <svg class="chart" id="duel-scream" role="img" aria-label="A voltage spike and the readings around it"><desc>Readings of one 110 kV bus-voltage sensor for an hour either side of an injected spike.</desc></svg>
-          </div>
-          <div class="card">
-            <h3>A silence</h3>
-            <div class="verdict missed" id="duel-silence-verdict">–</div>
-            <svg class="chart" id="duel-silence" role="img" aria-label="A power reading that dropped to zero and the readings around it"><desc>Readings of one power-output sensor for an hour either side of an injected zero.</desc></svg>
-          </div>
+          <span class="chip" tabindex="0" aria-describedby="tip-real"><i style="background:var(--real)"></i>Real data: Fingrid Open Data, CC BY 4.0<span class="info" aria-hidden="true">i</span>
+            <span class="pop" role="tooltip" id="tip-real"><b>Real measurements and forecasts.</b> Fingrid is Finland's electricity transmission system operator. Its Open Data API publishes production, consumption, forecasts, balancing, CO<sub>2</sub> intensity and frequency. Licence: CC BY 4.0, free to reuse with attribution.</span></span>
+          <span class="chip" tabindex="0" aria-describedby="tip-fresh"><i style="background:var(--fc-da)"></i>Refreshed every day<span class="info" aria-hidden="true">i</span>
+            <span class="pop" role="tooltip" id="tip-fresh"><b>Automated.</b> A GitHub Action syncs the warehouse every day after Fingrid publishes the next day's forecasts at 12:00 Finnish time, reruns the SQL and redeploys this page. The latest values above the first chart refresh every hour.</span></span>
         </div>
 
         <div class="tiles">
-          <div class="card tile reveal"><strong id="proof-scream">–</strong><span>of spikes caught by SQL</span><small id="proof-scream-sub">z-score rule, |z| &gt; 3</small></div>
-          <div class="card tile reveal"><strong id="proof-silence">–</strong><span>of zero-dropouts caught</span><small id="proof-silence-sub">same rule</small></div>
-          <div class="card tile reveal"><strong id="proof-speed">–</strong><span>faster sensor lookups</span><small>composite index (sensor_id, recorded_at)</small></div>
-          <div class="card tile reveal"><strong id="proof-tests">–</strong><span>automated tests</span><small id="proof-tests-sub">across test layers</small></div>
+          <div class="card tile reveal"><strong id="proof-rows">–</strong><span>rows in the warehouse</span><small id="proof-rows-sub">21 Fingrid datasets</small></div>
+          <div class="card tile reveal"><strong id="proof-wind">–</strong><span>average miss of the day-ahead wind forecast</span><small id="proof-wind-sub">last 12 months</small></div>
+          <div class="card tile reveal"><strong id="proof-co2">–</strong><span>less CO<sub>2</sub> in the hour this page picks as cleanest</span><small id="proof-co2-sub">replayed over the past year</small></div>
+          <div class="card tile reveal"><strong id="proof-events">–</strong><span>grid events found in the last 12 months</span><small>frequency, nuclear, inertia, price</small></div>
         </div>
 
         <div class="card glance reveal" aria-label="The project at a glance">
-          <div><div class="eyebrow">What was built</div><p>Python ETL into <b>PostgreSQL 15</b> (monthly partitions, composite index, quality gate), analytics in plain <b>SQL</b>, served by <b>FastAPI</b> to this page.</p></div>
-          <div><div class="eyebrow">Data</div><p><b>Real:</b> Fingrid hourly wind and consumption for Finland, the last 365 days and the full year 2025. <b>Synthetic:</b> <span id="glance-syn">20 sites × 3 sensors, every 5 minutes, January 2025</span>, with about 2% labelled faults.</p></div>
-          <div><div class="eyebrow">Question</div><p>Can a SQL rule that flags readings more than 3 standard deviations from each sensor's monthly baseline find sensor faults?</p></div>
-          <div><div class="eyebrow">Answer</div><p id="glance-answer">Loading…</p></div>
+          <div><div class="eyebrow">What was built</div><p>A Python sync from the Fingrid API into <b>PostgreSQL</b> (monthly partitions, idempotent upserts, a quality gate), analytics in plain <b>SQL</b> files and functions, a <b>FastAPI</b> service over the same SQL, and this static page.</p></div>
+          <div><div class="eyebrow">Data</div><p><b>21 Fingrid datasets</b>, from 1-minute frequency to hourly capacity, kept exactly as published since October 2025 and growing every day.</p></div>
+          <div><div class="eyebrow">Questions</div><p>How far off are Fingrid's own forecasts? When is tomorrow's electricity cleanest? What unusual happened on the grid, and do independent sensors agree?</p></div>
+          <div><div class="eyebrow">Tested</div><p id="glance-tests">Loading…</p></div>
         </div>
       </div>
     </section>
@@ -498,9 +433,9 @@
         <div class="chapter-head reveal">
           <div class="chapter-no">01</div>
           <div>
-            <div class="eyebrow">The world · <span class="badge b-real"><i></i>Real data</span></div>
-            <h2 id="grid-title">Start with something <span class="serif">real.</span></h2>
-            <p id="grid-desc">Finland's electricity grid, from Fingrid, the national transmission operator: hourly wind production (dataset 75) and consumption (dataset 124), averaged per day. The pipeline ingests this into the same PostgreSQL warehouse.</p>
+            <div class="eyebrow">The grid · <span class="badge b-real"><i></i>Real data</span></div>
+            <h2 id="grid-title">Wind and demand, <span class="serif">day by day.</span></h2>
+            <p id="grid-desc">Wind production (Fingrid dataset 75) and electricity consumption (dataset 124) in Finland, 15-minute values from the warehouse averaged per day, for the last 12 months. The row above the chart shows the newest values.</p>
           </div>
         </div>
         <div class="card panel reveal">
@@ -508,10 +443,6 @@
             <div>
               <h3 id="grid-chart-title">Daily average power (MW)</h3>
               <div class="prov" id="grid-prov"></div>
-            </div>
-            <div class="seg" id="period-tabs" role="group" aria-label="Time period" hidden>
-              <button type="button" data-period="recent" aria-pressed="true">Last 12 months</button>
-              <button type="button" data-period="year" aria-pressed="false" id="period-year">2025</button>
             </div>
           </div>
           <div class="latest" id="grid-latest" aria-live="polite" hidden></div>
@@ -522,7 +453,21 @@
           <p id="grid-error" class="error"></p>
         </div>
 
-        <div class="card panel reveal fc" id="forecasts">
+      </div>
+    </section>
+
+    <section id="forecasts-ch" class="chapter" aria-labelledby="forecasts-ch-title">
+      <div class="wrap">
+        <div class="chapter-head reveal">
+          <div class="chapter-no">02</div>
+          <div>
+            <div class="eyebrow">Forecasts · <span class="badge b-real"><i></i>Real data</span></div>
+            <h2 id="forecasts-ch-title">Forecasts, <span class="serif">checked against reality.</span></h2>
+            <p>Fingrid forecasts wind and consumption a day ahead and again every 15 minutes. Its site shows the forecasts and the measurements; nobody shows how far apart they were. The warehouse lines them up for every quarter-hour of the year.</p>
+          </div>
+        </div>
+
+        <div class="card panel reveal fc fc-first" id="forecasts">
           <div class="panel-top">
             <div>
               <h3>How good are Fingrid's own forecasts?</h3>
@@ -566,7 +511,21 @@
           <details class="sql" id="sql-17"><summary>Inspect the SQL · sql/analysis/17_forecast_error_vs_balancing.sql</summary><pre>Loading…</pre></details>
         </div>
 
-        <div class="card panel reveal fc" id="co2">
+      </div>
+    </section>
+
+    <section id="co2-ch" class="chapter" aria-labelledby="co2-ch-title">
+      <div class="wrap">
+        <div class="chapter-head reveal">
+          <div class="chapter-no">03</div>
+          <div>
+            <div class="eyebrow">Cleanest hours · <span class="badge b-real"><i></i>Real data</span></div>
+            <h2 id="co2-ch-title">When is electricity <span class="serif">cleanest tomorrow?</span></h2>
+            <p>The CO<sub>2</sub> intensity of electricity in Finland changes hour by hour with wind, demand and imports. Fingrid publishes it only as it happens; this forecasts it a day ahead, in SQL, and keeps score.</p>
+          </div>
+        </div>
+
+        <div class="card panel reveal fc fc-first" id="co2">
           <div class="panel-top">
             <div>
               <h3 id="co2-title">When is electricity cleanest tomorrow?</h3>
@@ -590,7 +549,21 @@
           <details class="sql" id="sql-14"><summary>Inspect the SQL · sql/schema/14_co2_forecast.sql (the model)</summary><pre>Loading…</pre></details>
         </div>
 
-        <div class="card panel reveal fc" id="events">
+      </div>
+    </section>
+
+    <section id="events-ch" class="chapter" aria-labelledby="events-ch-title">
+      <div class="wrap">
+        <div class="chapter-head reveal">
+          <div class="chapter-no">04</div>
+          <div>
+            <div class="eyebrow">Events · <span class="badge b-real"><i></i>Real data</span></div>
+            <h2 id="events-ch-title">What happened <span class="serif">on the grid.</span></h2>
+            <p>Frequency excursions, fast drops in nuclear output, hours with little spinning mass, and price spikes: the unusual moments of the year, found by one SQL function across four datasets.</p>
+          </div>
+        </div>
+
+        <div class="card panel reveal fc fc-first" id="events">
           <div class="panel-top">
             <div>
               <h3>What happened on the grid</h3>
@@ -624,89 +597,26 @@
     </section>
 
     <!-- ───────────── 02 MACHINE ───────────── -->
-    <section id="demo" class="chapter" aria-labelledby="demo-title">
+    <!-- ───────────── 05 CRAFT ───────────── -->
+    <section id="engineering" class="chapter" aria-labelledby="eng-title">
       <div class="wrap">
         <div class="chapter-head reveal">
-          <div class="chapter-no">02</div>
+          <div class="chapter-no">05</div>
           <div>
-            <div class="eyebrow">The machine · <span class="badge b-syn"><i></i>Synthetic data</span></div>
-            <h2 id="demo-title">Then build a machine you can <span class="serif">interrogate.</span></h2>
-            <p>Twenty facilities (wind farms, solar plants and substations) with three sensors each, reporting every five minutes through January 2025. About 2% of readings are deliberately broken and labelled, so every detector can be scored against the truth.</p>
+            <div class="eyebrow">The craft</div>
+            <h2 id="eng-title">Fast, tested, <span class="serif">and reproducible.</span></h2>
+            <p>The parts a chart does not show: how the data gets in and stays correct, why the queries are fast, the tests that keep the numbers true, and the commands to rebuild all of it.</p>
           </div>
         </div>
 
         <div class="card panel reveal">
-          <h3>Seven stages, from raw files to this page</h3>
+          <h3>Seven stages, from Fingrid to this page</h3>
           <p class="sub">Select a stage to inspect it.</p>
           <div class="pipeline" id="pipeline" role="list"></div>
           <div class="inspector" id="inspector" aria-live="polite"></div>
         </div>
 
-        <div class="grid-2 reveal">
-          <div class="card panel">
-            <h3>Data model</h3>
-            <p class="sub">Three normalised tables for the telemetry, one standalone table for the national grid.</p>
-            <div class="erd-box">
-              <svg class="erd erd-h" viewBox="0 0 470 372" role="img" aria-labelledby="erd-t erd-d">
-                <title id="erd-t">Entity-relationship diagram</title>
-                <desc id="erd-d">facilities has many sensors; sensors has many readings; readings is partitioned by month. grid_data stores national Fingrid measurements and is not linked to the others.</desc>
-                <g class="tbl" transform="translate(4,4)">
-                  <rect class="b" width="196" height="128" rx="10"/><rect class="h" x="1" y="1" width="194" height="28" rx="9"/>
-                  <text class="t" x="12" y="20">facilities</text>
-                  <text x="12" y="50">facility_id <tspan class="k">PK</tspan></text><text x="12" y="68">facility_name</text><text x="12" y="86">facility_type</text><text x="12" y="104">country · capacity_mw</text><text x="12" y="122">commissioned_year</text>
-                </g>
-                <g class="tbl" transform="translate(266,4)">
-                  <rect class="b" width="200" height="110" rx="10"/><rect class="h" x="1" y="1" width="198" height="28" rx="9"/>
-                  <text class="t" x="12" y="20">sensors</text>
-                  <text x="12" y="50">sensor_id <tspan class="k">PK</tspan></text><text x="12" y="68">facility_id <tspan class="k">FK</tspan></text><text x="12" y="86">sensor_type</text><text x="12" y="104">unit</text>
-                </g>
-                <g class="tbl" transform="translate(266,170)">
-                  <rect class="b" width="200" height="198" rx="10"/><rect class="h" x="1" y="1" width="198" height="28" rx="9"/>
-                  <text class="t" x="12" y="20">readings</text>
-                  <text x="12" y="50">reading_id <tspan class="k">PK</tspan></text><text x="12" y="68">sensor_id <tspan class="k">FK</tspan></text><text x="12" y="86">recorded_at <tspan class="k">PK</tspan></text><text x="12" y="104">value</text><text x="12" y="122">is_anomaly</text>
-                  <text class="k" x="12" y="152">partitioned by month</text><text class="k" x="12" y="170">index (sensor_id,</text><text class="k" x="12" y="186">       recorded_at)</text>
-                </g>
-                <g class="tbl" transform="translate(4,170)">
-                  <rect class="b" width="226" height="128" rx="10"/><rect class="h" x="1" y="1" width="224" height="28" rx="9"/>
-                  <text class="t" x="12" y="20">grid_data <tspan class="k" style="font:12px 'JetBrains Mono'">standalone</tspan></text>
-                  <text x="12" y="50">id <tspan class="k">PK</tspan></text><text x="12" y="68">dataset_id · metric</text><text x="12" y="86">recorded_at · value</text><text x="12" y="104">country · source</text><text class="k" x="12" y="122">unique (dataset_id, time)</text>
-                </g>
-                <path d="M200 58 H266"/><text class="k" x="220" y="50">1:N</text>
-                <path d="M366 114 V170"/><text class="k" x="374" y="146">1:N</text>
-              </svg>
-              <svg class="erd erd-v" viewBox="0 0 252 676" role="img" aria-labelledby="erdv-t">
-                <title id="erdv-t">Entity-relationship diagram: facilities, sensors, readings, and the standalone grid_data table</title>
-                <g class="tbl" transform="translate(4,4)">
-                  <rect class="b" width="244" height="128" rx="10"/><rect class="h" x="1" y="1" width="242" height="28" rx="9"/>
-                  <text class="t" x="12" y="20">facilities</text>
-                  <text x="12" y="50">facility_id <tspan class="k">PK</tspan></text><text x="12" y="68">facility_name</text><text x="12" y="86">facility_type</text><text x="12" y="104">country · capacity_mw</text><text x="12" y="122">commissioned_year</text>
-                </g>
-                <path d="M126 132 V164"/><text class="k" x="134" y="152">1:N</text>
-                <g class="tbl" transform="translate(4,164)">
-                  <rect class="b" width="244" height="110" rx="10"/><rect class="h" x="1" y="1" width="242" height="28" rx="9"/>
-                  <text class="t" x="12" y="20">sensors</text>
-                  <text x="12" y="50">sensor_id <tspan class="k">PK</tspan></text><text x="12" y="68">facility_id <tspan class="k">FK</tspan></text><text x="12" y="86">sensor_type</text><text x="12" y="104">unit</text>
-                </g>
-                <path d="M126 274 V306"/><text class="k" x="134" y="294">1:N</text>
-                <g class="tbl" transform="translate(4,306)">
-                  <rect class="b" width="244" height="186" rx="10"/><rect class="h" x="1" y="1" width="242" height="28" rx="9"/>
-                  <text class="t" x="12" y="20">readings</text>
-                  <text x="12" y="50">reading_id <tspan class="k">PK</tspan></text><text x="12" y="68">sensor_id <tspan class="k">FK</tspan></text><text x="12" y="86">recorded_at <tspan class="k">PK</tspan></text><text x="12" y="104">value</text><text x="12" y="122">is_anomaly</text>
-                  <text class="k" x="12" y="152">partitioned by month</text><text class="k" x="12" y="170">index (sensor_id, recorded_at)</text>
-                </g>
-                <g class="tbl" transform="translate(4,520)">
-                  <rect class="b" width="244" height="146" rx="10"/><rect class="h" x="1" y="1" width="242" height="28" rx="9"/>
-                  <text class="t" x="12" y="20">grid_data <tspan class="k" style="font:12px 'JetBrains Mono'">standalone</tspan></text>
-                  <text x="12" y="50">id <tspan class="k">PK</tspan></text><text x="12" y="68">dataset_id · metric</text><text x="12" y="86">recorded_at · value</text><text x="12" y="104">country · source</text><text class="k" x="12" y="122">unique (dataset_id,</text><text class="k" x="12" y="138">        recorded_at)</text>
-                </g>
-              </svg>
-            </div>
-            <ul class="notes">
-              <li><b>Why <code>recorded_at</code> is in the primary key.</b> PostgreSQL requires a partitioned table's unique keys to include the partition column, so readings is keyed on (reading_id, recorded_at).</li>
-              <li><b>Loading twice changes nothing.</b> Every insert uses <code>ON CONFLICT</code>: existing readings are skipped, and Fingrid rows are updated in place through the unique (dataset_id, recorded_at).</li>
-              <li><b>grid_data stands alone.</b> It holds national totals, not facility sensors, so it has no foreign key to them.</li>
-            </ul>
-          </div>
+        <div class="grid-2 reveal" style="margin-top:16px">
           <div class="card panel">
             <div class="panel-top">
               <div><h3>Partition pruning</h3></div>
@@ -715,233 +625,38 @@
                 <button type="button" data-mode="all" aria-pressed="false">No time filter</button>
               </div>
             </div>
-            <p class="sub" id="parts-sub"><code>readings</code> is stored as one table per month. Pick a month: PostgreSQL opens only that partition and never reads the others (<b>skipped</b>).</p>
+            <p class="sub" id="parts-sub"><code>fingrid_observation</code> is stored as one table per month. Pick a month: PostgreSQL opens only that partition and never reads the others (<b>skipped</b>).</p>
             <pre class="query" id="parts-query" aria-label="Example query"></pre>
             <p class="parts-summary" id="parts-summary" aria-live="polite"></p>
-            <div class="plist" id="parts" role="group" aria-label="Partitions of the readings table"></div>
+            <div class="plist" id="parts" role="group" aria-label="Partitions of the fingrid_observation table"></div>
             <p class="note" id="parts-note"></p>
           </div>
-        </div>
-
-        <div class="card panel reveal" style="margin-top:16px">
-          <div class="panel-top">
-            <div>
-              <h3>The warehouse, live</h3>
-              <div class="prov"><span class="badge b-syn"><i></i>Synthetic · Jan 2025 · seed 42</span><span class="badge" id="demo-src">source: –</span></div>
-            </div>
-          </div>
-          <section class="kpis" aria-label="Warehouse figures">
-            <div class="kpi"><strong id="facility-count">–</strong><span>facilities</span></div>
-            <div class="kpi"><strong id="reading-count">–</strong><span>readings</span></div>
-            <div class="kpi"><strong id="anomaly-rate">–</strong><span>injected fault rate</span></div>
-            <div class="kpi"><strong id="latest-reading">–</strong><span>last reading (UTC)</span></div>
-          </section>
-          <div class="trend-mini">
-            <div>
-              <h4 class="mini-title">Last 24 hours of the dataset</h4>
-              <p class="sub" id="trend-window">Loading data window…</p>
-              <p class="note" style="margin-top:4px">Hourly average of all power sensors. The generator draws values uniformly at random, so the line stays flat: this is a liveness check of the API, not a finding.</p>
-            </div>
-            <div class="chart-box"><svg id="trend-chart" class="chart" role="img" aria-label="Average power output trend"><desc>Hourly average of all power-output sensors, excluding injected faults.</desc></svg></div>
-          </div>
-          <p id="trend-error" class="error"></p>
-        </div>
-      </div>
-    </section>
-
-    <!-- ───────────── 03 SCREAM ───────────── -->
-    <section id="anomaly-detection" class="chapter" aria-labelledby="anom-title">
-      <div class="wrap">
-        <div class="chapter-head reveal">
-          <div class="chapter-no">03</div>
           <div>
-            <div class="eyebrow">The scream · <span class="badge b-syn"><i></i>Synthetic data</span> <span class="badge b-fault"><i></i>Injected faults</span></div>
-            <h2 id="anom-title">A spike is a scream. <span class="serif">SQL hears every one.</span></h2>
-            <p>For each sensor and month, a SQL query computes the mean and standard deviation of the clean readings. Any reading more than three standard deviations away (|z|&nbsp;&gt;&nbsp;3) is flagged. An injected spike is three times the sensor's normal maximum, so it is never subtle.</p>
-          </div>
-        </div>
-
-        <div class="card panel reveal">
-          <div class="panel-top">
-            <div><h3>Detector scorecard at |z| &gt; 3</h3><p class="sub" id="det-sub">Flags compared with the injected faults</p></div>
-            <div class="prov" id="det-prov"></div>
-          </div>
-          <div class="table-wrap">
-            <table>
-              <thead><tr><th scope="col">Sensor</th><th scope="col" class="r">Injected faults</th><th scope="col" class="r">Spikes caught</th><th scope="col" class="r">Zeros caught</th><th scope="col" class="r">Recall</th></tr></thead>
-              <tbody id="detection"><tr><td colspan="5" class="loading">Loading…</td></tr></tbody>
-            </table>
-          </div>
-          <p id="det-error" class="error"></p>
-          <details class="sql" id="sql-11"><summary>Inspect the SQL · sql/analysis/11_detection_quality.sql</summary><pre>Loading…</pre></details>
-        </div>
-
-        <div class="card panel reveal">
-          <h3>Move the threshold. Watch what breaks.</h3>
-          <p class="sub">Every position was computed by the real API on the full dataset and saved, so this control works offline and never waits.</p>
-          <div class="thr">
-            <div>
-              <label for="thr-input" class="eyebrow">Threshold |z| &gt;</label>
-              <div class="zval" id="thr-z" aria-hidden="true">3.0</div>
-              <input type="range" id="thr-input" min="1" max="10" step="0.5" value="3" aria-describedby="thr-text">
-              <div class="readout">
-                <div><strong id="thr-precision">–</strong><span><i style="background:var(--prec)"></i>precision</span></div>
-                <div><strong id="thr-recall">–</strong><span><i style="background:var(--rec)"></i>recall</span></div>
-              </div>
-              <p class="note" id="thr-text" aria-live="polite"></p>
+            <div class="card panel">
+              <h3 id="bench-title">One index, many times faster</h3>
+              <p class="sub" id="bench-sub">One dataset, one week, on the real warehouse.</p>
+              <div class="bars" id="bench"></div>
+              <p class="note" id="bench-note"></p>
             </div>
-            <div>
-              <div class="legend"><span><i style="background:var(--prec)"></i>Precision: flags that are real faults</span><span><i style="background:var(--rec)"></i>Recall: faults that are flagged</span></div>
-              <div class="chart-box"><svg id="thr-chart" class="chart" role="img" aria-label="Precision and recall for every threshold from 1 to 10"><desc>Two lines in percent against the z threshold.</desc></svg></div>
+            <div class="card panel" style="margin-top:16px">
+              <h3 id="tests-title">Automated tests</h3>
+              <p class="sub">Each layer answers a different question. All run in CI on every pull request, against a restored copy of the real warehouse.</p>
+              <div class="bars" id="tests"></div>
+              <p class="note" id="tests-note"></p>
             </div>
-          </div>
-        </div>
-
-        <div class="card panel reveal">
-          <div class="panel-top">
-            <div><h3>The loudest screams</h3><p class="sub">The strongest flag for every facility type and sensor, exported from the database with the hour around it. Select a row.</p></div>
-            <div class="seg" id="anom-filter" role="group" aria-label="Facility type">
-              <button type="button" data-type="all" aria-pressed="true">All</button>
-              <button type="button" data-type="wind" aria-pressed="false">Wind</button>
-              <button type="button" data-type="solar" aria-pressed="false">Solar</button>
-              <button type="button" data-type="substation" aria-pressed="false">Substation</button>
-            </div>
-          </div>
-          <div class="table-wrap">
-            <table>
-              <thead><tr><th scope="col">Time (UTC)</th><th scope="col">Facility</th><th scope="col">Sensor</th><th scope="col" class="r">Value</th><th scope="col" class="r">z-score</th><th scope="col">Label</th></tr></thead>
-              <tbody id="anomalies"><tr><td colspan="6" class="loading">Loading…</td></tr></tbody>
-            </table>
-          </div>
-          <p id="anom-error" class="error"></p>
-          <div style="margin-top:16px">
-            <h3 id="spark-title">–</h3>
-            <div class="legend"><span><i style="background:var(--syn)"></i>Readings</span><span><i class="band"></i>Normal band (mean ± 3σ)</span><span><i class="pt" style="background:var(--fault)"></i>Injected fault</span></div>
-            <div class="chart-box"><svg id="anom-spark" class="chart" role="img" aria-label="Readings one hour either side of the selected anomaly"><desc>Line of readings at five-minute intervals with the normal band shaded.</desc></svg></div>
-            <p class="note" id="spark-note"></p>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- ───────────── 04 SILENCE ───────────── -->
-    <section id="blind-spot" class="chapter" aria-labelledby="silence-title">
-      <div class="wrap">
-        <div class="chapter-head reveal">
-          <div class="chapter-no">04</div>
-          <div>
-            <div class="eyebrow">The silence · <span class="badge b-syn"><i></i>Synthetic data</span></div>
-            <h2 id="silence-title">A dead sensor reads zero. <span class="serif">Usually, zero sounds normal.</span></h2>
-            <p id="silence-lede">Half of the injected faults are a sudden drop to zero. On a 110 kV bus, zero volts is impossible, and SQL catches every one. For power, wind, sunlight and temperature, zero sits inside the normal range, so the same rule hears nothing.</p>
-          </div>
-        </div>
-
-        <div class="grid-2 reveal">
-          <div class="card panel">
-            <h3 id="sil-a-title">–</h3>
-            <div class="verdict caught mono" id="sil-a-verdict" style="font-size:12px">–</div>
-            <svg class="chart" id="sil-a" role="img" aria-label="Voltage readings around an injected zero"><desc>The zero sits far below the normal band.</desc></svg>
-          </div>
-          <div class="card panel">
-            <h3 id="sil-b-title">–</h3>
-            <div class="verdict missed mono" id="sil-b-verdict" style="font-size:12px">–</div>
-            <svg class="chart" id="sil-b" role="img" aria-label="Power readings around an injected zero"><desc>The zero sits inside the normal band.</desc></svg>
-          </div>
-        </div>
-
-        <div class="card panel reveal" style="margin-top:16px">
-          <div class="panel-top">
-            <div><h3>Can another rule hear the silence?</h3><p class="sub">Three rules, each run as real SQL on all 518,400 readings and scored against the injected zeros.</p></div>
-            <div class="legend"><span><i style="background:var(--rec)"></i>Recall</span><span><i style="background:var(--prec)"></i>Precision</span></div>
-          </div>
-          <div class="bars" id="rules"></div>
-          <div class="callout" id="rules-callout"></div>
-          <details class="sql" id="sql-12"><summary>Inspect the SQL · sql/analysis/12_zero_dropout_rules.sql</summary><pre>Loading…</pre></details>
-        </div>
-      </div>
-    </section>
-
-    <!-- ───────────── 05 HONESTY ───────────── -->
-    <section id="validation" class="chapter" aria-labelledby="val-title">
-      <div class="wrap">
-        <div class="chapter-head reveal">
-          <div class="chapter-no">05</div>
-          <div>
-            <div class="eyebrow">Honesty · <span class="badge b-real"><i></i>Real</span> <span class="badge b-syn"><i></i>Synthetic</span></div>
-            <h2 id="val-title">The generator is <span class="serif">not the weather.</span></h2>
-            <p>Synthetic data is useful for testing a pipeline: partitions, quality gates, detectors. It is not a model of the world. Two results on this page say so plainly.</p>
-          </div>
-        </div>
-
-        <div class="card panel reveal">
-          <div class="panel-top">
-            <div>
-              <h3 id="val-stats">Pearson correlation</h3>
-              <p class="sub" id="val-sub">Daily wind output, both series standardised as z-scores.</p>
-            </div>
-            <div class="seg" id="val-mode" role="group" aria-label="Smoothing">
-              <button type="button" data-smooth="7" aria-pressed="true">7-day mean</button>
-              <button type="button" data-smooth="1" aria-pressed="false">Daily</button>
-            </div>
-          </div>
-          <div class="legend"><span><i style="background:var(--real)"></i>Real Fingrid wind</span><span><i style="background:var(--syn)"></i>Synthetic wind</span></div>
-          <div class="chart-box"><svg id="val-chart" class="chart" role="img" aria-label="Real and synthetic daily wind z-scores, 2025"><desc id="val-desc">Two z-score lines, one value per day of 2025.</desc></svg></div>
-          <p class="note" id="val-note"></p>
-          <p id="val-error" class="error"></p>
-          <details class="sql" id="sql-08"><summary>Inspect the SQL · sql/analysis/08_real_vs_synthetic_comparison.sql</summary><pre>Loading…</pre></details>
-        </div>
-
-        <div class="card panel reveal">
-          <div class="panel-top">
-            <div><h3>Twenty facilities. <span class="serif" style="font-size:1.1em">Nothing to rank.</span></h3><p class="sub" id="rank-sub">Capacity factor: mean power output ÷ nameplate capacity.</p></div>
-            <div class="prov"><span class="badge b-syn"><i></i>Synthetic · Jan 2025</span></div>
-          </div>
-          <div class="chart-box"><svg id="rank-chart" class="chart" role="img" aria-label="Capacity factor of all twenty facilities on a 0 to 100 percent scale"><desc>Twenty dots, all close to 50 percent.</desc></svg></div>
-          <div class="callout" id="rank-callout"></div>
-        </div>
-      </div>
-    </section>
-
-    <!-- ───────────── 06 CRAFT ───────────── -->
-    <section id="engineering" class="chapter" aria-labelledby="eng-title">
-      <div class="wrap">
-        <div class="chapter-head reveal">
-          <div class="chapter-no">06</div>
-          <div>
-            <div class="eyebrow">The craft</div>
-            <h2 id="eng-title">Fast, tested, <span class="serif">and reproducible.</span></h2>
-            <p>The parts nobody sees on a dashboard: the index that makes lookups fast, the tests that keep the numbers true, and the commands to rebuild all of it yourself.</p>
-          </div>
-        </div>
-
-        <div class="grid-2 reveal">
-          <div class="card panel">
-            <h3 id="bench-title">One index, many times faster</h3>
-            <p class="sub" id="bench-sub">One sensor, one week, on the full-year dataset.</p>
-            <div class="bars" id="bench"></div>
-            <p class="note" id="bench-note"></p>
-          </div>
-          <div class="card panel">
-            <h3 id="tests-title">Automated tests</h3>
-            <p class="sub">Each layer answers a different question. All run in CI on every pull request.</p>
-            <div class="bars" id="tests"></div>
-            <p class="note" id="tests-note"></p>
           </div>
         </div>
 
         <div class="card panel reveal" style="margin-top:16px">
           <h3>Run it yourself</h3>
-          <p class="sub">Rebuilds the same 30-day dataset shown on this page (seed 42), then serves it.</p>
+          <p class="sub">Loads the published warehouse snapshot (no Fingrid key needed), then serves and tests it. Add a free Fingrid API key to <code>config.yaml</code> to sync new data with <code>make sync</code>.</p>
           <div class="cmd">
             <pre id="cmd-text">git clone https://github.com/miladgk/industrial-energy-sql-pipeline.git
 cd industrial-energy-sql-pipeline
 cp config_template.yaml config.yaml
 pip install -r requirements.txt
-docker compose up -d postgres_db
-python src/setup_db.py
-python src/generate_data.py --days 30
-python src/migrate_to_partitioned.py
-DAYS_EXPECTED=30 python src/ingest.py
+docker compose up -d
+make db-setup snapshot-restore quality-checks
 make api        # http://localhost:8000/docs
 make test</pre>
             <button class="btn" type="button" id="copy-cmd">Copy</button>
@@ -953,25 +668,20 @@ make test</pre>
 
   <footer>
     <div class="wrap">
-      <span>Real grid data: Fingrid Open Data (CC BY 4.0). Synthetic telemetry: seeded generator in this repository.</span>
+      <span>Data: Fingrid Open Data (CC BY 4.0), processed in this repository.</span>
       <span id="foot-gen"></span>
-      <span><a href="https://github.com/miladgk/industrial-energy-sql-pipeline" target="_blank" rel="noopener noreferrer">Source on GitHub</a> · <a href="https://industrial-energy-api.onrender.com/docs" target="_blank" rel="noopener noreferrer">API docs</a> · <a href="https://miladgk.github.io/" target="_blank" rel="noopener noreferrer">Milad Ghaemi</a></span>
+      <span><a href="https://github.com/miladgk/industrial-energy-sql-pipeline" target="_blank" rel="noopener noreferrer">Source on GitHub</a> · <a href="https://miladgk.github.io/" target="_blank" rel="noopener noreferrer">Milad Ghaemi</a></span>
     </div>
   </footer>
 
   <script>
   "use strict";
-  const API_BASE_URL = "https://industrial-energy-api.onrender.com";
   const $ = id => document.getElementById(id);
   const fmt = (v, d = 0) => (v == null || !isFinite(v)) ? "–"
     : Number(v).toLocaleString("en-US", {minimumFractionDigits: d, maximumFractionDigits: d});
   const pct = (v, d = 1) => v == null ? "–" : `${fmt(v, d)}%`;
   const dayFmt = iso => new Date(iso).toLocaleDateString("en-GB", {day: "numeric", month: "short", year: "numeric", timeZone: "UTC"});
   const hhmm = iso => new Date(iso).toLocaleTimeString("en-GB", {hour: "2-digit", minute: "2-digit", timeZone: "UTC"});
-  const SENSOR = {power_output: "Power output", temperature: "Temperature", wind_speed: "Wind speed", irradiance: "Irradiance", voltage: "Bus voltage"};
-  const UNIT = {Celsius: "°C", "W/m2": "W/m²"};
-  const unitOf = u => UNIT[u] || u;
-  const UNIT_RANGE = {temperature: "−20 to 35 °C", wind_speed: "0 to 25 m/s", irradiance: "0 to 1,000 W/m²", voltage: "104.5 to 115.5 kV", power_output: "0 to capacity MW"};
   const el = (tag, attrs = {}, text) => { const n = document.createElement(tag); for (const k in attrs) n.setAttribute(k, attrs[k]); if (text != null) n.textContent = text; return n; };
   async function getJSON(url, opts) {
     const res = await fetch(url, opts);
@@ -1136,29 +846,6 @@ make test</pre>
     resizeTimer = setTimeout(() => charts.forEach((cfg, svg) => drawLine(svg, cfg)), 150);
   });
 
-  /* ───────── sparkline around one reading ───────── */
-  function neighbourhoodChart(svg, ex, height = 240) {
-    const unit = unitOf(ex.unit);
-    const pts = ex.neighbourhood;
-    const idx = pts.findIndex(p => p.recorded_at === ex.recorded_at);
-    const lo = ex.mean_val - 3 * ex.stddev_val, hi = ex.mean_val + 3 * ex.stddev_val;
-    lineChart(svg, {
-      height,
-      series: [{name: SENSOR[ex.sensor_type] || ex.sensor_type, values: pts.map(p => p.value), color: "var(--syn)", width: 2}],
-      labels: pts.map(p => p.recorded_at),
-      band: {lo, hi},
-      directLabels: false,
-      forceZero: true,
-      points: pts.map((p, i) => p.is_anomaly ? {i, v: p.value, color: "var(--fault)", r: i === idx ? 6 : 4,
-        label: i === idx ? `${fmt(p.value, p.value % 1 ? 2 : 0)} ${unit}${ex.flagged ? "" : " · inside the band"}` : null} : null).filter(Boolean),
-      yLabel: `${SENSOR[ex.sensor_type] || ex.sensor_type} (${unit})`,
-      xLabel: "Time (UTC), one reading every 5 minutes",
-      xTick: (i, l, narrow) => (i % (narrow ? 12 : 6) === 0) ? hhmm(l) : null,
-      tipTitle: l => `${dayFmt(l)}, ${hhmm(l)} UTC`,
-      tipValue: v => `${fmt(v, 2)} ${unit}`,
-    });
-  }
-
   /* ───────── reveal on scroll + active nav ───────── */
   (function scrollFx() {
     const items = document.querySelectorAll(".reveal");
@@ -1180,20 +867,12 @@ make test</pre>
     document.querySelectorAll("section.chapter").forEach(s => spy.observe(s));
   })();
 
-  /* ───────── status ───────── */
-  function setStatus(state, message) {
-    $("status").setAttribute("data-api-state", state);
-    $("status-line").setAttribute("data-state", state);
-    $("status").textContent = message;
-  }
-
   /* ───────── 01 world ───────── */
   const gridData = {};
   function renderGrid(period) {
     const data = gridData[period];
     if (!data) return;
     const recent = period === "recent";
-    document.querySelectorAll("#period-tabs button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.period === period)));
     const labels = data.days.map(d => d.day);
     const first = dayFmt(`${labels[0]}T00:00:00Z`), last = dayFmt(`${labels[labels.length - 1]}T00:00:00Z`);
     $("grid-chart-title").textContent = recent ? `Daily average power, ${first} to ${last} (MW)` : `Daily average power, ${data.year} (MW)`;
@@ -1482,17 +1161,16 @@ make test</pre>
   }
 
   function kpi(value, label) { const d = el("div", {class: "kpi"}); d.append(el("strong", {}, value), el("span", {}, label)); return d; }
-  $("period-tabs").addEventListener("click", e => { const b = e.target.closest("button"); if (b) renderGrid(b.dataset.period); });
 
-  /* ───────── 02 machine ───────── */
+  /* ───────── 05 craft: pipeline ───────── */
   const STAGES = [
-    ["Sources", "generator + Fingrid", "<b>Two sources.</b> A seeded Python generator (NumPy, seed 42) writes 5-minute readings for 60 sensors, and a fetcher pulls hourly wind and consumption from the Fingrid Open Data API (datasets 75 and 124)."],
-    ["Landing", "CSV in data/raw", "<b>Plain files first.</b> Everything lands as CSV in <code>data/raw/</code>, so a load can be replayed or inspected without touching the database."],
-    ["Ingestion", "chunks of 5,000", "<b>Chunked, idempotent loading.</b> <code>ingest.py</code> streams rows in chunks of 5,000. Incremental mode skips anything older than the high-water mark, and <code>ON CONFLICT DO NOTHING</code> makes a repeated load add nothing."],
-    ["Warehouse", "PostgreSQL 15", "<b>A partitioned warehouse.</b> <code>readings</code> is range-partitioned by month, with a composite index on <code>(sensor_id, recorded_at)</code>. Foreign keys tie readings to sensors and sensors to facilities."],
-    ["Quality gate", "4 checks", "<b>Stop bad data early.</b> After every load: sensors without readings, NULL values, the anomaly rate per facility, and date coverage. A failing check fails the run."],
-    ["Analytics SQL", "sql/analysis", "<b>The logic lives in SQL.</b> Rolling averages, z-score detection, detector scoring, zero-dropout rules and the real-versus-synthetic comparison are plain <code>.sql</code> files, reused by the reports and the API."],
-    ["Serving", "FastAPI + this page", "<b>Served, not screenshotted.</b> A FastAPI service on Render answers this page. A bundled snapshot keeps the page instant while the free service wakes up, and Metabase covers local BI."],
+    ["Source", "Fingrid Open Data API", "<b>21 datasets from one API.</b> Actuals, Fingrid's day-ahead and intraday forecasts, the capacity behind them, balancing (mFRR, imbalance price), CO<sub>2</sub> intensity, nuclear output, frequency and system inertia, at 1-minute to 1-hour resolution. Listed with their purpose in <code>src/fingrid_catalog.py</code>."],
+    ["Sync", "incremental, idempotent", "<b>Only what is new.</b> <code>sync_fingrid.py</code> re-reads the last 7 days of each dataset (Fingrid revises recent values), in windows sized to fit one API page. It stores a slot only once it has ended, and an upsert that skips unchanged rows makes a second run change nothing."],
+    ["Warehouse", "PostgreSQL, monthly partitions", "<b>Raw values, as published.</b> <code>fingrid_observation</code> keeps one row per dataset and time slot, with no resampling or gap filling, partitioned by month on a primary key of (dataset_id, start_time)."],
+    ["Quality gate", "5 checks", "<b>Stop bad data early.</b> Rows in the default partition, datasets without data or gone stale, coverage of the last 30 days, and Fingrid's 0 Hz gap markers. A failing check fails the run and CI."],
+    ["Analytics SQL", "views, functions, sql/analysis", "<b>The logic lives in SQL.</b> The forecast scorecard, the CO<sub>2</sub> model (<code>regr_slope</code> refitted per day) and the grid event detector (gaps and islands) are plain <code>.sql</code> files and SQL functions, run by the API, the reports and the page export alike."],
+    ["Daily refresh", "GitHub Actions", "<b>No server to keep alive.</b> Every day after Fingrid's noon publication a workflow starts PostgreSQL, restores yesterday's warehouse from a release asset, syncs, publishes the new snapshot and commits the page data. CI tests every pull request against the same snapshot."],
+    ["Serving", "static page + FastAPI", "<b>Fast for every visitor.</b> This page reads small JSON files built by the SQL, so it never waits for a database. The same SQL is also served by a FastAPI service (<code>make api</code>), tested in CI."],
   ];
   (function pipeline() {
     const wrap = $("pipeline");
@@ -1509,34 +1187,10 @@ make test</pre>
     pick(0);
   })();
 
-  function renderOverview(ov, trend, sourceLabel) {
-    $("glance-syn").textContent = `${fmt(ov.facility_count)} sites × ${fmt(ov.sensor_count / ov.facility_count)} sensors, every 5 minutes, January 2025 (${fmt(ov.reading_count)} readings)`;
-    $("facility-count").textContent = fmt(ov.facility_count);
-    $("reading-count").textContent = fmt(ov.reading_count);
-    $("anomaly-rate").textContent = `${ov.anomaly_rate_pct}%`;
-    $("latest-reading").textContent = ov.latest_reading_at ? `${dayFmt(ov.latest_reading_at)} ${hhmm(ov.latest_reading_at)}` : "–";
-    $("demo-src").textContent = `source: ${sourceLabel}`;
-    const pts = trend.points || [];
-    if (!pts.length) { $("trend-error").textContent = "No trend data returned."; return; }
-    $("trend-window").textContent = `${dayFmt(pts[0].recorded_at)}, ${hhmm(pts[0].recorded_at)} to ${dayFmt(pts[pts.length - 1].recorded_at)}, ${hhmm(pts[pts.length - 1].recorded_at)} (UTC)`;
-    lineChart($("trend-chart"), {
-      height: 170,
-      series: [{name: "Avg output", values: pts.map(p => Number(p.avg_output_mw)), color: "var(--syn)", width: 2.2}],
-      labels: pts.map(p => p.recorded_at),
-      directLabels: false,
-      xTick: (i, l, narrow) => i % (narrow ? 6 : 3) === 0 ? hhmm(l) : null,
-      tipTitle: l => `${dayFmt(l)}, ${hhmm(l)} UTC`,
-      tipValue: v => `${fmt(v, 1)} MW`,
-      yLabel: "MW",
-      xLabel: "Hour (UTC)",
-    });
-    $("trend-error").textContent = "";
-  }
-
   function renderPartitions(eng) {
     if (!eng) return;
     const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-    const parts = eng.partitioning.partitions.map(p => {
+    const parts = eng.partitioning.partitions.filter(p => p.partition !== "fingrid_observation_default").map(p => {
       const m = /FROM \('(\d{4}-\d{2}-\d{2})[^']*'\) TO \('(\d{4}-\d{2}-\d{2})/.exec(p.bounds || "");
       return {...p, from: m ? m[1] : null, to: m ? m[2] : null,
               label: m ? `${MON[+m[1].slice(5, 7) - 1]} ${m[1].slice(0, 4)}` : p.partition};
@@ -1544,7 +1198,8 @@ make test</pre>
     const total = parts.length;
     const maxRows = Math.max(1, ...parts.map(p => p.rows || 0));
     let mode = "month";
-    let pick = Math.max(0, parts.findIndex(p => p.rows > 0));
+    const withData = parts.map((p, i) => p.rows > 0 ? i : -1).filter(i => i >= 0);
+    let pick = withData.length > 1 ? withData[withData.length - 2] : Math.max(0, withData[0] ?? 0);   // the last full month
     const list = $("parts");
     const draw = () => {
       document.querySelectorAll("#parts-mode button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.mode === mode)));
@@ -1560,293 +1215,47 @@ make test</pre>
       }));
       const p = parts[pick];
       $("parts-query").textContent = mode === "month"
-        ? `SELECT * FROM readings\nWHERE sensor_id = 5\n  AND recorded_at >= '${p.from}'\n  AND recorded_at <  '${p.to}';`
-        : `SELECT * FROM readings\nWHERE sensor_id = 5;   -- no time filter`;
+        ? `SELECT * FROM fingrid_observation\nWHERE dataset_id = 75        -- wind\n  AND start_time >= '${p.from}'\n  AND start_time <  '${p.to}';`
+        : `SELECT * FROM fingrid_observation\nWHERE dataset_id = 75;   -- no time filter`;
       const sum = $("parts-summary");
       sum.replaceChildren();
       if (mode === "month") {
         const skippedRows = parts.reduce((a, q, i) => a + (i === pick ? 0 : q.rows || 0), 0);
         sum.append("Reads ", el("b", {}, "1"), ` of ${total} partitions (${p.label}, `, el("b", {}, fmt(p.rows)), ` rows) and skips the other ${total - 1}` +
           (skippedRows ? `, so ${fmt(skippedRows)} rows elsewhere are never read.` : "."));
-        if (!p.rows) sum.append(` ${p.label} is empty because the demo data only fills ${parts.filter(q => q.rows > 0).map(q => q.label).join(", ")}: the query returns nothing, and costs almost nothing to answer.`);
+        if (!p.rows) sum.append(` ${p.label} holds no data yet: the query returns nothing, and costs almost nothing to answer.`);
       }
       else sum.append("Reads ", el("b", {}, `all ${total}`), " partitions: without a time filter there is nothing to prune.");
     };
     $("parts-mode").addEventListener("click", e => { const b = e.target.closest("button"); if (b) { mode = b.dataset.mode; draw(); } });
     draw();
     const filled = parts.filter(p => p.rows > 0);
-    $("parts-note").textContent = `${filled.length === 1 ? `Only ${filled[0].label} holds data in this demo (${fmt(filled[0].rows)} rows); the other ${total - 1} partitions exist and stay empty. ` : ""}Row counts are read from each partition. tests/test_performance.py checks with EXPLAIN that a one-month query touches exactly one partition.`;
-  }
-
-  /* ───────── 03 scream ───────── */
-  function renderDetection(det, sourceLabel) {
-    const body = $("detection");
-    body.replaceChildren(...det.sensors.map(row => {
-      const tr = el("tr");
-      [[SENSOR[row.sensor_type] || row.sensor_type], [fmt(row.injected), "r"], [`${fmt(row.spikes_flagged)} / ${fmt(row.spikes)}`, "r"],
-       [`${fmt(row.drops_flagged)} / ${fmt(row.drops)}`, "r"], [pct(row.recall_pct), "r"]].forEach(([v, c]) => tr.appendChild(el("td", c ? {class: c} : {}, v)));
-      return tr;
-    }));
-    const t = det.total;
-    $("det-sub").textContent = `${fmt(t.readings)} readings · precision ${pct(t.precision_pct)} · recall ${pct(t.recall_pct)}`;
-    $("det-prov").replaceChildren(el("span", {class: "badge"}, `source: ${sourceLabel}`));
-    $("det-error").textContent = "";
-  }
-
-  function renderHeroProof(det) {
-    const t = det.total;
-    const ans = $("glance-answer");
-    ans.replaceChildren(
-      el("b", {}, `Spikes: ${pct(t.spikes_flagged / t.spikes * 100, 0)} caught. `),
-      document.createTextNode("Drops to zero: "),
-      el("b", {}, `${pct(t.drops_flagged / t.drops * 100, 1)}`),
-      document.createTextNode(`, only where zero is physically impossible. Every flag is a real fault (precision ${pct(t.precision_pct)}).`));
-    $("proof-scream").textContent = pct(t.spikes_flagged / t.spikes * 100, 0);
-    $("proof-scream-sub").textContent = `${fmt(t.spikes_flagged)} of ${fmt(t.spikes)} spikes · |z| > 3`;
-    $("proof-silence").textContent = pct(t.drops_flagged / t.drops * 100, 1);
-    const where = det.sensors.filter(s => s.drops_flagged > 0).map(s => (SENSOR[s.sensor_type] || s.sensor_type).toLowerCase());
-    $("proof-silence-sub").textContent = `${fmt(t.drops_flagged)} of ${fmt(t.drops)} zeros` + (where.length === 1 ? `, all on ${where[0]}` : "");
-  }
-
-  function renderThresholds(th) {
-    if (!th) { $("thr-text").textContent = "Threshold data unavailable."; return; }
-    const rows = th.thresholds;
-    const zs = rows.map(r => r.z_threshold);
-    const at3 = rows.find(r => r.z_threshold === 3).total;
-    const same = rows.filter(r => r.total.flagged === at3.flagged && r.total.true_positives === at3.true_positives).map(r => r.z_threshold);
-    const plateau = [Math.min(...same), Math.max(...same)];
-    const input = $("thr-input");
-    const draw = z => {
-      const i = zs.indexOf(z);
-      const t = rows[i].total;
-      $("thr-z").textContent = z.toFixed(1);
-      $("thr-precision").textContent = pct(t.precision_pct);
-      $("thr-recall").textContent = pct(t.recall_pct);
-      input.setAttribute("aria-valuetext", `z greater than ${z.toFixed(1)}: precision ${pct(t.precision_pct)}, recall ${pct(t.recall_pct)}`);
-      let msg;
-      if (z >= plateau[0] && z <= plateau[1]) msg = `Anywhere from ${plateau[0].toFixed(1)} to ${plateau[1].toFixed(1)} gives exactly the same result: every spike is far beyond it and every other value far below it. ${fmt(t.flagged)} flags, all of them real faults.`;
-      else if (z < plateau[0]) msg = `Too sensitive: ${fmt(t.flagged)} flags, but only ${fmt(t.true_positives)} are real faults. Ordinary readings start to look like failures.`;
-      else msg = `Too deaf: only ${fmt(t.true_positives)} of ${fmt(t.injected)} faults are flagged. Spikes on sensors with a wide normal spread now fall under the line.`;
-      $("thr-text").textContent = msg;
-      lineChart($("thr-chart"), {
-        height: 300,
-        series: [
-          {name: "Precision", values: rows.map(r => r.total.precision_pct), color: "var(--prec)", width: 2, dots: true},
-          {name: "Recall", values: rows.map(r => r.total.recall_pct), color: "var(--rec)", width: 2, dots: true},
-        ],
-        labels: zs, yMin: 0, yMax: 100, vline: i,
-        yFmt: v => `${fmt(v)}%`,
-        xTick: (k, l, narrow) => Number.isInteger(l) && (!narrow || l % 2 === 1) ? l.toFixed(0) : null,
-        tipTitle: l => `|z| > ${l.toFixed(1)}`,
-        tipValue: v => pct(v),
-        yLabel: "Percent",
-        xLabel: "Threshold: flag a reading when |z| is above",
-      });
-    };
-    input.addEventListener("input", () => draw(Number(input.value)));
-    draw(3);
-  }
-
-  let examples = [], anomalyRows = [], anomalyFilter = "all";
-  function renderAnomalyTable() {
-    const body = $("anomalies");
-    const rows = anomalyRows.filter(r => anomalyFilter === "all" || r.facility_type === anomalyFilter);
-    if (!rows.length) { body.replaceChildren(el("tr", {}, "")); body.firstChild.appendChild(el("td", {colspan: 6, class: "loading"}, "No anomalies for this filter.")); return; }
-    body.replaceChildren(...rows.map(r => {
-      const tr = el("tr", {class: "pick", tabindex: 0, "aria-selected": "false"});
-      [[`${dayFmt(r.recorded_at)} ${hhmm(r.recorded_at)}`], [r.facility_name], [SENSOR[r.sensor_type] || r.sensor_type],
-       [`${fmt(r.value, 2)} ${unitOf(r.unit)}`, "r"], [fmt(r.z_score, 2), "r"]].forEach(([v, c]) => tr.appendChild(el("td", c ? {class: c} : {}, v)));
-      const td = el("td");
-      td.appendChild(el("span", {class: r.pre_labelled ? "tag inj" : "tag"}, r.pre_labelled ? "injected" : "not injected"));
-      tr.appendChild(td);
-      const choose = () => selectAnomaly(r, tr);
-      tr.addEventListener("click", choose);
-      tr.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { choose(); e.preventDefault(); } });
-      return tr;
-    }));
-    selectAnomaly(rows[0], body.firstChild);
-  }
-  function selectAnomaly(r, tr) {
-    document.querySelectorAll("#anomalies tr").forEach(t => t.setAttribute("aria-selected", String(t === tr)));
-    const ex = r;
-    $("spark-title").textContent = `${SENSOR[r.sensor_type] || r.sensor_type} at ${r.facility_name}, ${dayFmt(r.recorded_at)} ${hhmm(r.recorded_at)} UTC`;
-    neighbourhoodChart($("anom-spark"), ex, 270);
-    $("spark-note").textContent = `Normal band from that sensor's January baseline: mean ${fmt(ex.mean_val, 2)} ${unitOf(ex.unit)}, σ ${fmt(ex.stddev_val, 2)} ${unitOf(ex.unit)}. The fault reads ${fmt(ex.value, 2)} ${unitOf(ex.unit)}, z = ${fmt(ex.z_score, 1)}.`;
-  }
-  $("anom-filter").addEventListener("click", e => {
-    const b = e.target.closest("button"); if (!b) return;
-    anomalyFilter = b.dataset.type;
-    document.querySelectorAll("#anom-filter button").forEach(x => x.setAttribute("aria-pressed", String(x === b)));
-    renderAnomalyTable();
-  });
-  function anomaliesFromExamples() {
-    return examples.filter(e => e.kind === "strongest_flag").map(e => ({...e, pre_labelled: e.is_anomaly}))
-      .sort((a, b) => b.z_score - a.z_score);
-  }
-
-  /* ───────── 04 silence ───────── */
-  function renderSilence() {
-    const volt = examples.find(e => e.kind === "injected_zero" && e.sensor_type === "voltage");
-    const pow = examples.find(e => e.kind === "injected_zero" && e.sensor_type === "power_output");
-    const scream = examples.find(e => e.kind === "strongest_flag" && e.sensor_type === "voltage");
-    if (scream) {
-      neighbourhoodChart($("duel-scream"), scream, 210);
-      $("duel-scream-verdict").textContent = `Bus voltage · ${fmt(scream.value, 1)} kV · z = ${fmt(scream.z_score, 1)} · caught`;
-    }
-    if (pow) {
-      neighbourhoodChart($("duel-silence"), pow, 210);
-      $("duel-silence-verdict").textContent = `Power output · 0 MW · z = ${fmt(pow.z_score, 2)} · missed`;
-    }
-    if (volt) {
-      $("sil-a-title").textContent = `Bus voltage at ${volt.facility_name}`;
-      $("sil-a-verdict").textContent = `0 kV · z = ${fmt(volt.z_score, 1)} · caught`;
-      neighbourhoodChart($("sil-a"), volt, 250);
-    }
-    if (pow) {
-      $("sil-b-title").textContent = `Power output at ${pow.facility_name}`;
-      $("sil-b-verdict").textContent = `0 MW · z = ${fmt(pow.z_score, 2)} · missed (needs |z| > 3)`;
-      neighbourhoodChart($("sil-b"), pow, 250);
-    }
-    const zeros = examples.filter(e => e.kind === "injected_zero" && e.sensor_type !== "voltage");
-    if (zeros.length) {
-      const zs = zeros.map(e => e.z_score);
-      $("silence-lede").textContent += ` Measured on this data: a zero sits ${fmt(Math.min(...zs), 2)} to ${fmt(Math.max(...zs), 2)} standard deviations from normal on those sensors, versus ${fmt(volt ? volt.z_score : NaN, 1)} on bus voltage.`;
-    }
-  }
-
-  function renderRules(rules) {
-    if (!rules) return;
-    const NAMES = {
-      flatline_3: ["Stuck sensor", "zero three readings in a row"],
-      neighbour_drop: ["Sudden drop", "below 5% of its neighbours"],
-      exact_zero: ["Exactly zero", "value = 0"],
-    };
-    const order = ["flatline_3", "neighbour_drop", "exact_zero"];
-    const wrap = $("rules");
-    wrap.replaceChildren(...order.map(key => {
-      const t = rules.totals.find(r => r.rule === key);
-      const row = el("div", {class: "bar-row"});
-      const name = el("div", {class: "name"}); name.append(el("b", {}, NAMES[key][0]), el("span", {class: "mono", style: "font-size:12px"}, NAMES[key][1]));
-      const track = el("div", {class: "track"});
-      [["Recall", t.recall_pct, "--rec", `${fmt(t.caught)} of ${fmt(t.injected_zeros)} zeros`], ["Precision", t.precision_pct, "--prec", `${fmt(t.flagged)} alarms`]].forEach(([label, v, c, extra]) => {
-        const b = el("div", {class: "bar"});
-        const i = el("i", {style: `width:0; background:var(${c})`});
-        b.append(i, el("span", {}, `${label} ${v == null ? "–" : pct(v)} · ${extra}`));
-        track.appendChild(b);
-        requestAnimationFrame(() => requestAnimationFrame(() => { i.style.width = `calc(${(v || 0)} * (100% - 240px) / 100)`; }));
-      });
-      row.append(name, track);
-      return row;
-    }));
-    const temp = rules.by_sensor.find(r => r.rule === "neighbour_drop" && r.sensor_type === "temperature");
-    const nd = rules.totals.find(r => r.rule === "neighbour_drop");
-    const callout = $("rules-callout");
-    callout.replaceChildren();
-    callout.append(
-      el("b", {}, "What this means. "),
-      document.createTextNode(`A stuck-sensor rule hears almost nothing, because these faults are single readings, not runs. A sudden-drop rule hears ${pct(nd.recall_pct)} of them but raises ${fmt(nd.flagged)} alarms for ${fmt(nd.caught)} real faults${temp ? `, and on temperature, which can be negative, it fails outright (precision ${pct(temp.precision_pct)})` : ""}. "Exactly zero" looks perfect only because clean synthetic readings never land on exactly 0.0. Real telemetry has genuine zeros (a solar plant at night, a stopped turbine), so that rule would not survive contact with reality. Hearing silence needs information this data does not contain: a heartbeat signal, a second sensor, or physics.`)
-    );
-  }
-
-  /* ───────── 05 honesty ───────── */
-  function renderValidation(v) {
-    if (!v) { $("val-error").textContent = "Validation data unavailable."; return; }
-    const rolling = (vals, k) => vals.map((_, i) => {
-      const h = Math.floor(k / 2), s = vals.slice(Math.max(0, i - h), Math.min(vals.length, i + h + 1));
-      return s.reduce((a, b) => a + b, 0) / s.length;
-    });
-    const labels = v.days.map(d => d.day);
-    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-    const draw = k => {
-      document.querySelectorAll("#val-mode button").forEach(b => b.setAttribute("aria-pressed", String(+b.dataset.smooth === k)));
-      const real = v.days.map(d => d.real_z), syn = v.days.map(d => d.synthetic_z);
-      lineChart($("val-chart"), {
-        height: 330, forceZero: false,
-        series: [
-          {name: "Real", values: k > 1 ? rolling(real, k) : real, color: "var(--real)", width: k > 1 ? 2 : 1.2},
-          {name: "Synthetic", values: k > 1 ? rolling(syn, k) : syn, color: "var(--syn)", width: k > 1 ? 2 : 1.2},
-        ],
-        labels,
-        xTick: (i, l, narrow) => l.slice(8) === "01" && (!narrow || (+l.slice(5, 7)) % 2 === 1) ? months[+l.slice(5, 7) - 1] : null,
-        tipTitle: l => dayFmt(`${l}T00:00:00Z`),
-        tipValue: x => `z ${fmt(x, 2)}`,
-        yLabel: "Daily wind output (z-score, 0 = yearly mean)",
-        xLabel: `Day of ${v.year}`,
-      });
-      $("val-sub").textContent = k > 1
-        ? "Daily wind output standardised as z-scores, then a centred 7-day mean for readability. The correlation is computed on the unsmoothed daily values."
-        : "Daily wind output, both series standardised as z-scores. The correlation is computed on these values.";
-    };
-    $("val-mode").addEventListener("click", e => { const b = e.target.closest("button"); if (b) draw(+b.dataset.smooth); });
-    draw(7);
-    $("val-stats").textContent = `Pearson r = ${v.pearson_r.toFixed(3).replace("-", "−")} · p = ${v.p_value.toFixed(2)} · ${v.n_days} days`;
-    $("val-note").textContent = `No day-to-day relationship: the real and synthetic series move independently. The synthetic series comes from a separate full-year run of the generator, dated ${v.year} to line up day by day with Fingrid ${v.year}, and both are compared by sql/analysis/08. That is expected and fine: the generator exists to exercise the pipeline, not to forecast the wind.`;
-  }
-
-  function renderRanking(rk) {
-    if (!rk) return;
-    const f = rk.facilities;
-    const vals = f.map(x => x.avg_efficiency_pct);
-    const lo = Math.min(...vals), hi = Math.max(...vals);
-    const svg = $("rank-chart");
-    const draw = () => {
-      const keep = Array.from(svg.childNodes).filter(n => n.nodeName === "desc");
-      svg.replaceChildren(...keep);
-      const W = Math.max(280, Math.round(svg.getBoundingClientRect().width || 800)), H = 132;
-      svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
-      const m = {l: 14, r: 14};
-      const x = v => m.l + v / 100 * (W - m.l - m.r);
-      const g = svgEl("g"); svg.appendChild(g);
-      g.appendChild(svgEl("line", {x1: x(0), x2: x(100), y1: 70, y2: 70, style: "stroke:var(--axis)"}));
-      [0, 25, 50, 75, 100].forEach(t => {
-        g.appendChild(svgEl("line", {x1: x(t), x2: x(t), y1: 66, y2: 74, style: "stroke:var(--axis)"}));
-        const tx = svgEl("text", {x: x(t), y: 92, "text-anchor": t === 0 ? "start" : t === 100 ? "end" : "middle"}); tx.textContent = `${t}%`; g.appendChild(tx);
-      });
-      const TY = {wind: 48, solar: 56, substation: 64};
-      f.forEach(fc => {
-        const c = svgEl("circle", {cx: x(fc.avg_efficiency_pct), cy: TY[fc.facility_type] || 56, r: 5, style: "fill:var(--syn); stroke:var(--surface)", "stroke-width": 1.5});
-        const t = svgEl("title"); t.textContent = `#${fc.overall_rank} ${fc.facility_name}: ${fc.avg_efficiency_pct}%`; c.appendChild(t);
-        g.appendChild(c);
-      });
-      const at = svgEl("text", {x: (x(0) + x(100)) / 2, y: 124, "text-anchor": "middle", class: "axis-title"});
-      at.textContent = "Capacity factor (%): mean output ÷ nameplate capacity";
-      g.appendChild(at);
-      const lbl = svgEl("text", {x: x(50), y: 30, "text-anchor": "middle", class: "lbl"});
-      lbl.textContent = `all 20 between ${fmt(lo, 1)}% and ${fmt(hi, 1)}%`;
-      g.appendChild(lbl);
-    };
-    draw();
-    window.addEventListener("resize", () => { clearTimeout(draw.t); draw.t = setTimeout(draw, 150); });
-    $("rank-sub").textContent = `Capacity factor: mean power output ÷ nameplate capacity, for all ${f.length} facilities.`;
-    const callout = $("rank-callout");
-    callout.replaceChildren(el("b", {}, "Nothing to rank. "),
-      document.createTextNode(`The best facility (${f[0].facility_name}, ${f[0].avg_efficiency_pct}%) and the worst (${f[f.length - 1].facility_name}, ${f[f.length - 1].avg_efficiency_pct}%) differ by ${fmt(hi - lo, 1)} percentage points. The generator draws power uniformly between zero and capacity, so every site should average about 50%, and the differences are noise. A leaderboard here would invent a story the data does not tell.`));
+    $("parts-note").textContent = `${fmt(filled.length)} of ${total} partitions hold data (${fmt(eng.partitioning.total_rows)} rows); empty ones are created ahead for the coming months, and a default partition catches anything outside them (it stays empty). tests/test_performance.py checks with EXPLAIN that a one-month query touches exactly one partition.`;
   }
 
   /* ───────── 06 craft ───────── */
   function renderEngineering(eng) {
     if (!eng) return;
     const b = eng.benchmark;
-    $("proof-speed").textContent = `${fmt(b.speedup_composite_vs_single, 1)}×`;
-    $("bench-title").textContent = `One index, ${fmt(Math.round(b.speedup_composite_vs_single))} times faster`;
-    const max = b.single_column_index_ms;
+    $("bench-title").textContent = `One index, ${fmt(Math.round(b.speedup_index_vs_none))} times faster`;
+    const max = b.no_index_ms;
     const rows = [
-      ["Single-column index", "filters 103k rows in memory", b.single_column_index_ms, "--muted"],
-      ["Composite index", "(sensor_id, recorded_at)", b.composite_index_ms, "--real"],
-      ["Partitioned + composite", "one partition scanned", b.partitioned_with_composite_index_ms, "--syn"],
+      ["No index", `reads and discards ${fmt(b.rows_discarded_without_index)} rows`, b.no_index_ms, "--muted"],
+      ["Primary-key index", "(dataset_id, start_time)", b.indexed_ms, "--real"],
+      ["Monthly partitions + index", `reads only ${b.partitions_read.join(", ")}`, b.partitioned_ms, "--fc-da"],
     ];
     $("bench").replaceChildren(...rows.map(([name, meta, ms, c]) => {
       const row = el("div", {class: "bar-row"});
       const n = el("div", {class: "name"}); n.append(el("b", {}, name), el("span", {class: "mono", style: "font-size:12px"}, meta));
       const bar = el("div", {class: "bar"});
       const i = el("i", {style: `width:0; background:var(${c})`});
-      bar.append(i, el("span", {}, `${fmt(ms, 3)} ms`));
+      bar.append(i, el("span", {}, `${fmt(ms, 2)} ms`));
       requestAnimationFrame(() => requestAnimationFrame(() => { i.style.width = `calc(${ms / max} * (100% - 90px))`; }));
       row.append(n, bar);
       return row;
     }));
-    $("bench-sub").textContent = "Execution time of one query: one sensor, one week, full-year dataset (6.3 M rows).";
-    $("bench-note").textContent = `${b.note} Source: benchmarks/index_benchmark.md, median of 7 local Docker runs; absolute times vary by machine.`;
+    $("bench-sub").textContent = `Execution time of one query: ${b.query}.`;
+    $("bench-note").textContent = "The speed-up comes from the index. Partitioning is about as fast on a single lookup like this; it pays off as the table grows (each month's index stays small, old months can be dropped whole). Source: benchmarks/index_benchmark.md, written by scripts/benchmark_warehouse.py; absolute times vary by machine.";
 
     const t = eng.tests;
     const LAYERS = {smoke: "Smoke", api: "API contract", integration: "Integration", regression: "Regression (golden data)",
@@ -1864,16 +1273,17 @@ make test</pre>
       return row;
     }));
     $("tests-title").textContent = `${t.total} automated tests`;
-    $("proof-tests").textContent = fmt(t.total);
-    $("proof-tests-sub").textContent = `${Object.keys(t.by_layer).length} test layers, plus a load test and a CI version matrix`;
     $("tests-note").textContent = `Plus a Locust load test and a CI matrix (${t.ci_matrix}). Counted with pytest on ${dayFmt(eng.generated_at)}.`;
+    $("glance-tests").textContent = `${t.total} automated tests in ${Object.keys(t.by_layer).length} layers, bandit and pip-audit, run in CI on PostgreSQL 14 to 16.`;
+    $("proof-rows").textContent = fmt(eng.partitioning.total_rows);
+    $("proof-rows-sub").textContent = `21 Fingrid datasets in ${fmt(eng.partitioning.partitions.filter(p => p.rows > 0).length)} monthly partitions`;
     $("foot-gen").textContent = `Data files generated ${dayFmt(eng.generated_at)}.`;
   }
 
   function renderSql(src) {
     if (!src) return;
-    const map = {"sql/schema/15_grid_events.sql": "sql-15", "sql/schema/14_co2_forecast.sql": "sql-14", "sql/analysis/13_forecast_scorecard.sql": "sql-13", "sql/analysis/17_forecast_error_vs_balancing.sql": "sql-17",
-                 "sql/analysis/11_detection_quality.sql": "sql-11", "sql/analysis/12_zero_dropout_rules.sql": "sql-12", "sql/analysis/08_real_vs_synthetic_comparison.sql": "sql-08"};
+    const map = {"sql/schema/15_grid_events.sql": "sql-15", "sql/schema/14_co2_forecast.sql": "sql-14",
+                 "sql/analysis/13_forecast_scorecard.sql": "sql-13", "sql/analysis/17_forecast_error_vs_balancing.sql": "sql-17"};
     src.files.forEach(f => {
       const d = $(map[f.path]); if (!d) return;
       d.querySelector("pre").textContent = f.sql;
@@ -1891,68 +1301,32 @@ make test</pre>
     setTimeout(() => { btn.textContent = "Copy"; }, 1800);
   });
 
-  /* ───────── load everything ───────── */
+  /* ───────── load everything (static files only: the page never waits for a server) ───────── */
   (async function main() {
-    const [snapshot, gYear, gRecent, validation, thresholds, ranking, ex, rules, sql, eng] = await Promise.all([
-      "data/api_snapshot.json", "data/fingrid_year_daily.json", "data/fingrid_recent_daily.json", "data/wind_validation.json",
-      "data/detection_thresholds.json", "data/facility_ranking.json", "data/anomaly_examples.json", "data/zero_dropout_rules.json",
-      "data/sql_sources.json", "data/engineering.json",
-    ].map(u => safe(getJSON(u))));
+    const files = ["fingrid_recent_daily", "forecast_scorecard", "co2_forecast", "grid_events", "sql_sources", "engineering"];
+    const [recent, scorecard, co2, events, sql, eng] = await Promise.all(files.map(f => safe(getJSON(`data/${f}.json`))));
     safe(getJSON("data/fingrid_latest.json", {cache: "no-store"})).then(renderLatest);
-    safe(getJSON("data/forecast_scorecard.json")).then(renderForecasts);
-    safe(getJSON("data/co2_forecast.json")).then(renderCo2);
-    safe(getJSON("data/grid_events.json")).then(renderEvents);
 
-    examples = ex ? ex.examples : [];
-    if (gYear) { gridData.year = gYear; $("period-year").textContent = String(gYear.year); }
-    if (gRecent) gridData.recent = gRecent;
-    if (gridData.recent && gridData.year) $("period-tabs").hidden = false;
-    if (gridData.recent || gridData.year) renderGrid(gridData.recent ? "recent" : "year");
-    else $("grid-error").textContent = "Grid data files could not be loaded.";
-
+    if (recent) { gridData.recent = recent; renderGrid("recent"); }
+    else $("grid-error").textContent = "Grid data could not be loaded.";
+    renderForecasts(scorecard);
+    renderCo2(co2);
+    renderEvents(events);
     renderEngineering(eng);
     renderPartitions(eng);
     renderSql(sql);
-    renderThresholds(thresholds);
-    renderSilence();
-    renderRules(rules);
-    renderValidation(validation);
-    renderRanking(ranking);
 
-    if (snapshot) {
-      renderOverview(snapshot.overview, snapshot.trend, `snapshot ${dayFmt(snapshot.generated_at)}`);
-      renderDetection(snapshot.detection, `snapshot ${dayFmt(snapshot.generated_at)}`);
-      renderHeroProof(snapshot.detection);
-      setStatus("cached", `Synthetic warehouse: showing the bundled snapshot from ${dayFmt(snapshot.generated_at)} while the live API wakes up…`);
-    } else {
-      setStatus("loading", "Waiting for the live API…");
+    // Hero tiles: one headline number from each chapter.
+    const wind = scorecard && scorecard.summary.find(r => r.variable === "wind" && r.product === "day_ahead");
+    if (wind) {
+      $("proof-wind").textContent = `${fmt(Math.round(wind.mae_mw))} MW`;
+      $("proof-wind-sub").textContent = `${fmt(wind.mae_pct_of_capacity, 1)}% of the wind fleet; the intraday update halves it`;
     }
-    if (examples.length) { anomalyRows = anomaliesFromExamples(); renderAnomalyTable(); }
-    else $("anom-error").textContent = "Anomaly examples could not be loaded.";
-
-    // Live API: the free Render service may need up to a minute to wake.
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 90000);
-    const started = performance.now();
-    try {
-      const [ov, trend] = await Promise.all([
-        getJSON(`${API_BASE_URL}/api/overview`, {signal: controller.signal}),
-        getJSON(`${API_BASE_URL}/api/output-trend?hours=24`, {signal: controller.signal}),
-      ]);
-      renderOverview(ov, trend, "live API");
-      const window_ = ov.latest_reading_at ? new Date(ov.latest_reading_at).toLocaleDateString("en-GB", {month: "long", year: "numeric", timeZone: "UTC"}) : "";
-      setStatus("live", `Synthetic warehouse live: FastAPI answered in ${fmt((performance.now() - started) / 1000, 1)} s · readings cover ${window_}`);
-      safe(getJSON(`${API_BASE_URL}/api/detection-quality`)).then(det => { if (det) { renderDetection(det, "live API"); renderHeroProof(det); } });
-    } catch (err) {
-      if (snapshot) setStatus("down", `Synthetic warehouse: API unavailable · showing the cached snapshot from ${dayFmt(snapshot.generated_at)}`);
-      else {
-        setStatus("down", "API unavailable");
-        $("trend-window").textContent = "";
-        $("trend-error").textContent = err.name === "AbortError" ? "The API did not respond in time." : err.message;
-      }
-    } finally {
-      clearTimeout(timer);
+    if (co2) {
+      $("proof-co2").textContent = `${fmt(co2.backtest.saving_pct, 1)}%`;
+      $("proof-co2-sub").textContent = `vs an average hour, over ${fmt(co2.backtest.days)} replayed days (a perfect pick: ${fmt(co2.backtest.achievable_pct, 1)}%)`;
     }
+    if (events) $("proof-events").textContent = fmt(Object.values(events.counts).reduce((a, c) => a + c.year, 0));
   })();
   </script>
 </body>

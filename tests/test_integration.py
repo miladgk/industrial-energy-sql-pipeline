@@ -6,7 +6,7 @@ Unit tests check one piece alone. Integration tests check that the pieces work
 against the real database (no mocks), which is exactly where integration bugs
 live: wrong column names, broken joins, schema drift, SQL that no longer runs.
 
-(The ingest + idempotency flow is covered by test_incremental.py.)
+(The sync, idempotency and snapshot flow is covered by test_fingrid_warehouse.py.)
 
 Run only these:  pytest -m integration
 """
@@ -53,57 +53,68 @@ def test_analysis_sql_file_executes(path):
         conn.close()
 
 
-# ── Referential integrity & partitioning ───────────────────────
+# ── Warehouse structure ────────────────────────────────────────
 
-def test_no_orphan_readings(db):
-    assert _scalar(db, """
-        SELECT COUNT(*) FROM readings r
-        LEFT JOIN sensors s ON s.sensor_id = r.sensor_id
-        WHERE s.sensor_id IS NULL""") == 0
-
-
-def test_no_orphan_sensors(db):
-    assert _scalar(db, """
-        SELECT COUNT(*) FROM sensors s
-        LEFT JOIN facilities f ON f.facility_id = s.facility_id
-        WHERE f.facility_id IS NULL""") == 0
-
-
-def test_readings_table_is_partitioned_and_complete(db):
-    """Rows must be routed into partitions, and no row may live outside one."""
-    assert _scalar(db, "SELECT relkind FROM pg_class WHERE relname = 'readings'") == "p"
-    total = _scalar(db, "SELECT COUNT(*) FROM readings")
-    in_partitions = _scalar(db, """
-        SELECT COALESCE(SUM(n_live), 0) FROM (
-            SELECT (xpath('/row/c/text()',
-                    query_to_xml(format('SELECT COUNT(*) AS c FROM %I', c.relname),
-                                 false, true, '')))[1]::text::bigint AS n_live
+def test_warehouse_is_partitioned_by_month(db):
+    """Monthly UTC partitions, back to back, no overlap; the default partition stays empty."""
+    with db.cursor() as cur:
+        cur.execute("SELECT relkind FROM pg_class WHERE relname = 'fingrid_observation'")
+        assert cur.fetchone()[0] == "p"
+        cur.execute("""
+            SELECT c.relname, pg_get_expr(c.relpartbound, c.oid)
             FROM pg_inherits i JOIN pg_class c ON c.oid = i.inhrelid
-            WHERE i.inhparent = 'readings'::regclass
-        ) t""")
-    assert in_partitions == total
+            WHERE i.inhparent = 'fingrid_observation'::regclass ORDER BY c.relname""")
+        parts = cur.fetchall()
+        cur.execute("SELECT COUNT(*) FROM fingrid_observation_default")
+        in_default = cur.fetchone()[0]
+    db.rollback()
+    names = [p[0] for p in parts]
+    assert "fingrid_observation_default" in names
+    monthly = sorted(n for n in names if n != "fingrid_observation_default")
+    assert len(monthly) >= 12
+    stamps = [int(n[-7:-3]) * 12 + int(n[-2:]) for n in monthly]       # ..._YYYY_MM
+    assert stamps == list(range(stamps[0], stamps[0] + len(stamps))), "a month is missing"
+    assert in_default == 0
 
 
-# ── API <-> database consistency ───────────────────────────────
-
-def test_overview_matches_database(client, db):
-    body = client.get("/api/overview").json()
-    assert body["reading_count"] == _scalar(db, "SELECT COUNT(*) FROM readings")
-    assert body["facility_count"] == _scalar(db, "SELECT COUNT(*) FROM facilities")
-    assert body["sensor_count"] == _scalar(db, "SELECT COUNT(*) FROM sensors")
-    assert body["anomaly_count"] == _scalar(
-        db, "SELECT COUNT(*) FROM readings WHERE is_anomaly")
-
-
-def test_detection_quality_matches_database(client, db):
-    total = client.get("/api/detection-quality").json()["total"]
-    assert total["readings"] == _scalar(db, "SELECT COUNT(*) FROM readings")
-    assert total["injected"] == _scalar(
-        db, "SELECT COUNT(*) FROM readings WHERE is_anomaly")
+def test_no_runaway_empty_partitions(db):
+    """The schema creates ~15 months back and the sync/restore only the months they write;
+    a long run of empty months before the data means something created partitions by span."""
+    with db.cursor() as cur:
+        cur.execute("""
+            SELECT c.relname, EXISTS (SELECT 1 FROM fingrid_observation o WHERE o.tableoid = c.oid) AS has_rows
+            FROM pg_inherits i JOIN pg_class c ON c.oid = i.inhrelid
+            WHERE i.inhparent = 'fingrid_observation'::regclass AND c.relname <> 'fingrid_observation_default'
+            ORDER BY c.relname""")
+        parts = cur.fetchall()
+    db.rollback()
+    leading_empty = next((i for i, (_, has_rows) in enumerate(parts) if has_rows), len(parts))
+    assert leading_empty <= 16, f"{leading_empty} empty partitions before the first month with data"
 
 
-def test_ranking_covers_every_facility_with_power_sensor(client, db):
-    expected = _scalar(db, """
-        SELECT COUNT(DISTINCT s.facility_id) FROM sensors s
-        WHERE s.sensor_type = 'power_output'""")
-    assert client.get("/api/facilities/ranking").json()["count"] == expected
+def test_every_observation_has_an_ended_or_day_ahead_slot(db):
+    """Only the day-ahead forecasts (STORE_FUTURE) may hold slots that have not ended yet."""
+    from fingrid_catalog import STORE_FUTURE
+
+    with db.cursor() as cur:
+        cur.execute("SELECT DISTINCT dataset_id FROM fingrid_observation WHERE end_time > now() + interval '5 minutes'")
+        future = {r[0] for r in cur.fetchall()}
+    db.rollback()
+    assert future <= STORE_FUTURE
+
+
+def test_catalogue_in_code_matches_the_database(db):
+    from fingrid_catalog import DATASETS
+
+    with db.cursor() as cur:
+        cur.execute("SELECT dataset_id, key FROM fingrid_dataset")
+        stored = dict(cur.fetchall())
+    db.rollback()
+    assert {d[0]: d[1] for d in DATASETS}.items() <= stored.items()
+
+
+def test_quality_checks_pass(db):
+    from run_quality_checks import load_checks, run_quality_checks
+
+    assert len(load_checks()) >= 4
+    assert run_quality_checks(db)

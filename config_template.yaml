@@ -9,8 +9,3 @@ database:
   password: ""
 
 fingrid_api_key: ""
-
-metabase:
-  url: "http://localhost:3000"
-  admin_email: ""        # e.g. admin@yourdomain.com
-  admin_password: ""     # choose a strong password during first-time setup
