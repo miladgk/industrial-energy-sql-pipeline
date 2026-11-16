@@ -1541,6 +1541,8 @@ make test</pre>
     function drawLine(svg, cfg) {
       const { series, labels, height = 220, yFmt = null, xTick = () => null, tipTitle = l => l, tipValue = v => fmt(v, 1),
         points = [], forceZero = true, yMin, yMax, directLabels = false } = cfg;
+      // A redraw (resize, theme, opening the drawer) replaces the chart: keep the reader's place and focus.
+      const hadFocus = svg.contains(document.activeElement);
       const keep = Array.from(svg.childNodes).filter(n => n.nodeName === "desc" || n.nodeName === "title");
       svg.replaceChildren(...keep);
       const rect = svg.getBoundingClientRect();
@@ -1618,9 +1620,11 @@ make test</pre>
       });
       g.append(hit, tip);
 
-      let cur = n - 1;
+      let cur = Math.max(0, Math.min(n - 1, svg._cur ?? n - 1));
+      const describe = () => [tipTitle(labels[cur], cur), ...series.map(s => `${s.short || s.name}: ${Number.isFinite(s.values[cur]) ? tipValue(s.values[cur], s) : "–"}`)];
+      const announce = lines => { hit.setAttribute("aria-valuenow", cur); hit.setAttribute("aria-valuetext", lines.join(", ")); };
       const show = i => {
-        cur = Math.max(0, Math.min(n - 1, i));
+        cur = svg._cur = Math.max(0, Math.min(n - 1, i));
         const gx = x(cur);
         guide.setAttribute("x1", gx); guide.setAttribute("x2", gx);
         series.forEach((s, k) => {
@@ -1628,9 +1632,8 @@ make test</pre>
           dots[k].setAttribute("visibility", Number.isFinite(v) ? "visible" : "hidden");
           if (Number.isFinite(v)) { dots[k].setAttribute("cx", gx); dots[k].setAttribute("cy", y(v)); }
         });
-        const lines = [tipTitle(labels[cur], cur), ...series.map(s => `${s.short || s.name}: ${Number.isFinite(s.values[cur]) ? tipValue(s.values[cur], s) : "–"}`)];
-        hit.setAttribute("aria-valuenow", cur);
-        hit.setAttribute("aria-valuetext", lines.join(", "));
+        const lines = describe();
+        announce(lines);
         text.replaceChildren(...lines.map((line, k) => { const t = svgEl("tspan", { dy: k ? 15 : 0, class: k ? "" : "t0" }); t.textContent = line; return t; }));
         tip.setAttribute("visibility", "visible");
         text.setAttribute("y", m.t + 18);
@@ -1659,6 +1662,8 @@ make test</pre>
         else return;
         e.preventDefault();
       });
+      announce(describe());
+      if (hadFocus) hit.focus({ preventScroll: true });
     }
 
     let resizeTimer;

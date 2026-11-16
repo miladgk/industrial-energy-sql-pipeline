@@ -184,10 +184,14 @@ def test_chart_values_can_be_read_with_the_keyboard(open_dashboard):
     hit = page.locator("#fc-hour-chart .tip-hit")
     hit.focus()
     page.keyboard.press("Home")
+    expect(hit).to_have_attribute("aria-valuenow", "0")
     first = hit.get_attribute("aria-valuetext")
     page.keyboard.press("ArrowRight")
-    assert hit.get_attribute("aria-valuenow") == "1"
+    expect(hit).to_have_attribute("aria-valuenow", "1")
     assert hit.get_attribute("aria-valuetext") != first and "MW" in first
+    page.set_viewport_size({"width": 1000, "height": 800})     # a redraw keeps the place and the focus
+    expect(hit).to_be_focused()
+    expect(hit).to_have_attribute("aria-valuenow", "1")
 
 
 def test_inspector_drawer_opens_switches_and_closes_with_escape(open_dashboard):
