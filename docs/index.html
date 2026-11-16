@@ -245,31 +245,6 @@
       }
     }
 
-    /* Persona Lens Switcher */
-    .lens-switch {
-      display: inline-flex;
-      background: var(--surface-2);
-      padding: 3px;
-      border-radius: 10px;
-      border: 1px solid var(--line);
-    }
-
-    .lens-btn {
-      font: 500 12px Inter, sans-serif;
-      color: var(--ink-2);
-      background: transparent;
-      border: 0;
-      padding: 5px 11px;
-      border-radius: 7px;
-      cursor: pointer;
-      transition: all .15s;
-    }
-
-    .lens-btn[aria-pressed="true"] {
-      background: var(--surface);
-      color: var(--ink);
-      box-shadow: 0 1px 3px rgba(0, 0, 0, .25);
-    }
 
     .actions {
       display: flex;
@@ -311,6 +286,16 @@
     @media (min-width: 1120px) and (min-height: 760px) {
       body {
         overflow: hidden;
+      }
+
+      .tile-hero .chart-stage {
+        justify-content: stretch;
+      }
+
+      .tile-hero .chart-stage svg.chart {   /* beats the 310px cap set further down */
+        flex: 1;
+        max-height: none;
+        min-height: 0;
       }
 
       .cockpit {
@@ -599,25 +584,10 @@
       color: var(--muted);
     }
 
-    /* Lens Visibility Modifiers */
-    body[data-lens="executive"] .data-only {
-      display: none !important;
-    }
-
-    body[data-lens="data"] .exec-only {
-      display: none !important;
-    }
-
     .live-ticker[hidden] {
       display: none;
     }
 
-    /* Phones: the lens switch does not fit next to the brand and the icons */
-    @media (max-width: 640px) {
-      .lens-switch {
-        display: none;
-      }
-    }
 
     .load-error:empty {
       display: none;
@@ -648,7 +618,7 @@
       right: 0;
       bottom: 0;
       z-index: 100;
-      width: min(760px, 100vw);
+      width: min(860px, 100vw);
       background: var(--surface);
       border-left: 1px solid var(--line-strong);
       box-shadow: -24px 0 60px rgba(0, 0, 0, .65);
@@ -685,7 +655,7 @@
       gap: 6px;
       padding: 10px 24px;
       border-bottom: 1px solid var(--line);
-      overflow-x: auto;
+      flex-wrap: wrap;
       background: var(--surface);
     }
 
@@ -744,6 +714,30 @@
       background: var(--surface);
       color: var(--ink);
       box-shadow: 0 1px 2px rgba(0, 0, 0, .2);
+    }
+
+    .kpis-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin: 12px 0 16px;
+    }
+
+    @media (max-width: 640px) {
+      .kpis-3 {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .tile-legend {
+      margin-top: 6px;
+      font-size: 11px;
+    }
+
+    /* Thin, quiet scrollbars where scrolling remains (drawer, wide tables, code) */
+    .drawer-body, .table-wrap, pre {
+      scrollbar-width: thin;
+      scrollbar-color: var(--line-strong) transparent;
     }
 
     .kpis-4 {
@@ -907,8 +901,16 @@
 
     .plist {
       display: grid;
-      gap: 3px;
+      gap: 3px 14px;
       margin: 10px 0;
+    }
+
+    @media (min-width: 760px) {
+      .plist {
+        grid-template-columns: 1fr 1fr;
+        grid-auto-flow: column;
+        grid-template-rows: repeat(10, auto);
+      }
     }
 
     .prow {
@@ -1008,7 +1010,7 @@
   </style>
 </head>
 
-<body data-lens="all">
+<body>
 
   <!-- ───────────── TOP VITAL-SIGN HEADER ───────────── -->
   <header class="topbar">
@@ -1026,11 +1028,6 @@
         <span id="tick-age"></span>
       </div>
 
-      <div class="lens-switch" role="group" aria-label="Perspective Lens">
-        <button type="button" class="lens-btn" data-lens="all" aria-pressed="true">Observatory</button>
-        <button type="button" class="lens-btn" data-lens="executive" aria-pressed="false">Executive</button>
-        <button type="button" class="lens-btn" data-lens="data" aria-pressed="false">Data & SQL</button>
-      </div>
 
       <div class="actions">
         <a class="icon-btn" href="https://github.com/miladgk/industrial-energy-sql-pipeline" target="_blank"
@@ -1080,10 +1077,6 @@
               <div class="eyebrow"><i></i>01 · Pulse & Forecast Integrity</div>
               <h2>Wind, Demand & <span class="serif">Forecast Error.</span></h2>
             </div>
-            <div class="seg" id="hero-chart-switch" role="group" aria-label="Primary chart view">
-              <button type="button" data-view="grid" aria-pressed="true">Grid 12m</button>
-              <button type="button" data-view="forecast" aria-pressed="false">Forecast Miss</button>
-            </div>
           </div>
           <p class="tile-copy" id="hero-tile-copy">Daily average wind production vs. national consumption over the last
             12 months, updated daily via GitHub Actions.</p>
@@ -1099,7 +1092,7 @@
           </svg>
         </div>
 
-        <button type="button" class="inspect-btn data-only" data-open-drawer="pane-forecasts">
+        <button type="button" class="inspect-btn" data-open-drawer="pane-forecasts">
           <span>Inspect Forecast Scorecard, Balancing & SQL</span>
           <span class="tag">2 SQL files · Tables ↗</span>
         </button>
@@ -1126,7 +1119,7 @@
           </svg>
         </div>
 
-        <button type="button" class="inspect-btn data-only" data-open-drawer="pane-co2">
+        <button type="button" class="inspect-btn" data-open-drawer="pane-co2">
           <span>Inspect Yesterday's Replay & Regression SQL</span>
           <span class="tag">14_co2_forecast.sql ↗</span>
         </button>
@@ -1153,7 +1146,7 @@
           </svg>
         </div>
 
-        <button type="button" class="inspect-btn data-only" data-open-drawer="pane-events">
+        <button type="button" class="inspect-btn" data-open-drawer="pane-events">
           <span>Open Event Log & Detector SQL</span>
           <span class="tag">15_grid_events.sql ↗</span>
         </button>
@@ -1178,9 +1171,11 @@
           <svg id="bento-cold-chart" class="chart" role="img" aria-label="Consumption against temperature">
             <desc>Consumption curve vs outdoor temperature.</desc>
           </svg>
+          <div class="legend tile-legend"><span><i style="background:var(--fc-da)"></i>Weekdays</span><span><i
+                style="background:var(--fc-id)"></i>Weekends</span><span><i style="background:var(--ink-2)"></i>Model</span></div>
         </div>
 
-        <button type="button" class="inspect-btn data-only" data-open-drawer="pane-cold">
+        <button type="button" class="inspect-btn" data-open-drawer="pane-cold">
           <span>Inspect 4-City Thermal Model</span>
           <span class="tag">23_temperature_sensitivity.sql ↗</span>
         </button>
@@ -1203,7 +1198,7 @@
           </div>
         </div>
 
-        <button type="button" class="inspect-btn data-only" data-open-drawer="pane-craft">
+        <button type="button" class="inspect-btn" data-open-drawer="pane-craft">
           <span>Launch Partition Pruning & CI Inspector</span>
           <span class="tag">Architecture · CLI ↗</span>
         </button>
@@ -1221,15 +1216,11 @@
       </div>
 
       <nav class="drawer-tabs" role="tablist" aria-label="Inspector Sections">
-        <button type="button" class="dtab" role="tab" data-pane="pane-forecasts" aria-selected="true">01 · Forecasts &
-          Balancing</button>
-        <button type="button" class="dtab" role="tab" data-pane="pane-co2" aria-selected="false">02 · CO₂ Model</button>
-        <button type="button" class="dtab" role="tab" data-pane="pane-events" aria-selected="false">03 · Grid
-          Events</button>
-        <button type="button" class="dtab" role="tab" data-pane="pane-cold" aria-selected="false">04 · Cold
-          Sensitivity</button>
-        <button type="button" class="dtab" role="tab" data-pane="pane-craft" aria-selected="false">05 · Craft &
-          Partitions</button>
+        <button type="button" class="dtab" role="tab" data-pane="pane-forecasts" aria-selected="true">Forecasts</button>
+        <button type="button" class="dtab" role="tab" data-pane="pane-co2" aria-selected="false">CO₂ model</button>
+        <button type="button" class="dtab" role="tab" data-pane="pane-events" aria-selected="false">Grid events</button>
+        <button type="button" class="dtab" role="tab" data-pane="pane-cold" aria-selected="false">Cold</button>
+        <button type="button" class="dtab" role="tab" data-pane="pane-craft" aria-selected="false">Engineering</button>
       </nav>
 
       <div class="drawer-body">
@@ -1307,9 +1298,7 @@
         <!-- PANE 2: CO2 -->
         <div class="drawer-pane" id="pane-co2">
           <h4 id="co2-title" style="margin-top:0">When is electricity cleanest tomorrow?</h4>
-          <div class="kpis-4" id="co2-kpis"></div>
-          <div style="height:230px; margin:8px 0;"><svg id="co2-chart" class="chart"
-              aria-label="Forecast CO2 intensity by hour"></svg></div>
+          <div class="kpis-3" id="co2-kpis"></div>
           <p class="takeaway" id="co2-takeaway"></p>
 
           <h4 id="co2-past-title">Yesterday: forecast against reality</h4>
@@ -1330,10 +1319,10 @@
 
         <!-- PANE 3: EVENTS -->
         <div class="drawer-pane" id="pane-events">
-          <h4 style="margin-top:0">Unusual Grid Events (Last 12 Months)</h4>
-          <div class="kpis-4" id="ev-kpis"></div>
+          <h4 style="margin-top:0">Other unusual events (last 12 months)</h4>
+          <div class="kpis-3" id="ev-kpis"></div>
 
-          <h4>Latest events (excluding frequency excursions counted above)</h4>
+          <h4>Latest events (frequency excursions are counted on the tile)</h4>
           <div class="table-wrap">
             <table>
               <thead>
@@ -1370,9 +1359,6 @@
             </table>
           </div>
 
-          <h4>Frequency excursions by minute of the hour</h4>
-          <div style="height:210px; margin:8px 0;"><svg id="ev-minute-chart" class="chart"
-              aria-label="Frequency excursions by minute"></svg></div>
           <p class="takeaway" id="ev-takeaway"></p>
           <p class="note" id="ev-note"></p>
           <p id="ev-error" class="load-error" role="alert" style="color:var(--fault)"></p>
@@ -1385,12 +1371,7 @@
         <!-- PANE 4: COLD -->
         <div class="drawer-pane" id="pane-cold">
           <h4 style="margin-top:0">Consumption vs. Outdoor Temperature</h4>
-          <div class="kpis-4" id="cold-kpis"></div>
-          <div class="legend"><span><i style="background:var(--fc-da)"></i>Weekdays</span><span><i
-                style="background:var(--fc-id)"></i>Weekends</span><span><i style="background:var(--ink-2)"></i>Model
-              (dashed)</span></div>
-          <div style="height:240px; margin:8px 0;"><svg id="cold-chart" class="chart"
-              aria-label="Consumption vs temperature"></svg></div>
+          <div class="kpis-3" id="cold-kpis"></div>
           <p class="takeaway" id="cold-takeaway"></p>
           <p class="note" id="cold-note"></p>
           <p id="cold-error" class="load-error" role="alert" style="color:var(--fault)"></p>
@@ -1460,7 +1441,7 @@ make test</pre>
     }
     const safe = p => p.catch(() => null);
 
-    /* ───────── 1. THEME & PERSPECTIVE LENS SWITCHER ───────── */
+    /* ───────── 1. THEME ───────── */
     (function initControls() {
       const tBtn = $("theme-toggle");
       const syncTheme = () => tBtn.setAttribute("aria-pressed", String(document.documentElement.dataset.theme === "light"));
@@ -1473,16 +1454,6 @@ make test</pre>
         redrawAllCharts();
       });
 
-      // Lens switcher (Observatory / Executive / Data & SQL)
-      document.querySelectorAll(".lens-btn").forEach(btn => {
-        btn.addEventListener("click", () => {
-          const lens = btn.dataset.lens;
-          document.body.dataset.lens = lens;
-          document.querySelectorAll(".lens-btn").forEach(b => b.setAttribute("aria-pressed", String(b === btn)));
-          if (lens === "data") openDrawer("pane-craft");
-          if (lens === "executive") closeDrawer();
-        });
-      });
     })();
 
     /* ───────── 2. SLIDE-OVER INSPECTOR DRAWER LOGIC ───────── */
@@ -1675,9 +1646,8 @@ make test</pre>
     const hourSpan = (h, n = 1) => `${hrs(h)}–${hrs((h + n) % 24)}`;
     function kpi(value, label) { const d = el("div", { class: "kpi" }); d.append(el("strong", {}, value), el("span", {}, label)); return d; }
 
-    let cachedGrid = null, cachedScorecard = null;
+    let cachedGrid = null;
     function renderHeroChamber(mode) {
-      document.querySelectorAll("#hero-chart-switch button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.view === mode)));
       const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
       if (mode === "grid" && cachedGrid) {
@@ -1700,30 +1670,8 @@ make test</pre>
           tipTitle: l => dayFmt(`${l}T00:00:00Z`),
           tipValue: v => `${fmt(Math.round(v))} MW`
         });
-      } else if (mode === "forecast" && cachedScorecard) {
-        const sc = cachedScorecard;
-        const da = sc.summary.find(r => r.variable === "wind" && r.product === "day_ahead");
-        const id = sc.summary.find(r => r.variable === "wind" && r.product === "intraday");
-        $("hero-tile-copy").textContent = "Mean absolute error (MW) of Fingrid's day-ahead vs. intraday wind forecasts by hour of the day (Finnish time).";
-        $("hero-mini-kpis").children[0].replaceChildren(el("strong", {}, `${fmt(Math.round(da.mae_mw))} MW`), el("span", {}, "day-ahead avg miss"));
-        $("hero-mini-kpis").children[1].replaceChildren(el("strong", {}, `${fmt(Math.round(id.mae_mw))} MW`), el("span", {}, "intraday avg miss"));
-
-        const hours = [...Array(24).keys()];
-        const byH = p => hours.map(h => (sc.by_hour.find(x => x.variable === "wind" && x.product === p && x.hour_fi === h) || {}).mae_mw ?? NaN);
-        lineChart($("bento-hero-chart"), {
-          height: 290, directLabels: true,
-          series: [
-            { name: "Day-ahead", short: "Day-ahead", values: byH("day_ahead"), color: "var(--fc-da)", width: 2 },
-            { name: "Intraday", short: "Intraday", values: byH("intraday"), color: "var(--fc-id)", width: 2 },
-          ],
-          labels: hours.map(h => String(h).padStart(2, "0")),
-          xTick: (i, l, narrow) => i % (narrow ? 6 : 4) === 0 ? `${l}:00` : null,
-          tipTitle: l => `${l}:00 Finnish time`,
-          tipValue: v => `${fmt(Math.round(v))} MW`
-        });
       }
     }
-    $("hero-chart-switch").addEventListener("click", e => { const b = e.target.closest("button"); if (b) renderHeroChamber(b.dataset.view); });
 
     function renderLatestTicker(lt) {
       if (!lt || !lt.wind_production || !lt.consumption) return;
@@ -1809,11 +1757,9 @@ make test</pre>
         tipTitle: l => `${l} Finnish time`, tipValue: v => `${fmt(v, 1)} gCO₂/kWh`
       };
       lineChart($("bento-co2-chart"), chartCfg);
-      lineChart($("co2-chart"), { ...chartCfg, height: 220 });
 
       $("co2-kpis").replaceChildren(
         kpi(hourSpan(c.cleanest_hour.hour_fi), `cleanest hour (${g(c.cleanest_hour.co2)}/kWh)`),
-        kpi(hourSpan(c.best_3h.hour_fi, 3), `best 3h window (${g(c.best_3h.co2)}/kWh)`),
         kpi(hourSpan(c.dirtiest_hour.hour_fi), `dirtiest hour (${g(c.dirtiest_hour.co2)}/kWh)`),
         kpi(g(c.day_mean_forecast), "daily average forecast"),
       );
@@ -1860,10 +1806,8 @@ make test</pre>
         tipTitle: l => `Minute ${l} of the hour`, tipValue: v => `${fmt(v, 2)}% outside band`
       };
       lineChart($("bento-ev-chart"), minCfg);
-      lineChart($("ev-minute-chart"), { ...minCfg, height: 200 });
 
       $("ev-kpis").replaceChildren(
-        kpi(fmt(freqYear), "frequency excursions (<49.9 or >50.1 Hz)"),
         kpi(fmt(c.nuclear_drop.year), "fast nuclear drops (≥400 MW)"),
         kpi(fmt(c.low_inertia.year), "low Nordic inertia periods"),
         kpi(fmt(c.price_spike.year), "imbalance price spikes (≥€1,000)"),
@@ -1899,14 +1843,12 @@ make test</pre>
         tipTitle: l => `${l}°C band`, tipValue: v => `${fmt(Math.round(v))} MW`
       };
       lineChart($("bento-cold-chart"), coldCfg);
-      lineChart($("cold-chart"), { ...coldCfg, height: 230, directLabels: true });
 
       const c = t.coldest_day;
       $("cold-kpis").replaceChildren(
-        kpi(`+${fmt(Math.round(wd.mw_per_degree))} MW`, `per °C below ${wd.balance_point_c} °C (weekday)`),
         kpi(`+${fmt(Math.round(we.mw_per_degree))} MW`, `per °C below ${we.balance_point_c} °C (weekend)`),
         kpi(`${fmt(Math.round(c.consumption_mw))} MW`, `coldest day (${deg(c.temp_c)})`),
-        kpi(`${fmt(wd.r2, 2)}`, `r² explained by outdoor temperature`),
+        kpi(`${wd.balance_point_c} °C`, `weekday heating threshold (r² ${fmt(wd.r2, 2)})`),
       );
       $("cold-takeaway").replaceChildren(el("b", {}, "Thermodynamics: "), document.createTextNode(`Below ${wd.balance_point_c} °C, every 1 °C drop adds ~${fmt(Math.round(wd.mw_per_degree))} MW across Finland (mean of Helsinki, Jyväskylä, Oulu, and Rovaniemi).`));
     }
@@ -2039,7 +1981,6 @@ make test</pre>
       if (!recent) $("hero-tile-copy").textContent = "data/fingrid_recent_daily.json could not be loaded.";
 
       cachedGrid = recent;
-      cachedScorecard = scorecard;
       renderHeroChamber("grid");
       renderForecasts(scorecard);
       renderCo2(co2);
