@@ -1,6 +1,8 @@
-.PHONY: install install-pip up down db-reset generate-data ingest quality-checks test test-smoke test-api test-integration test-regression report api metabase setup-metabase pipeline clean
+.PHONY: install install-pip up down db-setup sync snapshot-restore quality-checks report export benchmark api test test-smoke test-api test-integration test-regression test-e2e test-performance test-security test-data load-test security clean
 
-# Environment Setup
+SNAPSHOT_URL = https://github.com/miladgk/industrial-energy-sql-pipeline/releases/download/warehouse-snapshot/fingrid_observation.csv.gz
+
+# Environment
 install:
 	conda env create -f environment.yaml
 	@echo "Run 'conda activate energy-analytics' to activate the environment."
@@ -9,34 +11,43 @@ install-pip:
 	pip install -r requirements.txt
 	pip install -r requirements-dev.txt
 
-# Docker Database Management
+# PostgreSQL in Docker
 up:
-	docker-compose up -d
+	docker compose up -d
 
 down:
-	docker-compose down
+	docker compose down
 
-db-reset:
+# Warehouse
+db-setup:            ## create tables, partitions, views and functions (idempotent)
 	python src/setup_db.py
 
-# Data Pipeline Steps
-generate-data:
-	python src/generate_data.py
+snapshot-restore:    ## load the published warehouse snapshot (no Fingrid key needed)
+	curl -fsSL -o /tmp/fingrid_observation.csv.gz $(SNAPSHOT_URL)
+	python src/warehouse_snapshot.py restore /tmp/fingrid_observation.csv.gz
 
-ingest:
-	python src/ingest.py
+sync:                ## fetch new data from Fingrid (needs fingrid_api_key in config.yaml)
+	python src/sync_fingrid.py
 
 quality-checks:
 	python src/run_quality_checks.py
 
-# Run all pipeline steps in sequence
-pipeline: generate-data ingest report
+report:              ## every analysis query -> outputs/*.csv
+	python src/run_report.py
 
-# Testing
+export:              ## rebuild the dashboard data files in docs/data/
+	python scripts/export_dashboard_data.py
+
+benchmark:           ## re-measure benchmarks/index_benchmark.md
+	python scripts/benchmark_warehouse.py
+
+api:
+	uvicorn src.api:app --reload --port 8000
+
+# Tests (see pytest.ini for what each layer means)
 test:
 	pytest tests/ -v
 
-# Test layers (see pytest.ini for what each marker means)
 test-smoke:
 	pytest -m smoke -v
 
@@ -58,6 +69,9 @@ test-performance:
 test-security:
 	pytest -m security -v
 
+test-data:
+	pytest -m data -v
+
 # Load test: start the API first (`make api`), then run this. Needs `pip install locust`.
 load-test:
 	locust -f tests/load/locustfile.py --headless -u 20 -r 5 -t 30s --host http://localhost:8000
@@ -67,20 +81,5 @@ security:
 	bandit -r src scripts -ll
 	pip-audit -r requirements.txt --no-deps --disable-pip
 
-# Reporting and API
-report:
-	python src/run_report.py
-
-api:
-	uvicorn src.api:app --reload --port 8000
-
-# Metabase
-metabase:
-	docker compose up -d metabase
-
-setup-metabase:
-	python scripts/setup_metabase.py
-
-# Maintenance
 clean:
-	rm -rf __pycache__ .pytest_cache outputs/*.csv data/raw/*.csv
+	rm -rf __pycache__ .pytest_cache outputs/*.csv

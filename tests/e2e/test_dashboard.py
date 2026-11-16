@@ -1,11 +1,11 @@
 """
 test_dashboard.py: END-TO-END (E2E) TESTS
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-E2E tests drive the finished product the way a user does: a real browser opens
-the dashboard, waits for data, clicks and hovers, and we check what is on screen.
-Everything is real (Chromium, static page, FastAPI, PostgreSQL), so these catch
-what unit and API tests cannot: a renamed JSON field that leaves a chart empty,
-a JavaScript error, a broken tab, a layout that overflows on a phone.
+A real browser opens the dashboard the way a visitor does and checks what is on
+screen: that every number comes from the published data files, that the page
+talks to no server but its own, that charts, tooltips, keyboard use, theme and
+the phone layout work, and that one broken data file does not take the rest of
+the page down.
 
 Run only these:   pytest -m e2e          (needs: pip install playwright
                                           && playwright install chromium)
@@ -21,16 +21,7 @@ from playwright.sync_api import expect
 pytestmark = pytest.mark.e2e
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-
-
-def _number(text: str) -> int:
-    """'518,400' -> 518400"""
-    return int(re.sub(r"\D", "", text))
-
-
-def _wait_until_live(page):
-    # The page exposes the API state as an attribute, so tests do not depend on wording.
-    expect(page.locator("#status")).to_have_attribute("data-api-state", "live", timeout=15000)
+FONT_HOSTS = ("https://fonts.googleapis.com/", "https://fonts.gstatic.com/")
 
 
 def _data(name):
@@ -42,10 +33,46 @@ def _data(name):
 
 def test_page_loads_without_javascript_errors(open_dashboard):
     page = open_dashboard()
-    _wait_until_live(page)
     expect(page).to_have_title(re.compile("Industrial Energy SQL Pipeline"))
-    expect(page.locator("h1")).to_contain_text("Machines fail in two ways")
+    expect(page.locator("h1")).to_contain_text("Finland's electricity grid")
+    expect(page.locator("#co2-kpis .kpi").first).to_be_visible()      # the last file has rendered
     assert page.problems == [], page.problems
+
+
+def test_page_calls_no_server_but_its_own(open_dashboard):
+    """The page is static: no API, no third party, apart from the web fonts."""
+    page = open_dashboard()
+    expect(page.locator("#ev-kpis .kpi").first).to_be_visible()
+    page.wait_for_load_state("networkidle")
+    others = [u for u in page.foreign_requests if not u.startswith(FONT_HOSTS)]
+    assert others == [], others
+
+
+# ── Every number comes from the data files ─────────────────────
+
+def test_hero_numbers_equal_the_data_files(open_dashboard):
+    eng, sc, co2, ev = (_data(f) for f in ("engineering.json", "forecast_scorecard.json", "co2_forecast.json", "grid_events.json"))
+    wind = next(r for r in sc["summary"] if r["variable"] == "wind" and r["product"] == "day_ahead")
+    page = open_dashboard()
+    expect(page.locator("#proof-rows")).to_have_text(f"{eng['partitioning']['total_rows']:,}")
+    expect(page.locator("#proof-wind")).to_have_text(f"{round(wind['mae_mw']):,} MW")
+    expect(page.locator("#proof-co2")).to_have_text(f"{co2['backtest']['saving_pct']:.1f}%")
+    expect(page.locator("#proof-events")).to_have_text(f"{sum(c['year'] for c in ev['counts'].values()):,}")
+
+
+def test_numbers_are_not_hard_coded_in_the_html(open_dashboard):
+    """With every data file missing, the headline numbers stay a dash."""
+    page = open_dashboard(block=("*",))
+    page.wait_for_load_state("networkidle")
+    for tile in ("proof-rows", "proof-wind", "proof-co2", "proof-events"):
+        assert page.locator(f"#{tile}").inner_text() == "–"
+
+
+def test_daily_grid_chart_shows_the_published_summary(open_dashboard):
+    recent = _data("fingrid_recent_daily.json")
+    page = open_dashboard()
+    expect(page.locator("#grid-chart path").first).to_be_visible()
+    expect(page.locator("#grid-kpis .kpi strong").first).to_have_text(f"{recent['summary']['wind_mean_mw']:,.0f} MW")
 
 
 def test_latest_fingrid_row_shows_finnish_time(open_dashboard):
@@ -59,7 +86,7 @@ def test_latest_fingrid_row_shows_finnish_time(open_dashboard):
 
 def test_latest_fingrid_row_hides_without_its_file(open_dashboard):
     page = open_dashboard(latest="missing")
-    expect(page.locator("#grid-kpis .kpi").first).to_be_visible()   # the rest of the grid section loaded
+    expect(page.locator("#grid-kpis .kpi").first).to_be_visible()
     expect(page.locator("#grid-latest")).to_be_hidden()
 
 
@@ -72,8 +99,6 @@ def test_forecast_scorecard_shows_the_published_numbers(open_dashboard):
     expect(kpis.first).to_have_text(f"{round(wind['mae_mw']):,} MW")
     expect(page.locator("#fc-hour-chart path").first).to_be_visible()
     expect(page.locator("#fc-misses tr")).to_have_count(5)
-    expect(page.locator("#fc-balancing tr").first).to_be_visible()
-
     page.locator('#fc-tabs button[data-var="consumption"]').click()
     expect(kpis.first).to_have_text(f"{round(cons['mae_mw']):,} MW")
     expect(page.locator("#fc-hour-title")).to_contain_text("consumption")
@@ -85,108 +110,57 @@ def test_co2_forecast_names_the_published_cleanest_hour(open_dashboard):
     start = c["cleanest_hour"]["hour_fi"]
     expect(page.locator("#co2-kpis .kpi strong").first).to_have_text(f"{start:02d}:00–{(start + 1) % 24:02d}:00")
     expect(page.locator("#co2-title")).to_contain_text("tomorrow" if c["target_is_tomorrow"] else "today")
-    expect(page.locator("#co2-chart path").first).to_be_visible()
     expect(page.locator("#co2-past-chart path")).to_have_count(2)
     expect(page.locator("#co2-record .kpi")).to_have_count(4)
 
 
 def test_grid_event_log_shows_the_published_counts(open_dashboard):
     d = _data("grid_events.json")
-    page = open_dashboard()
     c = d["counts"]
+    page = open_dashboard()
     expect(page.locator("#ev-kpis .kpi strong").first).to_have_text(f"{c['frequency_low']['year'] + c['frequency_high']['year']:,}")
     expect(page.locator("#ev-recent tr")).to_have_count(len(d["recent"]))
     expect(page.locator("#ev-top tr")).to_have_count(sum(1 for v in d["top"].values() if v))
-    expect(page.locator("#ev-minute-chart path").first).to_be_visible()
 
 
-# ── Live data: browser -> API -> database ──────────────────────
-
-def test_kpis_match_the_database(open_dashboard, db):
+def test_engineering_shows_partitions_benchmark_and_tests(open_dashboard):
+    eng = _data("engineering.json")
     page = open_dashboard()
-    _wait_until_live(page)
-    with db.cursor() as cur:
-        cur.execute("SELECT (SELECT COUNT(*) FROM facilities), (SELECT COUNT(*) FROM readings)")
-        facilities, readings = cur.fetchone()
-    db.rollback()
-    assert _number(page.locator("#facility-count").inner_text()) == facilities
-    assert _number(page.locator("#reading-count").inner_text()) == readings
-    assert re.fullmatch(r"\d+(\.\d+)?%", page.locator("#anomaly-rate").inner_text())
+    months = [p for p in eng["partitioning"]["partitions"] if p["partition"] != "fingrid_observation_default"]
+    expect(page.locator("#parts .prow")).to_have_count(len(months))
+    expect(page.locator("#parts-summary")).to_contain_text(f"Reads 1 of {len(months)} partitions")
+    page.locator('#parts-mode button[data-mode="all"]').click()
+    expect(page.locator("#parts-summary")).to_contain_text(f"all {len(months)}")
+    expect(page.locator("#bench .bar-row")).to_have_count(3)
+    expect(page.locator("#tests-title")).to_have_text(f"{eng['tests']['total']} automated tests")
 
 
-def test_trend_chart_is_drawn(open_dashboard):
-    page = open_dashboard()
-    _wait_until_live(page)
-    expect(page.locator("#trend-chart path").first).to_be_visible()
-    expect(page.locator("#trend-window")).to_contain_text("(UTC)")
-
-
-def test_detector_scorecard_lists_every_sensor_type(open_dashboard, client):
-    page = open_dashboard()
-    _wait_until_live(page)
-    expected = len(client.get("/api/detection-quality").json()["sensors"])
-    rows = page.locator("#detection tr")
-    expect(rows).to_have_count(expected)
-    expect(rows.first.locator("td").last).to_contain_text("%")
-
-
-def test_anomaly_table_lists_every_facility_and_sensor_pair(open_dashboard):
-    page = open_dashboard()
-    strongest = [e for e in _data("anomaly_examples.json")["examples"] if e["kind"] == "strongest_flag"]
-    expect(page.locator("#anomalies tr")).to_have_count(len(strongest), timeout=15000)
-    assert page.locator("#anom-error").inner_text() == ""
-
-
-def test_selecting_an_anomaly_redraws_its_neighbourhood(open_dashboard):
-    page = open_dashboard()
-    rows = page.locator("#anomalies tr")
-    expect(rows.first).to_be_visible(timeout=15000)
-    rows.nth(2).click()
-    expect(rows.nth(2)).to_have_attribute("aria-selected", "true")
-    facility = rows.nth(2).locator("td").nth(1).inner_text()
-    expect(page.locator("#spark-title")).to_contain_text(facility)
-    expect(page.locator("#anom-spark path").first).to_be_visible()
-
-
-def test_facility_filter_keeps_only_that_type(open_dashboard):
-    page = open_dashboard()
-    expect(page.locator("#anomalies tr").first).to_be_visible(timeout=15000)
-    page.locator('#anom-filter [data-type="solar"]').click()
-    facilities = page.locator("#anomalies tr td:nth-child(2)").all_inner_texts()
-    assert facilities and all(f.startswith("SolarPlant") for f in facilities), facilities
-
-
-# ── Interaction ────────────────────────────────────────────────
+# ── Interaction & accessibility ────────────────────────────────
 
 def test_hovering_a_chart_shows_a_tooltip(open_dashboard):
     page = open_dashboard()
-    _wait_until_live(page)
-    page.locator("#trend-chart").scroll_into_view_if_needed()
-    page.locator("#trend-chart .tip-hit").hover()
-    expect(page.locator("#trend-chart tspan").first).to_contain_text("UTC")
-    expect(page.locator("#trend-chart tspan").nth(1)).to_contain_text("MW")
+    chart = page.locator("#grid-chart")
+    chart.scroll_into_view_if_needed()
+    chart.locator(".tip-hit").hover()
+    expect(chart.locator("tspan").nth(1)).to_contain_text("MW")
 
 
-def test_grid_period_tabs_switch_the_dataset(open_dashboard):
+def test_chart_values_can_be_read_with_the_keyboard(open_dashboard):
     page = open_dashboard()
-    tab_year = page.locator('#period-tabs [data-period="year"]')
-    expect(tab_year).to_be_visible(timeout=15000)
-    expect(tab_year).to_have_text("2025")
-    tab_year.click()
-    expect(tab_year).to_have_attribute("aria-pressed", "true")
-    expect(page.locator('#period-tabs [data-period="recent"]')).to_have_attribute("aria-pressed", "false")
-    expect(page.locator("#grid-chart-title")).to_have_text("Daily average power, 2025 (MW)")
-    expect(page.locator("#grid-kpis .kpi, #grid-kpis > *")).to_have_count(4)
-
-    page.locator('#period-tabs [data-period="recent"]').click()
-    expect(page.locator("#grid-chart-title")).to_contain_text(" to ")
+    hit = page.locator("#fc-hour-chart .tip-hit")
+    hit.focus()
+    page.keyboard.press("Home")
+    first = hit.get_attribute("aria-valuetext")
+    page.keyboard.press("ArrowRight")
+    assert hit.get_attribute("aria-valuenow") == "1"
+    assert hit.get_attribute("aria-valuetext") != first and "MW" in first
 
 
 def test_header_chips_explain_themselves_on_hover_and_focus(open_dashboard):
     page = open_dashboard()
     chips = page.locator(".chips .chip")
-    expect(chips).to_have_count(3)
-    for i in range(3):
+    expect(chips).to_have_count(2)
+    for i in range(2):
         chip = chips.nth(i)
         tip = page.locator("#" + chip.get_attribute("aria-describedby"))
         expect(tip).to_be_hidden()
@@ -194,34 +168,22 @@ def test_header_chips_explain_themselves_on_hover_and_focus(open_dashboard):
         expect(tip).to_be_visible()
         page.mouse.move(0, 0)
         expect(tip).to_be_hidden()
-    chips.nth(2).focus()                      # keyboard users get the same text
-    expect(page.locator("#tip-fault")).to_be_visible()
-    expect(page.locator("#tip-fault")).to_contain_text("is_anomaly")
+    chips.nth(1).focus()                      # keyboard users get the same text
+    expect(page.locator("#tip-fresh")).to_contain_text("GitHub Action")
 
 
 def test_navigation_links_jump_to_their_sections(open_dashboard):
     page = open_dashboard()
-    page.locator('.nav a[href="#anomaly-detection"]').click()
-    expect(page.locator("#anomaly-detection")).to_be_in_viewport()
-    assert page.url.endswith("#anomaly-detection")
-
-
-def test_threshold_slider_shows_the_exported_scorecard(open_dashboard):
-    page = open_dashboard()
-    sweep = {t["z_threshold"]: t["total"] for t in _data("detection_thresholds.json")["thresholds"]}
-    slider = page.locator("#thr-input")
-    for z in (1.0, 3.0, 9.0):
-        slider.fill(f"{z:g}")
-        expect(page.locator("#thr-z")).to_have_text(f"{z:.1f}")
-        expect(page.locator("#thr-recall")).to_have_text(f"{sweep[z]['recall_pct']:.1f}%")
-        expect(page.locator("#thr-precision")).to_have_text(f"{sweep[z]['precision_pct']:.1f}%")
+    page.locator('.nav a[href="#co2-ch"]').click()
+    expect(page.locator("#co2-ch")).to_be_in_viewport()
+    assert page.url.endswith("#co2-ch")
 
 
 def test_sql_drawers_show_the_repository_sql(open_dashboard):
     page = open_dashboard()
-    with open(os.path.join(ROOT, "sql", "analysis", "11_detection_quality.sql"), encoding="utf-8") as fh:
+    with open(os.path.join(ROOT, "sql", "schema", "14_co2_forecast.sql"), encoding="utf-8") as fh:
         expected = fh.read()
-    drawer = page.locator("#sql-11")
+    drawer = page.locator("#sql-14")
     drawer.locator("summary").click()
     expect(drawer.locator("pre")).to_have_text(expected, use_inner_text=False, timeout=10000)
 
@@ -230,22 +192,10 @@ def test_pipeline_stages_are_keyboard_buttons(open_dashboard):
     page = open_dashboard()
     stages = page.locator("#pipeline button.step")
     expect(stages).to_have_count(7)
-    stages.nth(3).focus()
+    stages.nth(2).focus()
     page.keyboard.press("Enter")
-    expect(stages.nth(3)).to_have_attribute("aria-current", "step")
-    expect(page.locator("#inspector")).to_contain_text("partitioned")
-
-
-def test_chart_values_can_be_read_with_the_keyboard(open_dashboard):
-    page = open_dashboard()
-    _wait_until_live(page)
-    hit = page.locator("#trend-chart .tip-hit")
-    hit.focus()
-    page.keyboard.press("Home")
-    first = hit.get_attribute("aria-valuetext")
-    page.keyboard.press("ArrowRight")
-    assert hit.get_attribute("aria-valuenow") == "1"
-    assert hit.get_attribute("aria-valuetext") != first and "MW" in first
+    expect(stages.nth(2)).to_have_attribute("aria-current", "step")
+    expect(page.locator("#inspector")).to_contain_text("partitioned by month")
 
 
 def test_theme_toggle_switches_and_is_remembered(open_dashboard):
@@ -259,23 +209,9 @@ def test_theme_toggle_switches_and_is_remembered(open_dashboard):
     expect(html).to_have_attribute("data-theme", flipped)
 
 
-def test_numbers_come_from_the_data_files_not_the_html(open_dashboard):
-    """Before any data arrives the KPIs show a dash, never a hard-coded number."""
-    page = open_dashboard(api="down", block_data=True)
-    for kpi in ("facility-count", "reading-count", "anomaly-rate", "latest-reading"):
-        assert page.locator(f"#{kpi}").inner_text() == "–"
-
-
-def test_glance_answer_is_built_from_the_scorecard(open_dashboard):
-    page = open_dashboard()
-    total = _data("api_snapshot.json")["detection"]["total"]
-    zeros = f"{total['drops_flagged'] / total['drops'] * 100:.1f}%"
-    expect(page.locator("#glance-answer")).to_contain_text(zeros, timeout=15000)
-
-
 def test_sections_animate_again_when_scrolling_back(open_dashboard):
     page = open_dashboard()
-    panel = page.locator("#grid .panel").first      # the daily chart; the forecast scorecard is the second
+    panel = page.locator("#grid .panel").first
     panel.scroll_into_view_if_needed()
     expect(panel).to_have_class(re.compile(r"\bin\b"))
     page.locator("#engineering").scroll_into_view_if_needed()
@@ -293,22 +229,22 @@ def test_headline_fits_on_one_line_on_desktop(open_dashboard):
 
 # ── Resilience & layout ────────────────────────────────────────
 
-def test_falls_back_to_cached_snapshot_when_api_is_down(open_dashboard):
-    page = open_dashboard(api="down")
-    expect(page.locator("#status")).to_have_attribute("data-api-state", "down", timeout=15000)
-    expect(page.locator("#status")).to_contain_text("API unavailable")
-    expect(page.locator("#status")).to_contain_text("snapshot")
-    assert _number(page.locator("#facility-count").inner_text()) == 20  # from docs/data/api_snapshot.json
-    expect(page.locator("#trend-chart path").first).to_be_visible()
+def test_one_missing_data_file_does_not_break_the_rest(open_dashboard):
+    page = open_dashboard(block=("forecast_scorecard.json",))
+    expect(page.locator("#fc-error")).to_contain_text("could not be loaded")
+    expect(page.locator("#co2-kpis .kpi").first).to_be_visible()
+    expect(page.locator("#ev-kpis .kpi").first).to_be_visible()
+    expect(page.locator("#grid-chart path").first).to_be_visible()
+    assert not [p for p in page.problems if p.startswith("uncaught")], page.problems
 
 
 def test_no_horizontal_scrolling_on_a_phone(open_dashboard):
     page = open_dashboard(viewport={"width": 375, "height": 812})
-    _wait_until_live(page)
+    expect(page.locator("#ev-kpis .kpi").first).to_be_attached()
     overflow = page.evaluate("document.documentElement.scrollWidth - window.innerWidth")
     assert overflow <= 0, f"page is {overflow}px wider than a 375px screen"
-    chip = page.locator(".chips .chip").nth(2)
+    chip = page.locator(".chips .chip").nth(1)
     chip.scroll_into_view_if_needed()
     chip.focus()                              # what a tap does on a touch screen
-    box = page.locator("#tip-fault").bounding_box()
+    box = page.locator("#tip-fresh").bounding_box()
     assert box and box["x"] >= 0 and box["x"] + box["width"] <= 375, box

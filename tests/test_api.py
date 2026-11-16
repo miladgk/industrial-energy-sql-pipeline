@@ -1,130 +1,115 @@
 """
-test_api.py: API / CONTRACT TESTS
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-A "contract" is the promise the API makes to its consumers (the dashboard,
-Metabase, anyone): which URLs exist, what parameters they accept, what JSON
-shape comes back, and which bad requests are rejected. These tests lock that
-promise, so a refactor can't silently break a consumer.
-
-They use FastAPI's TestClient (see conftest.py) against the loaded database,
-so they assert on *shape and rules*, never on exact row counts.
+test_api.py: API CONTRACT TESTS
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+The FastAPI service through its full HTTP stack (TestClient): response shapes,
+input validation, and that every number equals what the database or the
+underlying .sql file returns on its own. The database is the restored
+warehouse snapshot (real Fingrid data), so the tests ask it what to expect
+instead of hard-coding values that change daily.
 
 Run only these:  pytest -m api
 """
+
+import os
 
 import pytest
 
 pytestmark = pytest.mark.api
 
-
-# ── Response shape ─────────────────────────────────────────────
-
-def test_overview_shape(client):
-    body = client.get("/api/overview").json()
-    for key in ("facility_count", "sensor_count", "reading_count", "anomaly_count",
-                "latest_reading_at", "avg_power_output_mw", "anomaly_rate_pct"):
-        assert key in body
-    assert body["anomaly_count"] <= body["reading_count"]
-    assert 0 <= body["anomaly_rate_pct"] <= 100
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
 
-def test_anomalies_shape_and_ordering(client):
-    body = client.get("/api/anomalies", params={"limit": 25}).json()
-    assert body["count"] == len(body["anomalies"]) <= 25
-    assert body["z_threshold"] == 3.0
-    scores = [a["z_score"] for a in body["anomalies"]]
-    assert scores == sorted(scores, reverse=True), "must be sorted by z_score DESC"
-    assert all(s > 3.0 for s in scores), "every row must exceed the threshold"
+def _one(db, sql, params=None):
+    with db.cursor() as cur:
+        cur.execute(sql, params)
+        row = cur.fetchone()
+    db.rollback()
+    return row
 
 
-def test_ranking_is_complete_and_ranked(client):
-    body = client.get("/api/facilities/ranking").json()
-    assert body["count"] == len(body["facilities"]) > 0
-    ranks = [f["overall_rank"] for f in body["facilities"]]
-    assert ranks == sorted(ranks) and ranks[0] == 1
+@pytest.fixture(scope="module")
+def known_day(db):
+    """The newest Finnish day whose CO2 forecast has every hour (inputs are complete)."""
+    row = _one(db, """
+        SELECT day_fi FROM co2_hourly WHERE residual_load_mw IS NOT NULL
+        GROUP BY day_fi HAVING COUNT(*) >= 23 ORDER BY day_fi DESC LIMIT 1 OFFSET 1""")
+    if row is None:
+        pytest.skip("no complete day in the warehouse")
+    return row[0]
 
 
-def test_output_trend_shape(client):
-    body = client.get("/api/output-trend", params={"hours": 6}).json()
-    assert body["hours"] == 6
-    assert isinstance(body["points"], list)
+def test_datasets_match_the_warehouse(client, db):
+    body = client.get("/api/datasets").json()
+    total, kinds = _one(db, "SELECT COUNT(*), (SELECT COUNT(*) FROM fingrid_dataset) FROM fingrid_observation")
+    assert body["total_rows"] == total
+    assert len(body["datasets"]) == kinds
+    assert {"dataset_id", "key", "unit", "rows", "first_start", "last_end"} <= set(body["datasets"][0])
 
 
-def test_detection_quality_shape(client):
-    body = client.get("/api/detection-quality").json()
-    assert body["sensors"] and "total" in body
-    assert {"precision_pct", "recall_pct"} <= set(body["total"])
+def test_latest_returns_the_newest_slot_per_dataset(client, db):
+    rows = client.get("/api/latest").json()["latest"]
+    wind = next(r for r in rows if r["dataset_id"] == 75)
+    newest = _one(db, "SELECT max(start_time) FROM fingrid_observation WHERE dataset_id = 75")[0]
+    assert wind["start_time"] == newest.isoformat()
 
 
-# ── Parameters do what they say ────────────────────────────────
+def test_forecast_scorecard_equals_the_sql_file(client, db):
+    from analysis_window import default_window
 
-def test_higher_threshold_returns_fewer_anomalies(client):
-    loose = client.get("/api/anomalies", params={"z_threshold": 2, "limit": 1000}).json()
-    strict = client.get("/api/anomalies", params={"z_threshold": 5, "limit": 1000}).json()
-    assert strict["count"] <= loose["count"]
+    body = client.get("/api/forecast-scorecard", params={"days": 30}).json()
+    assert len(body["products"]) == 4
+    with open(os.path.join(ROOT, "sql", "analysis", "13_forecast_scorecard.sql"), encoding="utf-8") as fh, db.cursor() as cur:
+        cur.execute(fh.read(), default_window(days=30))
+        direct = {(r[0], r[1]): r[3] for r in cur.fetchall()}
+    db.rollback()
+    for p in body["products"]:
+        assert p["mae_mw"] == pytest.approx(direct[(p["variable"], p["product"])])
+        assert p["mae_mw"] >= abs(p["bias_mw"])
 
 
-@pytest.mark.parametrize("ftype", ["wind", "solar", "substation"])
-def test_facility_type_filter(client, ftype):
-    body = client.get("/api/anomalies", params={"facility_type": ftype, "limit": 50}).json()
-    assert all(a["facility_type"] == ftype for a in body["anomalies"])
+def test_error_by_hour_filters_one_variable(client):
+    body = client.get("/api/forecast-error-by-hour", params={"variable": "consumption", "days": 30}).json()
+    assert {h["variable"] for h in body["hours"]} == {"consumption"}
+    assert {h["hour_fi"] for h in body["hours"]} == set(range(24))
 
 
-# ── Input validation: bad requests are rejected with 422 ───────
+def test_co2_forecast_for_a_known_day(client, known_day):
+    body = client.get("/api/co2-forecast", params={"day": known_day.isoformat()}).json()
+    assert body["day"] == known_day.isoformat()
+    assert 23 <= len(body["hours"]) <= 25
+    assert sorted(h["rank_cleanest"] for h in body["hours"])[0] == 1
+    assert all(h["co2_forecast"] > 0 for h in body["hours"])
 
-@pytest.mark.parametrize("path, params", [
-    ("/api/anomalies", {"z_threshold": 0.5}),    # below ge=1.0
-    ("/api/anomalies", {"z_threshold": 11}),     # above le=10.0
-    ("/api/anomalies", {"limit": 0}),
-    ("/api/anomalies", {"limit": 1001}),
-    ("/api/anomalies", {"z_threshold": "abc"}),  # wrong type
-    ("/api/output-trend", {"hours": 0}),
-    ("/api/output-trend", {"hours": 169}),
-    ("/api/detection-quality", {"z_threshold": 0}),
+
+def test_grid_events_kind_filter_and_limit(client):
+    every = client.get("/api/grid-events", params={"days": 365, "limit": 1000}).json()
+    lows = client.get("/api/grid-events", params={"days": 365, "kind": "frequency_low", "limit": 1000}).json()
+    assert every["count"] == len(every["events"]), "limit 1000 must cover a year of events"
+    assert lows["count"] == sum(e["kind"] == "frequency_low" for e in every["events"])
+    assert all(e["kind"] == "frequency_low" and e["peak"] < 49.9 for e in lows["events"])
+    assert len(client.get("/api/grid-events", params={"days": 365, "limit": 3}).json()["events"]) <= 3
+    starts = [e["start_time"] for e in every["events"]]
+    assert starts == sorted(starts, reverse=True)
+
+
+@pytest.mark.parametrize("path,params", [
+    ("/api/forecast-scorecard", {"days": 0}),
+    ("/api/forecast-scorecard", {"days": 401}),
+    ("/api/forecast-error-by-hour", {"variable": "solar"}),
+    ("/api/grid-events", {"kind": "earthquake"}),
+    ("/api/grid-events", {"limit": 0}),
+    ("/api/co2-forecast", {"day": "2001-01-01"}),
+    ("/api/co2-forecast", {"day": "not-a-date"}),
 ])
 def test_invalid_parameters_are_rejected(client, path, params):
     assert client.get(path, params=params).status_code == 422
 
 
-# ── HTTP behaviour & security basics ───────────────────────────
+def test_co2_forecast_without_inputs_is_404(client):
+    """The day after tomorrow is allowed but never has inputs: Fingrid publishes one day ahead."""
+    from datetime import timedelta
 
-def test_unknown_route_is_404(client):
-    assert client.get("/api/does-not-exist").status_code == 404
+    from analysis_window import tomorrow_fi
 
-
-def test_read_only_api_rejects_post(client):
-    assert client.post("/api/anomalies").status_code == 405
-
-
-def test_cors_header_present_for_dashboard(client):
-    response = client.get("/health", headers={"Origin": "https://example.org"})
-    assert "access-control-allow-origin" in response.headers
-
-
-def test_sql_injection_in_filter_is_inert(client, db):
-    """
-    facility_type is user input that ends up next to SQL. It is validated against an
-    allow-list (wind/solar/substation) and passed as a bound parameter, so the
-    payload is rejected with 422 and the table survives.
-    """
-    payload = "wind'; DROP TABLE readings; --"
-    response = client.get("/api/anomalies", params={"facility_type": payload})
-    assert response.status_code == 422
-    with db.cursor() as cur:
-        cur.execute("SELECT COUNT(*) FROM readings")
-        assert cur.fetchone()[0] > 0
-
-
-# ── JSON types ─────────────────────────────────────────────────
-
-def test_ids_and_counts_are_integers_not_floats(client):
-    """Whole numbers must stay integers (22501, not 22501.0); NUMERIC values are floats."""
-    overview = client.get("/api/overview").json()
-    for key in ("facility_count", "sensor_count", "reading_count", "anomaly_count"):
-        assert isinstance(overview[key], int), f"{key} is {overview[key]!r}"
-    assert isinstance(overview["avg_power_output_mw"], float)
-
-    anomaly = client.get("/api/anomalies", params={"limit": 1}).json()["anomalies"][0]
-    assert isinstance(anomaly["reading_id"], int) and isinstance(anomaly["sensor_id"], int)
-    assert isinstance(anomaly["value"], float) and isinstance(anomaly["z_score"], float)
-    assert isinstance(anomaly["recorded_at"], str)
+    day = tomorrow_fi() + timedelta(days=1)
+    assert client.get("/api/co2-forecast", params={"day": day.isoformat()}).status_code == 404

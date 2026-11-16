@@ -1,39 +1,30 @@
 """
 api.py
 ~~~~~~
-A lightweight FastAPI service that serves the engineered data over HTTP.
-This transforms the project from a "collection of scripts" into a
-deployable data product.
+FastAPI service over the Fingrid warehouse (fingrid_observation and the SQL in
+sql/schema and sql/analysis). Each analytics endpoint runs the same .sql file
+the dashboard export uses, so the API and the published numbers cannot drift.
 
 Endpoints
 ---------
-GET /api/anomalies
-    Returns statistical anomalies (z-score > threshold) detected in the
-    readings table, with optional query parameters for filtering.
-
-GET /api/detection-quality
-    Scores the z-score detector against the faults injected by the data
-    generator: precision and recall per sensor type, split into spikes and
-    zero-value dropouts.
-
-GET /api/facilities/ranking
-    Returns all facilities ranked by average output as a share of nameplate
-    capacity (capacity factor) over the available data window.
-
-GET /health
-    Simple liveness check.
+GET /health                      liveness
+GET /api/datasets                the datasets kept, with row counts and coverage
+GET /api/latest                  newest stored value of every dataset
+GET /api/forecast-scorecard      error of Fingrid's day-ahead and intraday forecasts
+GET /api/forecast-error-by-hour  the same per hour of the day (Finnish time)
+GET /api/co2-forecast            hourly CO2 intensity forecast for one Finnish day
+GET /api/grid-events             frequency, nuclear, inertia and price events
 
 Usage
 -----
     uvicorn src.api:app --reload --port 8000
-
-Then open:  http://localhost:8000/docs  (auto-generated Swagger UI)
+Then open http://localhost:8000/docs (interactive Swagger UI).
 """
 
 import logging
 import os
 import sys
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Optional
 
@@ -42,27 +33,37 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
 sys.path.insert(0, os.path.dirname(__file__))
-from db_connection import get_connection
+from analysis_window import default_window, tomorrow_fi  # noqa: E402
+from db_connection import get_connection  # noqa: E402
 
 logger = logging.getLogger("energy_api")
+ANALYSIS_DIR = os.path.join(os.path.dirname(__file__), "..", "sql", "analysis")
 
-# Allow-list for the facility_type filter: anything else is rejected with 422.
-FACILITY_TYPE_PATTERN = r"^(wind|solar|substation)$"
+VARIABLE_PATTERN = r"^(wind|consumption)$"
+EVENT_KIND_PATTERN = r"^(frequency_low|frequency_high|nuclear_drop|low_inertia|price_spike)$"
+MAX_DAYS = 400
+
+
+def _sql(name: str) -> str:
+    with open(os.path.join(ANALYSIS_DIR, name), encoding="utf-8") as fh:
+        return fh.read()
+
+
+# Loaded once at start-up: the endpoints run exactly these files.
+SQL = {
+    "scorecard": _sql("13_forecast_scorecard.sql"),
+    "by_hour": _sql("14_forecast_error_by_hour.sql"),
+    "co2": _sql("18_co2_forecast.sql"),
+    "events": _sql("20_grid_events.sql"),
+}
 
 app = FastAPI(
-    title="Energy Facility Analytics API",
-    description=(
-        "Serves operational analytics from the energy facility "
-        "PostgreSQL database."
-    ),
-    version="1.0.0",
+    title="Finnish Grid Analytics API",
+    description="Analytics over real Fingrid Open Data (CC BY 4.0), stored in a partitioned PostgreSQL warehouse.",
+    version="2.0.0",
 )
 
-allowed_origins = [
-    origin.strip()
-    for origin in os.environ.get("CORS_ORIGINS", "*").split(",")
-    if origin.strip()
-]
+allowed_origins = [o.strip() for o in os.environ.get("CORS_ORIGINS", "*").split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
@@ -76,30 +77,27 @@ app.add_middleware(
 # Helpers
 # ──────────────────────────────────────────────────────────────
 
-def _fetch_rows(sql: str, params: tuple = ()) -> list[dict]:
-    """Execute *sql* and return all rows as a list of dicts."""
+def _fetch_rows(sql: str, params=None) -> list[dict]:
+    """Run *sql* in a read-only transaction and return the rows as JSON-safe dicts."""
     conn = get_connection()
     try:
+        conn.set_session(readonly=True)
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(sql, params)
-            rows = cur.fetchall()
-        return [dict(r) for r in rows]
+            return [_make_json_safe(dict(r)) for r in cur.fetchall()]
     finally:
         conn.close()
 
 
 def _make_json_safe(row: dict) -> dict:
-    """
-    Convert database types JSON cannot carry, in place: datetimes become ISO
-    strings and Decimals (NUMERIC columns) become floats. Integers, strings,
-    booleans and None are left alone. (The old `hasattr(v, "__float__")` test
-    also matched ints, turning IDs and counts into 22501.0.)
-    """
+    """Datetimes become ISO strings and Decimals floats; everything else is left alone."""
     for key, value in row.items():
         if isinstance(value, (datetime, date)):
             row[key] = value.isoformat()
         elif isinstance(value, Decimal):
             row[key] = float(value)
+        elif isinstance(value, timedelta):
+            row[key] = value.total_seconds()
     return row
 
 
@@ -110,295 +108,114 @@ def _internal_error(exc: Exception) -> HTTPException:
     return HTTPException(status_code=500, detail="Internal server error")
 
 
+def _window(days: int) -> dict:
+    w = default_window(days=days)
+    return {"start": w["start"], "end": w["end"]}
+
+
+def _window_json(w: dict) -> dict:
+    return {"start": w["start"].date().isoformat(), "end_exclusive": w["end"].date().isoformat()}
+
+
 # ──────────────────────────────────────────────────────────────
 # Routes
 # ──────────────────────────────────────────────────────────────
 
 @app.get("/health", tags=["meta"])
 def health_check():
-    """Liveness probe — returns 200 if the API process is running."""
+    """Liveness probe: 200 if the API process is running."""
     return {"status": "ok"}
 
 
-@app.get("/api/overview", tags=["analytics"])
-def get_overview():
-    """Return the current dashboard KPIs and latest reading timestamp."""
-    sql = """
-        SELECT
-            (SELECT COUNT(*) FROM facilities) AS facility_count,
-            (SELECT COUNT(*) FROM sensors) AS sensor_count,
-            (SELECT COUNT(*) FROM readings) AS reading_count,
-            (SELECT COUNT(*) FROM readings WHERE is_anomaly = TRUE) AS anomaly_count,
-            (SELECT MAX(recorded_at) FROM readings) AS latest_reading_at,
-            (SELECT AVG(value) FROM readings r
-             JOIN sensors s ON s.sensor_id = r.sensor_id
-             WHERE s.sensor_type = 'power_output'
-               AND r.is_anomaly = FALSE) AS avg_power_output_mw
-    """
+@app.get("/api/datasets", tags=["warehouse"])
+def datasets():
+    """Every Fingrid dataset in the warehouse with its row count and time coverage."""
     try:
-        row = _fetch_rows(sql)[0]
+        rows = _fetch_rows("""
+            SELECT d.dataset_id, d.key, d.name, d.unit, d.kind, d.resolution,
+                   COUNT(o.start_time) AS rows, MIN(o.start_time) AS first_start, MAX(o.end_time) AS last_end
+            FROM fingrid_dataset d
+            LEFT JOIN fingrid_observation o USING (dataset_id)
+            GROUP BY d.dataset_id
+            ORDER BY d.dataset_id
+        """)
     except Exception as exc:
         raise _internal_error(exc)
-
-    _make_json_safe(row)
-    row["anomaly_rate_pct"] = (
-        round(row["anomaly_count"] / row["reading_count"] * 100, 2)
-        if row["reading_count"]
-        else 0
-    )
-    return row
+    return {"datasets": rows, "total_rows": sum(r["rows"] for r in rows)}
 
 
-@app.get("/api/output-trend", tags=["analytics"])
-def get_output_trend(
-    hours: int = Query(default=24, ge=1, le=168),
-    facility_type: Optional[str] = Query(default=None, pattern=FACILITY_TYPE_PATTERN),
+@app.get("/api/latest", tags=["warehouse"])
+def latest():
+    """The newest stored value of every dataset (slots that have ended; day-ahead forecasts may lie ahead)."""
+    try:
+        rows = _fetch_rows("""
+            SELECT d.dataset_id, d.key, d.unit, o.start_time, o.end_time, o.value
+            FROM fingrid_dataset d
+            CROSS JOIN LATERAL (
+                SELECT start_time, end_time, value FROM fingrid_observation x
+                WHERE x.dataset_id = d.dataset_id ORDER BY start_time DESC LIMIT 1
+            ) o
+            ORDER BY d.dataset_id
+        """)
+    except Exception as exc:
+        raise _internal_error(exc)
+    return {"latest": rows}
+
+
+@app.get("/api/forecast-scorecard", tags=["analytics"])
+def forecast_scorecard(days: int = Query(365, ge=1, le=MAX_DAYS, description="Window: the last N complete UTC days")):
+    """How far Fingrid's own forecasts were from what happened (sql/analysis/13_forecast_scorecard.sql)."""
+    w = _window(days)
+    try:
+        rows = _fetch_rows(SQL["scorecard"], w)
+    except Exception as exc:
+        raise _internal_error(exc)
+    return {"window": _window_json(w), "products": rows}
+
+
+@app.get("/api/forecast-error-by-hour", tags=["analytics"])
+def forecast_error_by_hour(
+    variable: str = Query("wind", pattern=VARIABLE_PATTERN),
+    days: int = Query(365, ge=1, le=MAX_DAYS),
 ):
-    """Return hourly average power output for the dashboard trend chart."""
-    type_filter = "AND f.facility_type = %s" if facility_type else ""
-    params: tuple = (facility_type,) if facility_type else ()
-    # Only the constant type_filter fragment is interpolated; values are bound parameters.
-    sql = f"""
-        SELECT
-            DATE_TRUNC('hour', r.recorded_at) AS recorded_at,
-            ROUND(AVG(r.value)::NUMERIC, 2) AS avg_output_mw,
-            COUNT(*) AS reading_count
-        FROM readings r
-        JOIN sensors s ON s.sensor_id = r.sensor_id
-        JOIN facilities f ON f.facility_id = s.facility_id
-        WHERE s.sensor_type = 'power_output'
-          AND r.is_anomaly = FALSE
-          AND r.recorded_at >= (
-              SELECT MAX(recorded_at) FROM readings
-          ) - (%s * INTERVAL '1 hour')
-          {type_filter}
-        GROUP BY DATE_TRUNC('hour', r.recorded_at)
-        ORDER BY recorded_at
-    """  # nosec B608
+    """Mean absolute error and bias per hour of the day, Finnish time (sql/analysis/14)."""
+    w = _window(days)
     try:
-        rows = _fetch_rows(sql, (hours,) + params)
+        rows = [r for r in _fetch_rows(SQL["by_hour"], w) if r["variable"] == variable]
     except Exception as exc:
         raise _internal_error(exc)
-    for row in rows:
-        _make_json_safe(row)
-    return {"hours": hours, "facility_type": facility_type, "points": rows}
+    return {"window": _window_json(w), "variable": variable, "hours": rows}
 
 
-@app.get("/api/anomalies", tags=["analytics"])
-def get_anomalies(
-    z_threshold: float = Query(
-        default=3.0,
-        ge=1.0,
-        le=10.0,
-        description="Z-score threshold above which a reading is flagged as anomalous.",
-    ),
-    limit: int = Query(
-        default=100,
-        ge=1,
-        le=1000,
-        description="Maximum number of anomalies to return.",
-    ),
-    facility_type: Optional[str] = Query(
-        default=None,
-        pattern=FACILITY_TYPE_PATTERN,
-        description="Filter by facility type: 'wind', 'solar', or 'substation'.",
-    ),
+@app.get("/api/co2-forecast", tags=["analytics"])
+def co2_forecast(day: Optional[date] = Query(None, description="Finnish calendar day (default: tomorrow)")):
+    """Hourly CO2 intensity forecast for one day (sql/analysis/18 -> co2_forecast() in sql/schema/14)."""
+    tomorrow = tomorrow_fi()                 # Finnish dates: the day boundary is Helsinki midnight
+    day = day or tomorrow
+    if not (tomorrow - timedelta(days=MAX_DAYS + 1) <= day <= tomorrow + timedelta(days=1)):
+        raise HTTPException(status_code=422,
+                            detail=f"day must be within {MAX_DAYS} days back and the day after tomorrow (Finnish time)")
+    try:
+        rows = _fetch_rows(SQL["co2"], {"day": day})
+    except Exception as exc:
+        raise _internal_error(exc)
+    if not rows:
+        raise HTTPException(status_code=404, detail="No forecast inputs for that day (yet)")
+    return {"day": day.isoformat(), "unit": "gCO2/kWh", "hours": rows}
+
+
+@app.get("/api/grid-events", tags=["analytics"])
+def grid_events(
+    days: int = Query(30, ge=1, le=MAX_DAYS),
+    kind: Optional[str] = Query(None, pattern=EVENT_KIND_PATTERN),
+    limit: int = Query(100, ge=1, le=1000),
 ):
-    """
-    Return statistical anomalies detected via z-score analysis.
-
-    A reading is considered anomalous when its value deviates more than
-    *z_threshold* standard deviations from that sensor's monthly mean,
-    calculated using only non-flagged (clean) readings as the baseline.
-    """
-    type_filter = "AND f.facility_type = %s" if facility_type else ""
-    params: tuple = (facility_type,) if facility_type else ()
-
-    sql = f"""
-        WITH sensor_monthly_stats AS (
-            SELECT
-                sensor_id,
-                DATE_TRUNC('month', recorded_at)  AS month,
-                AVG(value)                        AS mean_val,
-                STDDEV(value)                     AS stddev_val
-            FROM readings
-            WHERE is_anomaly = FALSE
-            GROUP BY sensor_id, DATE_TRUNC('month', recorded_at)
-        ),
-        scored AS (
-            SELECT
-                r.reading_id,
-                r.sensor_id,
-                r.recorded_at,
-                r.value,
-                r.is_anomaly                         AS pre_labelled,
-                CASE
-                    WHEN s.stddev_val > 0
-                    THEN ABS(r.value - s.mean_val) / s.stddev_val
-                    ELSE 0
-                END                                  AS z_score,
-                f.facility_name,
-                f.facility_type,
-                se.sensor_type,
-                se.unit
-            FROM readings r
-            JOIN sensor_monthly_stats s
-              ON  r.sensor_id = s.sensor_id
-              AND DATE_TRUNC('month', r.recorded_at) = s.month
-            JOIN sensors    se ON r.sensor_id    = se.sensor_id
-            JOIN facilities f  ON se.facility_id = f.facility_id
-            WHERE 1=1 {type_filter}
-        )
-        SELECT *
-        FROM scored
-        WHERE z_score > %s
-        ORDER BY z_score DESC
-        LIMIT %s
-    """  # nosec B608
-
+    """Unusual moments on the grid, newest first (sql/analysis/20 -> grid_events() in sql/schema/15)."""
+    w = _window(days)
     try:
-        rows = _fetch_rows(sql, params + (z_threshold, limit))
+        rows = _fetch_rows(SQL["events"], w)
     except Exception as exc:
         raise _internal_error(exc)
-
-    # Convert Decimal / datetime to JSON-serialisable types
-    for row in rows:
-        _make_json_safe(row)
-
-    return {
-        "z_threshold"    : z_threshold,
-        "facility_type"  : facility_type,
-        "count"          : len(rows),
-        "anomalies"      : rows,
-    }
-
-
-@app.get("/api/detection-quality", tags=["analytics"])
-def get_detection_quality(
-    z_threshold: float = Query(
-        default=3.0,
-        ge=1.0,
-        le=10.0,
-        description="Z-score threshold used by the detector (same rule as /api/anomalies).",
-    ),
-):
-    """
-    Score the z-score detector against the injected faults (ground truth).
-
-    The synthetic generator labels every fault it injects (is_anomaly), and a
-    fault is either a zero-value dropout or a spike at three times the sensor's
-    normal maximum. The labels are used only to build a clean baseline (the
-    monthly mean and standard deviation of non-injected readings); a reading
-    is flagged when it lies more than *z_threshold* standard deviations from
-    that baseline. Comparing flags with labels gives precision (how many flags
-    are real faults) and recall (how many faults are flagged), per sensor type
-    and per fault kind. Same SQL as sql/analysis/11_detection_quality.sql.
-    """
-    sql = """
-        WITH sensor_monthly_stats AS (
-            SELECT
-                sensor_id,
-                DATE_TRUNC('month', recorded_at)  AS month,
-                AVG(value)                        AS mean_val,
-                STDDEV(value)                     AS stddev_val
-            FROM readings
-            WHERE is_anomaly = FALSE
-            GROUP BY sensor_id, DATE_TRUNC('month', recorded_at)
-        ),
-        scored AS (
-            SELECT
-                se.sensor_type,
-                r.is_anomaly                                   AS injected,
-                (s.stddev_val > 0
-                 AND ABS(r.value - s.mean_val) / s.stddev_val > %s) AS flagged,
-                r.value < s.mean_val                           AS below_baseline
-            FROM readings r
-            JOIN sensor_monthly_stats s
-              ON  r.sensor_id = s.sensor_id
-              AND DATE_TRUNC('month', r.recorded_at) = s.month
-            JOIN sensors se ON r.sensor_id = se.sensor_id
-        )
-        SELECT
-            sensor_type,
-            COUNT(*)                                                     AS readings,
-            COUNT(*) FILTER (WHERE injected)                             AS injected,
-            COUNT(*) FILTER (WHERE flagged)                              AS flagged,
-            COUNT(*) FILTER (WHERE injected AND flagged)                 AS true_positives,
-            COUNT(*) FILTER (WHERE injected AND NOT below_baseline)      AS spikes,
-            COUNT(*) FILTER (WHERE injected AND NOT below_baseline AND flagged) AS spikes_flagged,
-            COUNT(*) FILTER (WHERE injected AND below_baseline)          AS drops,
-            COUNT(*) FILTER (WHERE injected AND below_baseline AND flagged)     AS drops_flagged
-        FROM scored
-        GROUP BY sensor_type
-        ORDER BY sensor_type
-    """
-
-    try:
-        rows = _fetch_rows(sql, (z_threshold,))
-    except Exception as exc:
-        raise _internal_error(exc)
-
-    def _pct(part: int, whole: int) -> Optional[float]:
-        return round(part / whole * 100, 1) if whole else None
-
-    totals = {key: 0 for key in ("readings", "injected", "flagged", "true_positives",
-                                 "spikes", "spikes_flagged", "drops", "drops_flagged")}
-    for row in rows:
-        for key in totals:
-            row[key] = int(row[key])
-            totals[key] += row[key]
-    for row in rows + [totals]:
-        row["precision_pct"] = _pct(row["true_positives"], row["flagged"])
-        row["recall_pct"] = _pct(row["true_positives"], row["injected"])
-
-    return {"z_threshold": z_threshold, "sensors": rows, "total": totals}
-
-
-@app.get("/api/facilities/ranking", tags=["analytics"])
-def get_facility_ranking():
-    """
-    Return all facilities ranked by average power output as a share of
-    nameplate capacity (capacity factor), over all non-anomalous readings in
-    the available data window. The response field is named
-    avg_efficiency_pct for backward compatibility.
-    """
-    sql = """
-        WITH monthly_output AS (
-            SELECT
-                f.facility_id,
-                f.facility_name,
-                f.facility_type,
-                f.capacity_mw,
-                f.country,
-                AVG(r.value)   AS avg_output_mw
-            FROM readings r
-            JOIN sensors    s ON r.sensor_id   = s.sensor_id
-            JOIN facilities f ON s.facility_id = f.facility_id
-            WHERE s.sensor_type = 'power_output'
-              AND r.is_anomaly  = FALSE
-            GROUP BY
-                f.facility_id, f.facility_name, f.facility_type,
-                f.capacity_mw, f.country
-        )
-        SELECT
-            facility_name,
-            facility_type,
-            country,
-            ROUND(capacity_mw::NUMERIC, 2)                              AS capacity_mw,
-            ROUND((avg_output_mw / NULLIF(capacity_mw, 0) * 100)::NUMERIC, 2)
-                                                                        AS avg_efficiency_pct,
-            RANK() OVER (ORDER BY avg_output_mw / NULLIF(capacity_mw, 0) DESC)
-                                                                        AS overall_rank
-        FROM monthly_output
-        ORDER BY overall_rank
-    """
-
-    try:
-        rows = _fetch_rows(sql)
-    except Exception as exc:
-        raise _internal_error(exc)
-
-    for row in rows:
-        _make_json_safe(row)
-
-    return {"count": len(rows), "facilities": rows}
+    if kind:
+        rows = [r for r in rows if r["kind"] == kind]
+    return {"window": _window_json(w), "count": len(rows), "events": rows[:limit]}

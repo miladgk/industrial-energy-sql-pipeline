@@ -1,54 +1,49 @@
 -- =============================================================
 -- 02_data_quality_checks.sql
--- Run after ingestion to verify data integrity.
+-- Health of the Fingrid warehouse, run by src/run_quality_checks.py
+-- (and by CI after the snapshot restore).
+--
+-- Each check starts with a line "-- Check: <label> [fail]" or "[info]".
+-- A [fail] check passes when it returns no rows; [info] only reports.
 -- =============================================================
 
--- ---------------------------------------------------------------
--- Check 1: Sensors with no readings (should return 0 rows)
--- ---------------------------------------------------------------
-SELECT
-    s.sensor_id,
-    s.sensor_type,
-    f.facility_name
-FROM sensors s
-LEFT JOIN readings r ON s.sensor_id = r.sensor_id
-JOIN  facilities f   ON s.facility_id = f.facility_id
-WHERE r.reading_id IS NULL;
+-- Check: Rows that fell into the default partition [fail]
+-- The sync and the restore create the monthly partition before writing,
+-- so anything here means a month was missed.
+SELECT dataset_id, COUNT(*) AS rows, MIN(start_time) AS first_start
+FROM fingrid_observation_default
+GROUP BY dataset_id;
 
+-- Check: Datasets in the catalogue without any data [fail]
+SELECT d.dataset_id, d.key
+FROM fingrid_dataset d
+WHERE NOT EXISTS (SELECT 1 FROM fingrid_observation o WHERE o.dataset_id = d.dataset_id);
 
--- ---------------------------------------------------------------
--- Check 2: Readings with NULL values (should be 0)
--- ---------------------------------------------------------------
-SELECT COUNT(*) AS null_value_count
-FROM readings
-WHERE value IS NULL;
+-- Check: Datasets whose newest slot is more than 7 days old [fail]
+-- The daily sync re-reads the last 7 days; an older newest slot means the
+-- sync has stopped or Fingrid stopped publishing the dataset.
+SELECT d.dataset_id, d.key, MAX(o.end_time) AS newest
+FROM fingrid_dataset d
+JOIN fingrid_observation o USING (dataset_id)
+GROUP BY d.dataset_id, d.key
+HAVING MAX(o.end_time) < now() - interval '7 days';
 
+-- Check: Coverage of the last 30 days per dataset [info]
+-- Stored slots as a share of the slots the resolution implies.
+SELECT d.dataset_id, d.key, d.resolution,
+       COUNT(o.start_time) AS slots,
+       ROUND(100.0 * COUNT(o.start_time)
+             / (EXTRACT(EPOCH FROM interval '30 days') / EXTRACT(EPOCH FROM d.resolution))::numeric, 1) AS coverage_pct
+FROM fingrid_dataset d
+LEFT JOIN fingrid_observation o
+       ON o.dataset_id = d.dataset_id
+      AND o.start_time >= date_trunc('day', now()) - interval '30 days'
+      AND o.start_time <  date_trunc('day', now())
+GROUP BY d.dataset_id, d.key, d.resolution
+ORDER BY coverage_pct;
 
--- ---------------------------------------------------------------
--- Check 3: Anomaly rate per facility (expect ~2%)
--- ---------------------------------------------------------------
-SELECT
-    f.facility_name,
-    f.facility_type,
-    COUNT(*)                                          AS total_readings,
-    COUNT(*) FILTER (WHERE r.is_anomaly = TRUE)       AS anomaly_count,
-    ROUND(
-        100.0 * COUNT(*) FILTER (WHERE r.is_anomaly = TRUE)
-        / NULLIF(COUNT(*), 0),
-        2
-    )                                                 AS anomaly_pct
-FROM readings r
-JOIN sensors    s ON r.sensor_id   = s.sensor_id
-JOIN facilities f ON s.facility_id = f.facility_id
-GROUP BY f.facility_name, f.facility_type
-ORDER BY anomaly_pct DESC;
-
-
--- ---------------------------------------------------------------
--- Check 4: Timestamp coverage — confirm data spans full year 2025
--- ---------------------------------------------------------------
-SELECT
-    MIN(recorded_at)                                          AS earliest_reading,
-    MAX(recorded_at)                                          AS latest_reading,
-    COUNT(DISTINCT DATE_TRUNC('day', recorded_at))            AS days_with_data
-FROM readings;
+-- Check: Frequency samples Fingrid wrote as 0 Hz (its gap marker) [info]
+-- They are skipped by every analysis.
+SELECT COUNT(*) AS zero_hz_samples, MIN(start_time) AS first, MAX(start_time) AS last
+FROM fingrid_observation
+WHERE dataset_id = 177 AND value < 45;

@@ -102,6 +102,8 @@ def sync_dataset(conn, api_key: str, dataset_id: int, now: datetime, fetch,
         rows = fetch(dataset_id, api_key, w_start.strftime(API_TIME), w_end.strftime(API_TIME))
         if len(rows) >= PAGE_SIZE:
             raise RuntimeError(f"dataset {dataset_id}: {len(rows)} rows fill a whole page; use smaller windows")
+        with conn.cursor() as cur:          # the monthly partitions this window writes into
+            cur.execute("SELECT ensure_fingrid_partitions(%s::date, %s::date)", (w_start, w_end))
         values = [
             (dataset_id, _parse(r["startTime"]), _parse(r["endTime"]), float(r["value"]))
             for r in rows
@@ -122,7 +124,7 @@ def sync(conn, api_key: str, dataset_ids=None, now: datetime | None = None, fetc
          backfill_days: int = 400, revision_days: int = 7) -> list:
     """Sync every requested dataset; raises after trying them all if any failed."""
     if fetch is None:
-        from fetch_grid_data import fetch_dataset_chunk as fetch
+        from fingrid_api import fetch_dataset_chunk as fetch
     now = now or datetime.now(timezone.utc)
     ids = list(dataset_ids or [d[0] for d in DATASETS])
     unknown = [i for i in ids if i not in BY_ID]
@@ -154,7 +156,7 @@ def main() -> None:
     args = parser.parse_args()
 
     from db_connection import get_connection
-    from fetch_grid_data import load_api_key
+    from fingrid_api import load_api_key
 
     api_key = load_api_key()
     if not api_key:

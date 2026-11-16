@@ -21,9 +21,6 @@ jobs:
           - { python: "3.12", postgres: "15" }
           - { python: "3.11", postgres: "14" }
           - { python: "3.11", postgres: "16" }
-    env:
-      ROWS_EXPECTED: "50000"
-      DAYS_EXPECTED: "3"
 
     services:
       postgres:
@@ -68,25 +65,19 @@ jobs:
           EOF
 
 
-      - name: Initialize Database Schema
-        run: |
-          python src/setup_db.py
+      - name: Create the warehouse schema
+        run: python src/setup_db.py
 
-      - name: Generate Scaled-Down CI Data
+      # The real warehouse, as published by the daily refresh: a public release
+      # asset, so CI needs no Fingrid key and pull requests see no secrets.
+      - name: Restore the Fingrid warehouse snapshot
         run: |
-          python src/generate_data.py --rows ${ROWS_EXPECTED}
+          curl -fsSL --retry 3 -o /tmp/fingrid_observation.csv.gz \
+            https://github.com/${{ github.repository }}/releases/download/warehouse-snapshot/fingrid_observation.csv.gz
+          python src/warehouse_snapshot.py restore /tmp/fingrid_observation.csv.gz
 
-      - name: Partition Readings Table
-        run: |
-          python src/migrate_to_partitioned.py
-
-      - name: Ingest Data into PostgreSQL
-        run: |
-          python src/ingest.py
-
-      - name: Run Data Quality Checks
-        run: |
-          python src/run_quality_checks.py
+      - name: Run data quality checks
+        run: python src/run_quality_checks.py
 
       - name: Smoke tests (is everything alive?)
         run: pytest -m smoke -v
@@ -97,7 +88,7 @@ jobs:
       - name: Integration tests
         run: pytest -m integration -v
 
-      - name: Regression tests (golden dataset)
+      - name: Regression tests (golden datasets)
         run: pytest -m regression -v
 
       - name: Performance tests (query plans + latency budgets)
