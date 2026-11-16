@@ -36,3 +36,6 @@ Thumbs.db
 
 # Built by the hourly Pages deploy from the Fingrid API; never committed
 docs/data/fingrid_latest.json
+
+# Personal Claude Code settings (not shared)
+.claude/settings.local.json

@@ -13,6 +13,8 @@ Rebuild the static data files used by the GitHub Pages dashboard (docs/data/).
                               Fingrid warehouse (fingrid_observation)                  [part: fingrid-recent]
   forecast_scorecard.json     How good Fingrid's own forecasts were over the last 365
                               days (sql/analysis/13-17 on the Fingrid warehouse)       [part: forecast-scorecard]
+  co2_forecast.json           Hourly CO2 intensity forecast for tomorrow, yesterday's
+                              forecast vs reality, and the backtest (sql/analysis/18-19)  [part: co2-forecast]
   fingrid_latest.json         Newest wind and consumption values from the Fingrid API.
                               Built by the hourly Pages deploy and never committed     [part: fingrid-latest]
 
@@ -30,7 +32,7 @@ Usage (from the repository root):
     python scripts/export_dashboard_data.py                          # fingrid, validation, snapshot
     python scripts/export_dashboard_data.py --skip-snapshot          # local files only
     python src/sync_fingrid.py && \
-    python scripts/export_dashboard_data.py --parts fingrid-recent forecast-scorecard   # the daily workflow
+    python scripts/export_dashboard_data.py --parts fingrid-recent forecast-scorecard co2-forecast   # the daily workflow
     python scripts/export_dashboard_data.py --parts fingrid-latest   # what the hourly Pages deploy runs
     python scripts/export_dashboard_data.py --api-url http://127.0.0.1:8000
     python scripts/export_dashboard_data.py --api-url http://127.0.0.1:8000 \
@@ -48,7 +50,7 @@ import subprocess
 import sys
 import urllib.parse
 import urllib.request
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pandas as pd
 
@@ -205,6 +207,76 @@ def export_forecast_scorecard(days: int = 365) -> None:
     })
 
 
+CO2_SQL = {"forecast": "sql/analysis/18_co2_forecast.sql", "backtest": "sql/analysis/19_co2_forecast_backtest.sql"}
+CO2_TRAINING_DAYS = 62     # co2_forecast() fits on days D-61 .. D-2
+
+
+def export_co2_forecast(days: int = 365) -> None:
+    """Tomorrow's hourly CO2 forecast (today's if Fingrid has not yet published tomorrow's
+    day-ahead forecasts, at 12:00 Finnish time), yesterday's forecast against what happened,
+    and the backtest over up to *days* days."""
+    sys.path.insert(0, os.path.join(ROOT, "src"))
+    from analysis_window import default_window, tomorrow_fi
+
+    def sql(name):
+        with open(os.path.join(ROOT, CO2_SQL[name]), encoding="utf-8") as fh:
+            return fh.read()
+
+    tomorrow = tomorrow_fi()
+    w = default_window(days=days)
+    conn = _db()
+    try:
+        target, hours = tomorrow, _rows(conn, sql("forecast"), {"day": tomorrow})
+        if len(hours) < 23:                      # 23 to 25 hours, depending on DST
+            target, hours = tomorrow - timedelta(days=1), _rows(conn, sql("forecast"), {"day": tomorrow - timedelta(days=1)})
+        yesterday = tomorrow - timedelta(days=2)
+        past = _rows(conn, sql("forecast"), {"day": yesterday})
+        first = _rows(conn, "SELECT min(day_fi) AS d FROM co2_hourly WHERE co2_actual IS NOT NULL")[0]["d"]
+        start = max(w["start"], datetime.fromisoformat(first).replace(tzinfo=timezone.utc)
+                    + timedelta(days=CO2_TRAINING_DAYS))
+        backtest = _rows(conn, sql("backtest"), {"start": start, "end": w["end"]})[0]
+    finally:
+        conn.close()
+    if len(hours) < 23:
+        raise SystemExit("no complete CO2 forecast for today or tomorrow: run src/sync_fingrid.py first")
+
+    hours = _rounded(hours)
+    # Order by the unclamped line: hours on the training-window floor share one value.
+    cleanest = min(hours, key=lambda h: h["co2_unclamped"])
+    dirtiest = max(hours, key=lambda h: h["co2_unclamped"])
+    best3 = min((h for h in hours if h["mean_next_3h_unclamped"] is not None), key=lambda h: h["mean_next_3h_unclamped"])
+    known = [h for h in past if h["co2_actual"] is not None]
+    _write("co2_forecast.json", {
+        "generated_at": _now(),
+        "source": "Fingrid Open Data API (CC BY 4.0): emission factor of electricity consumed in Finland (396) "
+                  "and the day-ahead forecasts of consumption (165), wind (246) and solar (247)",
+        "unit": "gCO2/kWh",
+        "model": "least-squares line of CO2 intensity on residual load (consumption - wind - solar forecast), "
+                 "refitted daily on the 60 days ending two days before the target day, plus that line's mean "
+                 "error on the last fully known day; baseline: the same hour two days earlier",
+        "target_day": target.isoformat(),
+        "target_is_tomorrow": target == tomorrow,
+        "hours": [{k: h[k] for k in ("hour_start", "hour_fi", "co2_forecast", "co2_naive", "mean_next_3h_g",
+                                     "rank_cleanest", "residual_load_mw")} for h in hours],
+        "cleanest_hour": {"hour_start": cleanest["hour_start"], "hour_fi": cleanest["hour_fi"], "co2": cleanest["co2_forecast"]},
+        "dirtiest_hour": {"hour_start": dirtiest["hour_start"], "hour_fi": dirtiest["hour_fi"], "co2": dirtiest["co2_forecast"]},
+        "best_3h": {"hour_start": best3["hour_start"], "hour_fi": best3["hour_fi"], "co2": best3["mean_next_3h_g"]},
+        "day_mean_forecast": round(sum(h["co2_forecast"] for h in hours) / len(hours), 1),
+        "yesterday": {
+            "day": yesterday.isoformat(),
+            "hours": [{k: round(h[k], 1) if isinstance(h[k], float) else h[k]
+                       for k in ("hour_start", "hour_fi", "co2_forecast", "co2_actual")} for h in past],
+            "mae_g": round(sum(abs(h["co2_actual"] - h["co2_forecast"]) for h in known) / len(known), 1) if known else None,
+        },
+        "backtest": {
+            "window_start": start.strftime("%Y-%m-%d"),
+            "window_end_exclusive": w["end"].strftime("%Y-%m-%d"),
+            **{k: (round(v, 1) if isinstance(v, float) else v) for k, v in backtest.items()},
+        },
+        "sql": ["sql/schema/14_co2_forecast.sql", *CO2_SQL.values()],
+    })
+
+
 def export_fingrid_latest(hours: int = 6) -> None:
     """Newest raw value of each dataset in the last few hours: two small requests, no history."""
     sys.path.insert(0, os.path.join(ROOT, "src"))
@@ -293,6 +365,7 @@ def export_snapshot(api_url: str) -> None:
 
 GITHUB_BLOB = "https://github.com/miladgk/industrial-energy-sql-pipeline/blob/main/"
 PAGE_SQL_FILES = [
+    "sql/schema/14_co2_forecast.sql",
     "sql/analysis/13_forecast_scorecard.sql",
     "sql/analysis/17_forecast_error_vs_balancing.sql",
     "sql/analysis/11_detection_quality.sql",
@@ -553,7 +626,7 @@ def main() -> None:
     parser.add_argument("--skip-snapshot", action="store_true", help="Do not call the API")
     parser.add_argument("--parts", nargs="+",
                         choices=["fingrid", "validation", "snapshot", "fingrid-recent", "fingrid-latest",
-                                 "forecast-scorecard", "thresholds", "ranking", "anomalies", "blindspot", "sql", "engineering"],
+                                 "forecast-scorecard", "co2-forecast", "thresholds", "ranking", "anomalies", "blindspot", "sql", "engineering"],
                         help="Only build these files (default: fingrid validation snapshot)")
     parser.add_argument("--year", type=int, default=2025, help="Calendar year for the fingrid part (default 2025)")
     parser.add_argument("--recent-days", type=int, default=365, help="Window for fingrid-recent (days)")
@@ -574,6 +647,8 @@ def main() -> None:
         export_fingrid_latest()
     if "forecast-scorecard" in parts:
         export_forecast_scorecard()
+    if "co2-forecast" in parts:
+        export_co2_forecast()
 
     api_url = args.api_url.rstrip("/")
     needs_dataset = {"thresholds", "ranking", "anomalies", "blindspot", "engineering"} & set(parts)

@@ -115,7 +115,8 @@ energy-analytics-sql/
 │   ├── schema/
 │   │   ├── 01_create_tables.sql
 │   │   ├── 10_partition_readings.sql # Declarative range partitioning (monthly)
-│   │   └── 13_fingrid_warehouse.sql  # Raw Fingrid observations + forecast_vs_actual view
+│   │   ├── 13_fingrid_warehouse.sql  # Raw Fingrid observations + forecast_vs_actual view
+│   │   └── 14_co2_forecast.sql       # co2_hourly view + co2_forecast() model (SQL function)
 │   ├── etl/
 │   │   └── 02_data_quality_checks.sql
 │   └── analysis/
@@ -130,7 +131,9 @@ energy-analytics-sql/
 │       ├── 14_forecast_error_by_hour.sql  # ... by hour of the day (Finnish time)
 │       ├── 15_forecast_error_by_month.sql # ... by month
 │       ├── 16_forecast_biggest_misses.sql # The worst day-ahead days
-│       └── 17_forecast_error_vs_balancing.sql # Forecast surprise vs mFRR activation and imbalance price
+│       ├── 17_forecast_error_vs_balancing.sql # Forecast surprise vs mFRR activation and imbalance price
+│       ├── 18_co2_forecast.sql            # Tomorrow's hourly CO2 intensity, cleanest hours
+│       └── 19_co2_forecast_backtest.sql   # The same model replayed over the past year
 │
 ├── src/
 │   ├── setup_db.py             # Runs 01_create_tables.sql (fallback for non-Docker setups)
@@ -424,14 +427,15 @@ imbalance price), CO2 intensity and system stability.
 ```bash
 python src/setup_db.py           # creates the tables (13_fingrid_warehouse.sql)
 python src/sync_fingrid.py       # first run: backfills 400 days (~15 min); later: the last 7 days
-python scripts/export_dashboard_data.py --parts fingrid-recent forecast-scorecard
+python scripts/export_dashboard_data.py --parts fingrid-recent forecast-scorecard co2-forecast
 ```
 
 The sync is incremental and idempotent: each dataset is re-fetched from its newest
 stored slot minus 7 days (Fingrid revises recent values), only slots that have
 already ended are stored, and unchanged rows are not rewritten.
 
-`.github/workflows/refresh_fingrid.yml` runs this every day at 05:17 UTC (or on
+`.github/workflows/refresh_fingrid.yml` runs this every day at 10:47 UTC, after
+Fingrid publishes the next day's day-ahead forecasts at 12:00 Finnish time (or on
 demand from the Actions tab). It starts an empty PostgreSQL, restores the previous
 warehouse from the `warehouse-snapshot` release (`fingrid_observation.csv.gz`, also
 a free download of the whole dataset), syncs the last week, publishes the new
@@ -449,6 +453,25 @@ environment only inside that job; locally, `fingrid_api_key` in the git-ignored
 day-ahead days, and how activated mFRR balancing power and the imbalance price
 behave when the day-ahead forecast was wrong. Solar is not scored: Fingrid publishes
 solar forecasts but no measured solar production.
+
+#### CO2 forecast: the cleanest hours of tomorrow
+
+Fingrid publishes the CO2 intensity of electricity consumed in Finland (dataset
+396) only as it happens. `co2_forecast()` in `sql/schema/14_co2_forecast.sql`
+predicts it per hour of a Finnish day from Fingrid's own day-ahead forecasts: a
+least-squares line (`regr_slope`, `regr_intercept`) of intensity against residual
+load (consumption - wind - solar), refitted for every day on the 60 days ending two
+days earlier, shifted by its error on the last fully known day, and never below the
+lowest intensity in those 60 days. The day-ahead forecasts it needs for tomorrow
+are the only values the sync stores before their slot has ended
+(`fingrid_catalog.STORE_FUTURE`): they are published once and never revised.
+
+`18_co2_forecast.sql` gives tomorrow's hours with the cleanest hour and 3-hour
+window; `19_co2_forecast_backtest.sql` replays the same function over the past
+year using only data available at each point. Over 338 days: mean absolute error
+4.5 gCO2/kWh against 7.1 for "same hour two days earlier"; the hour picked as
+cleanest was among the real 3 cleanest on 46% of days and emitted 14.8% less than
+an average hour (19.7% for a perfect pick).
 
 The newest 15-minute wind and consumption values (the "Latest" row above the chart)
 are fetched by `.github/workflows/pages.yml`, which also runs every hour. It makes two

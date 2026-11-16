@@ -1,15 +1,18 @@
 """
 analysis_window.py
 ~~~~~~~~~~~~~~~~~~
-The time window used by the Fingrid analysis queries (sql/analysis/13-17).
+Default parameters for the Fingrid analysis queries (sql/analysis/13-19).
 
-Those files take two named parameters, %(start)s and %(end)s. Callers that
-run every analysis file (run_report.py, the integration tests) use
-params_for(sql), which returns the default window for such files and None for
-the others, so files without placeholders run exactly as before.
+Most take a window, %(start)s and %(end)s; 18_co2_forecast.sql takes a Finnish
+calendar day, %(day)s. Callers that run every analysis file (run_report.py,
+the integration tests) use params_for(sql), which returns the defaults for such
+files and None for the others, so files without placeholders run as before.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
+
+HELSINKI = ZoneInfo("Europe/Helsinki")
 
 DEFAULT_DAYS = 365
 
@@ -21,5 +24,13 @@ def default_window(now: datetime | None = None, days: int = DEFAULT_DAYS) -> dic
     return {"start": end - timedelta(days=days), "end": end}
 
 
+def tomorrow_fi(now: datetime | None = None) -> date:
+    """The next calendar day in Finland."""
+    now = now or datetime.now(timezone.utc)
+    return now.astimezone(HELSINKI).date() + timedelta(days=1)
+
+
 def params_for(sql: str, now: datetime | None = None) -> dict | None:
+    if "%(day)s" in sql:
+        return {"day": tomorrow_fi(now)}
     return default_window(now) if "%(start)s" in sql else None

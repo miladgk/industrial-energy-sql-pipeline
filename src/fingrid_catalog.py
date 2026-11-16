@@ -46,6 +46,12 @@ DATASETS = [
 
 BY_ID = {d[0]: d for d in DATASETS}
 
+# Day-ahead forecasts are published once (at 12:00 Finnish time, for the next day)
+# and never revised, so their future slots can be stored safely. The CO2 forecast
+# for tomorrow (sql/schema/14_co2_forecast.sql) needs them. Every other dataset,
+# including the 15-minute-updated forecasts, is stored only once its slot has ended.
+STORE_FUTURE = {165, 246, 247}
+
 _UPSERT = """
     INSERT INTO fingrid_dataset (dataset_id, key, name, unit, kind, resolution)
     VALUES (%s, %s, %s, %s, %s, %s)

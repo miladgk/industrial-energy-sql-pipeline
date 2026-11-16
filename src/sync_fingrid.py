@@ -9,7 +9,9 @@ For each dataset:
   * otherwise     -> re-fetch from (newest stored slot - --revision-days) to now,
                      because Fingrid revises recent values after publishing them
   * only slots that have already ended are stored, so a forecast is kept as it
-    stood before its slot, never as a still-changing future value
+    stood before its slot, never as a still-changing future value; the day-ahead
+    forecasts in fingrid_catalog.STORE_FUTURE (published once, never revised) are
+    the exception and are also stored up to two days ahead
   * rows are upserted on (dataset_id, start_time); an unchanged value is not
     rewritten, so running the sync twice changes nothing
 
@@ -29,7 +31,7 @@ from datetime import datetime, timedelta, timezone
 from psycopg2.extras import execute_values
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from fingrid_catalog import BY_ID, DATASETS, ensure_catalog  # noqa: E402
+from fingrid_catalog import BY_ID, DATASETS, STORE_FUTURE, ensure_catalog  # noqa: E402
 
 PAGE_SIZE = 20000          # fetch_dataset_chunk's pageSize; a month of 15-min data is <= 2,976 rows
 API_TIME = "%Y-%m-%dT%H:%M:%SZ"
@@ -77,9 +79,10 @@ def sync_dataset(conn, api_key: str, dataset_id: int, now: datetime, fetch,
         cur.execute("SELECT max(start_time) FROM fingrid_observation WHERE dataset_id = %s", (dataset_id,))
         last_start = cur.fetchone()[0]
     start = plan_start(last_start, now, backfill_days, revision_days)
+    until = now + timedelta(days=2) if dataset_id in STORE_FUTURE else now
 
     fetched = changed = 0
-    for w_start, w_end in month_windows(start, now):
+    for w_start, w_end in month_windows(start, until):
         # The API keeps slots with startTime >= start and endTime <= end, so
         # consecutive windows neither overlap nor leave a gap.
         rows = fetch(dataset_id, api_key, w_start.strftime(API_TIME), w_end.strftime(API_TIME))
@@ -88,7 +91,7 @@ def sync_dataset(conn, api_key: str, dataset_id: int, now: datetime, fetch,
         values = [
             (dataset_id, _parse(r["startTime"]), _parse(r["endTime"]), float(r["value"]))
             for r in rows
-            if r.get("value") is not None and _parse(r["endTime"]) <= now
+            if r.get("value") is not None and _parse(r["endTime"]) <= until
         ]
         fetched += len(values)
         if values:
