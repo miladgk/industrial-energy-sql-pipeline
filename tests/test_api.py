@@ -92,12 +92,19 @@ def test_grid_events_kind_filter_and_limit(client):
     assert starts == sorted(starts, reverse=True)
 
 
+def test_temperature_sensitivity_has_both_day_types(client):
+    fits = client.get("/api/temperature-sensitivity").json()["fits"]
+    assert {f["day_type"] for f in fits} == {"weekday", "weekend"}
+    assert all(f["mw_per_degree"] > 0 and 5 <= f["balance_point_c"] <= 20 for f in fits)
+
+
 @pytest.mark.parametrize("path,params", [
     ("/api/forecast-scorecard", {"days": 0}),
     ("/api/forecast-scorecard", {"days": 401}),
     ("/api/forecast-error-by-hour", {"variable": "solar"}),
     ("/api/grid-events", {"kind": "earthquake"}),
     ("/api/grid-events", {"limit": 0}),
+    ("/api/temperature-sensitivity", {"days": 10}),
     ("/api/co2-forecast", {"day": "2001-01-01"}),
     ("/api/co2-forecast", {"day": "not-a-date"}),
 ])

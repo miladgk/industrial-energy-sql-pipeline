@@ -130,3 +130,16 @@ def test_grid_events_file_is_consistent():
     assert all(e["peak"] <= -400 and e["freq_min_nearby"] is not None for e in d["nuclear_crosscheck"])
     q = d["data_quality"]
     assert 0 < q["valid"] <= q["minutes_in_window"]
+
+
+def test_temperature_file_is_consistent():
+    t = _load("temperature.json")
+    assert {f["day_type"] for f in t["fits"]} == {"weekday", "weekend"}
+    for f in t["fits"]:
+        assert 5 <= f["balance_point_c"] <= 20
+        assert f["mw_per_degree"] > 0, "colder days must use more electricity"
+        assert 0 <= f["r2"] <= 1
+    assert sum(f["days"] for f in t["fits"]) == t["days"] >= 300
+    assert sum(b["weekday_days"] + b["weekend_days"] for b in t["bins"]) == t["days"]
+    assert all(b["to_c"] - b["from_c"] == 3 for b in t["bins"])
+    assert t["coldest_day"]["temp_c"] < t["warmest_day"]["temp_c"]

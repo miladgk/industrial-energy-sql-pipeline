@@ -8,6 +8,7 @@ Fingrid warehouse. Each file comes from the SQL in sql/analysis and sql/schema.
   forecast_scorecard.json     Error of Fingrid's own forecasts (13-17)             [part: forecast-scorecard]
   co2_forecast.json           Tomorrow's hourly CO2 intensity, backtest (18-19)    [part: co2-forecast]
   grid_events.json            Grid event log of the last year (20-21)              [part: grid-events]
+  temperature.json            How much each degree of cold raises consumption (22-23) [part: temperature]
   fingrid_latest.json         Newest wind and consumption from the Fingrid API;
                               built by the hourly Pages deploy, never committed    [part: fingrid-latest]
   sql_sources.json            Verbatim text of the SQL shown on the page           [part: sql]
@@ -306,6 +307,57 @@ def export_grid_events(days: int = 365) -> None:
     })
 
 
+TEMPERATURE_SQL = {"days": "sql/analysis/22_temperature_daily.sql",
+                   "fits": "sql/analysis/23_temperature_sensitivity.sql"}
+TEMPERATURE_BIN_C = 3
+
+
+def export_temperature(days: int = 365) -> None:
+    sys.path.insert(0, os.path.join(ROOT, "src"))
+    from analysis_window import default_window
+
+    w = default_window(days=days)
+    conn = _db()
+    try:
+        out = {}
+        for part, path in TEMPERATURE_SQL.items():
+            with open(os.path.join(ROOT, path), encoding="utf-8") as fh:
+                out[part] = _rows(conn, fh.read(), w)
+    finally:
+        conn.close()
+    daily, fits = out["days"], out["fits"]
+    if len(fits) != 2 or len(daily) < 300:
+        raise SystemExit(f"temperature: {len(daily)} days and {len(fits)} fits: run src/sync_fingrid.py first")
+
+    # Mean consumption per temperature bin and day type, for the chart (presentation only).
+    bins = {}
+    for d in daily:
+        b = int(d["temp_c"] // TEMPERATURE_BIN_C) * TEMPERATURE_BIN_C
+        bins.setdefault((b, d["weekend"]), []).append(d["consumption_mw"])
+    lo, hi = min(b for b, _ in bins), max(b for b, _ in bins)
+    binned = [{"from_c": b, "to_c": b + TEMPERATURE_BIN_C,
+               **{f"{k}_mw": round(sum(v) / len(v), 1) if (v := bins.get((b, k == "weekend"))) else None for k in ("weekday", "weekend")},
+               **{f"{k}_days": len(bins.get((b, k == "weekend"), [])) for k in ("weekday", "weekend")}}
+              for b in range(lo, hi + TEMPERATURE_BIN_C, TEMPERATURE_BIN_C)]
+    coldest = min(daily, key=lambda d: d["temp_c"])
+    warmest = max(daily, key=lambda d: d["temp_c"])
+    _write("temperature.json", {
+        "generated_at": _now(),
+        "source": "Fingrid Open Data API (CC BY 4.0): temperature in Helsinki (178), Jyväskylä (182), Oulu (196) "
+                  "and Rovaniemi (185), electricity consumption in Finland (124)",
+        "window_start": w["start"].strftime("%Y-%m-%d"),
+        "window_end_exclusive": w["end"].strftime("%Y-%m-%d"),
+        "model": "consumption = base_mw + mw_per_degree * max(balance_point - temperature, 0), fitted per day "
+                 "type; the balance point (5-20 C) with the highest r2 is kept",
+        "fits": _rounded(fits, 3),
+        "bins": binned,
+        "coldest_day": _rounded([coldest])[0],
+        "warmest_day": _rounded([warmest])[0],
+        "days": len(daily),
+        "sql": list(TEMPERATURE_SQL.values()),
+    })
+
+
 def export_fingrid_latest(hours: int = 6) -> None:
     """Newest raw value of each dataset in the last few hours: two small requests, no history."""
     sys.path.insert(0, os.path.join(ROOT, "src"))
@@ -347,6 +399,7 @@ PAGE_SQL_FILES = [
     "sql/schema/15_grid_events.sql",
     "sql/analysis/13_forecast_scorecard.sql",
     "sql/analysis/17_forecast_error_vs_balancing.sql",
+    "sql/analysis/23_temperature_sensitivity.sql",
 ]
 
 
@@ -415,6 +468,7 @@ def export_engineering() -> None:
                    c.reltuples::bigint AS estimated_rows
             FROM pg_inherits i JOIN pg_class c ON c.oid = i.inhrelid
             WHERE i.inhparent = 'fingrid_observation'::regclass ORDER BY c.relname""")
+        datasets = _rows(conn, "SELECT count(*) AS n FROM fingrid_dataset")[0]["n"]
         counts = {r["partition"]: r["rows"] for r in _rows(conn, """
             SELECT tableoid::regclass::text AS partition, count(*) AS rows
             FROM fingrid_observation GROUP BY tableoid""")}
@@ -436,6 +490,7 @@ def export_engineering() -> None:
             "partitions_read": bench["results"][2]["relations"],
             "rows_discarded_without_index": bench["results"][0]["rows_removed"],
         },
+        "datasets": datasets,
         "partitioning": {
             "partition_count": len(partitions),
             "total_rows": sum(p["rows"] for p in partitions),
@@ -455,11 +510,12 @@ PARTS = {
     "forecast-scorecard": export_forecast_scorecard,
     "co2-forecast": export_co2_forecast,
     "grid-events": export_grid_events,
+    "temperature": export_temperature,
     "fingrid-latest": export_fingrid_latest,
     "sql": export_sql_sources,
     "engineering": export_engineering,
 }
-DAILY_PARTS = ["fingrid-recent", "forecast-scorecard", "co2-forecast", "grid-events"]
+DAILY_PARTS = ["fingrid-recent", "forecast-scorecard", "co2-forecast", "grid-events", "temperature"]
 
 
 def main() -> None:

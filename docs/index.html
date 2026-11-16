@@ -384,7 +384,8 @@
         <a href="#forecasts-ch"><span class="idx">02</span>Forecasts</a>
         <a href="#co2-ch"><span class="idx">03</span>Cleanest hours</a>
         <a href="#events-ch"><span class="idx">04</span>Events</a>
-        <a href="#engineering"><span class="idx">05</span>Craft</a>
+        <a href="#cold-ch"><span class="idx">05</span>Cold</a>
+        <a href="#engineering"><span class="idx">06</span>Craft</a>
       </nav>
       <div class="actions">
         <a class="icon-btn" href="https://github.com/miladgk/industrial-energy-sql-pipeline" target="_blank" rel="noopener noreferrer" aria-label="Source code on GitHub">
@@ -403,7 +404,7 @@
       <div class="wrap">
         <div class="eyebrow">A data engineering project · PostgreSQL · SQL · Python · FastAPI</div>
         <h1>Finland's electricity grid, <span class="serif">read in SQL.</span></h1>
-        <p class="lede">Fingrid, Finland's grid operator, publishes hundreds of measurements and forecasts as open data, one chart at a time. This pipeline keeps 21 of them in a partitioned PostgreSQL warehouse and asks what no single chart answers: how good are the forecasts, when tomorrow will electricity be cleanest, and what unusual happened on the grid.</p>
+        <p class="lede">Fingrid, Finland's grid operator, publishes hundreds of measurements and forecasts as open data, one chart at a time. This pipeline keeps <span class="n-datasets">25</span> of them in a partitioned PostgreSQL warehouse and asks what no single chart answers: how good are the forecasts, when tomorrow will electricity be cleanest, and what unusual happened on the grid.</p>
         <div class="chips">
           <span class="chip" tabindex="0" aria-describedby="tip-real"><i style="background:var(--real)"></i>Real data: Fingrid Open Data, CC BY 4.0<span class="info" aria-hidden="true">i</span>
             <span class="pop" role="tooltip" id="tip-real"><b>Real measurements and forecasts.</b> Fingrid is Finland's electricity transmission system operator. Its Open Data API publishes production, consumption, forecasts, balancing, CO<sub>2</sub> intensity and frequency. Licence: CC BY 4.0, free to reuse with attribution.</span></span>
@@ -412,7 +413,7 @@
         </div>
 
         <div class="tiles">
-          <div class="card tile reveal"><strong id="proof-rows">–</strong><span>rows in the warehouse</span><small id="proof-rows-sub">21 Fingrid datasets</small></div>
+          <div class="card tile reveal"><strong id="proof-rows">–</strong><span>rows in the warehouse</span><small id="proof-rows-sub"><span class="n-datasets">25</span> Fingrid datasets</small></div>
           <div class="card tile reveal"><strong id="proof-wind">–</strong><span>average miss of the day-ahead wind forecast</span><small id="proof-wind-sub">last 12 months</small></div>
           <div class="card tile reveal"><strong id="proof-co2">–</strong><span>less CO<sub>2</sub> in the hour this page picks as cleanest</span><small id="proof-co2-sub">replayed over the past year</small></div>
           <div class="card tile reveal"><strong id="proof-events">–</strong><span>grid events found in the last 12 months</span><small>frequency, nuclear, inertia, price</small></div>
@@ -420,7 +421,7 @@
 
         <div class="card glance reveal" aria-label="The project at a glance">
           <div><div class="eyebrow">What was built</div><p>A Python sync from the Fingrid API into <b>PostgreSQL</b> (monthly partitions, idempotent upserts, a quality gate), analytics in plain <b>SQL</b> files and functions, a <b>FastAPI</b> service over the same SQL, and this static page.</p></div>
-          <div><div class="eyebrow">Data</div><p><b>21 Fingrid datasets</b>, from 1-minute frequency to hourly capacity, kept exactly as published since October 2025 and growing every day.</p></div>
+          <div><div class="eyebrow">Data</div><p><b><span class="n-datasets">25</span> Fingrid datasets</b>, from 1-minute frequency and temperature to hourly capacity, kept exactly as published since October 2025 and growing every day.</p></div>
           <div><div class="eyebrow">Questions</div><p>How far off are Fingrid's own forecasts? When is tomorrow's electricity cleanest? What unusual happened on the grid, and do independent sensors agree?</p></div>
           <div><div class="eyebrow">Tested</div><p id="glance-tests">Loading…</p></div>
         </div>
@@ -597,11 +598,40 @@
     </section>
 
     <!-- ───────────── 02 MACHINE ───────────── -->
-    <!-- ───────────── 05 CRAFT ───────────── -->
-    <section id="engineering" class="chapter" aria-labelledby="eng-title">
+    <section id="cold-ch" class="chapter" aria-labelledby="cold-ch-title">
       <div class="wrap">
         <div class="chapter-head reveal">
           <div class="chapter-no">05</div>
+          <div>
+            <div class="eyebrow">Cold · <span class="badge b-real"><i></i>Real data</span></div>
+            <h2 id="cold-ch-title">What every degree <span class="serif">of cold costs.</span></h2>
+            <p>Finland heats a large share of its homes with electricity. Fingrid also publishes the temperature in four cities, from Helsinki in the south to Rovaniemi on the Arctic Circle; set against the national consumption, they show how much each colder day adds.</p>
+          </div>
+        </div>
+
+        <div class="card panel reveal fc fc-first" id="cold">
+          <div class="panel-top">
+            <div>
+              <h3>Consumption against temperature</h3>
+              <div class="prov" id="cold-prov"></div>
+            </div>
+          </div>
+          <div class="kpis" id="cold-kpis"></div>
+          <h4 class="fc-h">Average daily consumption by daily temperature (MW)</h4>
+          <div class="legend"><span><i style="background:var(--fc-da)"></i>Weekdays</span><span><i style="background:var(--fc-id)"></i>Weekends</span><span><i style="background:var(--ink-2)"></i>Model, weekdays (dashed)</span></div>
+          <div class="chart-box"><svg id="cold-chart" class="chart" role="img" aria-label="Average daily electricity consumption in Finland by daily temperature, weekdays and weekends"><desc>Two lines of average consumption per 3-degree temperature band, falling as it gets warmer and flattening above about 15 degrees, with the fitted model as a dashed line.</desc></svg></div>
+          <p class="takeaway" id="cold-takeaway"></p>
+          <p class="note" id="cold-note"></p>
+          <p id="cold-error" class="error"></p>
+          <details class="sql" id="sql-23"><summary>Inspect the SQL · sql/analysis/23_temperature_sensitivity.sql (the model)</summary><pre>Loading…</pre></details>
+        </div>
+      </div>
+    </section>
+
+    <section id="engineering" class="chapter" aria-labelledby="eng-title">
+      <div class="wrap">
+        <div class="chapter-head reveal">
+          <div class="chapter-no">06</div>
           <div>
             <div class="eyebrow">The craft</div>
             <h2 id="eng-title">Fast, tested, <span class="serif">and reproducible.</span></h2>
@@ -1160,11 +1190,54 @@ make test</pre>
       `Low inertia means the lowest 1% of quarter-hours in the window, so the threshold moves with the data.`;
   }
 
+  /* ───────── 05 cold: temperature sensitivity ───────── */
+  function renderCold(t) {
+    if (!t || !t.fits || t.fits.length !== 2) { $("cold-error").textContent = "The temperature analysis could not be loaded."; return; }
+    const wd = t.fits.find(f => f.day_type === "weekday"), we = t.fits.find(f => f.day_type === "weekend");
+    const deg = v => `${v < 0 ? "−" : ""}${fmt(Math.abs(v), 1)} °C`;
+    const last = new Date(`${t.window_end_exclusive}T00:00:00Z`); last.setUTCDate(last.getUTCDate() - 1);
+    const prov = $("cold-prov");
+    prov.replaceChildren(el("span", {class: "badge b-real"}, `Fingrid API · ${dayFmt(`${t.window_start}T00:00:00Z`)} to ${dayFmt(last.toISOString())} · ${fmt(t.days)} days`));
+    prov.firstChild.prepend(el("i"));
+    const c = t.coldest_day, w = t.warmest_day;
+    $("cold-kpis").replaceChildren(
+      kpi(`+${fmt(Math.round(wd.mw_per_degree))} MW`, `for each degree below ${wd.balance_point_c} °C on a weekday (${fmt(wd.pct_per_degree, 1)}% of average use)`),
+      kpi(`+${fmt(Math.round(we.mw_per_degree))} MW`, `for each degree below ${we.balance_point_c} °C at the weekend (${fmt(we.pct_per_degree, 1)}%)`),
+      kpi(`${fmt(Math.round(c.consumption_mw))} MW`, `on the coldest day, ${dayFmt(`${c.day_fi}T12:00:00Z`)} (${deg(c.temp_c)})`),
+      kpi(`${fmt(wd.r2, 2)}`, `r² of the weekday model: temperature alone explains ${fmt(100 * wd.r2, 0)}% of the day-to-day variation`),
+    );
+    const B = t.bins, labels = B.map(b => `${b.from_c}`);
+    const model = B.map(b => wd.base_mw + wd.mw_per_degree * Math.max(wd.balance_point_c - (b.from_c + b.to_c) / 2, 0));
+    lineChart($("cold-chart"), {
+      height: 300,
+      series: [
+        {name: "Weekdays", short: "Weekdays", values: B.map(b => b.weekday_mw ?? NaN), color: "var(--fc-da)", width: 2, dots: true},
+        {name: "Weekends", short: "Weekends", values: B.map(b => b.weekend_mw ?? NaN), color: "var(--fc-id)", width: 2, dots: true},
+        {name: "Model (weekdays)", short: "Model", values: model, color: "var(--ink-2)", width: 1.5, dash: "5 4"},
+      ],
+      labels,
+      forceZero: false,
+      xTick: (i, l, narrow) => (narrow ? i % 3 === 0 : true) ? `${(+l < 0 ? "−" : "") + Math.abs(+l)}°` : null,
+      tipTitle: l => { const b = B[labels.indexOf(l)]; return `${deg(b.from_c)} to ${deg(b.to_c)} · ${b.weekday_days} weekdays, ${b.weekend_days} weekend days`; },
+      tipValue: v => `${fmt(Math.round(v))} MW`,
+      yLabel: "Average consumption (MW)",
+      xLabel: "Daily mean temperature (°C)",
+    });
+    const span = wd.balance_point_c - c.temp_c;
+    $("cold-takeaway").replaceChildren(el("b", {}, "In short: "), document.createTextNode(
+      `above about ${wd.balance_point_c} °C the temperature hardly matters, and Finland uses about ${fmt(Math.round(wd.base_mw))} MW on a weekday. ` +
+      `Below it, each degree adds about ${fmt(Math.round(wd.mw_per_degree))} MW, so a day at ${deg(c.temp_c)} needs roughly ${fmt(Math.round(span * wd.mw_per_degree))} MW more than a mild one. ` +
+      `The coldest day of the period used ${fmt(Math.round(c.consumption_mw))} MW, ${fmt(c.consumption_mw / w.consumption_mw, 1)}× the warmest (${fmt(Math.round(w.consumption_mw))} MW at ${deg(w.temp_c)}).`));
+    $("cold-note").textContent =
+      `Each point is a 3-degree band of daily averages, placed at its colder end; temperature is the plain mean of Helsinki, Jyväskylä, Oulu and Rovaniemi (Helsinki alone fits about as well). ` +
+      `The balance point is not chosen by hand: SQL fits the model for every degree from 5 to 20 °C and keeps the best fit. Public holidays count as weekdays, and daily means hide the hourly peaks.`;
+  }
+
   function kpi(value, label) { const d = el("div", {class: "kpi"}); d.append(el("strong", {}, value), el("span", {}, label)); return d; }
 
   /* ───────── 05 craft: pipeline ───────── */
   const STAGES = [
-    ["Source", "Fingrid Open Data API", "<b>21 datasets from one API.</b> Actuals, Fingrid's day-ahead and intraday forecasts, the capacity behind them, balancing (mFRR, imbalance price), CO<sub>2</sub> intensity, nuclear output, frequency and system inertia, at 1-minute to 1-hour resolution. Listed with their purpose in <code>src/fingrid_catalog.py</code>."],
+    ["Source", "Fingrid Open Data API", "<b>One API, many datasets.</b> Actuals, Fingrid's day-ahead and intraday forecasts, the capacity behind them, balancing (mFRR, imbalance price), CO<sub>2</sub> intensity, nuclear output, frequency, system inertia and the temperature in four cities, at 1-minute to 1-hour resolution. Listed with their purpose in <code>src/fingrid_catalog.py</code>."],
     ["Sync", "incremental, idempotent", "<b>Only what is new.</b> <code>sync_fingrid.py</code> re-reads the last 7 days of each dataset (Fingrid revises recent values), in windows sized to fit one API page. It stores a slot only once it has ended, and an upsert that skips unchanged rows makes a second run change nothing."],
     ["Warehouse", "PostgreSQL, monthly partitions", "<b>Raw values, as published.</b> <code>fingrid_observation</code> keeps one row per dataset and time slot, with no resampling or gap filling, partitioned by month on a primary key of (dataset_id, start_time)."],
     ["Quality gate", "5 checks", "<b>Stop bad data early.</b> Rows in the default partition, datasets without data or gone stale, coverage of the last 30 days, and Fingrid's 0 Hz gap markers. A failing check fails the run and CI."],
@@ -1276,14 +1349,16 @@ make test</pre>
     $("tests-note").textContent = `Plus a Locust load test and a CI matrix (${t.ci_matrix}). Counted with pytest on ${dayFmt(eng.generated_at)}.`;
     $("glance-tests").textContent = `${t.total} automated tests in ${Object.keys(t.by_layer).length} layers, bandit and pip-audit, run in CI on PostgreSQL 14 to 16.`;
     $("proof-rows").textContent = fmt(eng.partitioning.total_rows);
-    $("proof-rows-sub").textContent = `21 Fingrid datasets in ${fmt(eng.partitioning.partitions.filter(p => p.rows > 0).length)} monthly partitions`;
+    document.querySelectorAll(".n-datasets").forEach(n => { n.textContent = fmt(eng.datasets); });
+    $("proof-rows-sub").textContent = `${fmt(eng.datasets)} Fingrid datasets in ${fmt(eng.partitioning.partitions.filter(p => p.rows > 0).length)} monthly partitions`;
     $("foot-gen").textContent = `Data files generated ${dayFmt(eng.generated_at)}.`;
   }
 
   function renderSql(src) {
     if (!src) return;
     const map = {"sql/schema/15_grid_events.sql": "sql-15", "sql/schema/14_co2_forecast.sql": "sql-14",
-                 "sql/analysis/13_forecast_scorecard.sql": "sql-13", "sql/analysis/17_forecast_error_vs_balancing.sql": "sql-17"};
+                 "sql/analysis/13_forecast_scorecard.sql": "sql-13", "sql/analysis/17_forecast_error_vs_balancing.sql": "sql-17",
+                 "sql/analysis/23_temperature_sensitivity.sql": "sql-23"};
     src.files.forEach(f => {
       const d = $(map[f.path]); if (!d) return;
       d.querySelector("pre").textContent = f.sql;
@@ -1303,8 +1378,8 @@ make test</pre>
 
   /* ───────── load everything (static files only: the page never waits for a server) ───────── */
   (async function main() {
-    const files = ["fingrid_recent_daily", "forecast_scorecard", "co2_forecast", "grid_events", "sql_sources", "engineering"];
-    const [recent, scorecard, co2, events, sql, eng] = await Promise.all(files.map(f => safe(getJSON(`data/${f}.json`))));
+    const files = ["fingrid_recent_daily", "forecast_scorecard", "co2_forecast", "grid_events", "temperature", "sql_sources", "engineering"];
+    const [recent, scorecard, co2, events, temperature, sql, eng] = await Promise.all(files.map(f => safe(getJSON(`data/${f}.json`))));
     safe(getJSON("data/fingrid_latest.json", {cache: "no-store"})).then(renderLatest);
 
     if (recent) { gridData.recent = recent; renderGrid("recent"); }
@@ -1312,6 +1387,7 @@ make test</pre>
     renderForecasts(scorecard);
     renderCo2(co2);
     renderEvents(events);
+    renderCold(temperature);
     renderEngineering(eng);
     renderPartitions(eng);
     renderSql(sql);

@@ -49,6 +49,11 @@ DATASETS = [
     # Grid events (sql/schema/15_grid_events.sql)
     (188, "nuclear",                 "Nuclear power production - real-time data",                  "MW",       "actual",    M3),
     (177, "frequency",               "Frequency - real-time data",                                 "Hz",       "system",    M1),
+    # Weather: how much colder days raise consumption (sql/analysis/22-23)
+    (178, "temp_helsinki",           "Temperature in Helsinki - real time data",                   "C",        "weather",   M3),
+    (182, "temp_jyvaskyla",          "Temperature in Jyväskylä - real time data",                  "C",        "weather",   M3),
+    (196, "temp_oulu",               "Temperature in Oulu - real time data",                       "C",        "weather",   M3),
+    (185, "temp_rovaniemi",          "Temperature in Rovaniemi - real time data",                  "C",        "weather",   M3),
 ]
 
 BY_ID = {d[0]: d for d in DATASETS}
