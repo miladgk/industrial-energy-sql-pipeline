@@ -31,6 +31,7 @@ def client():
     from fastapi.testclient import TestClient
     from api import app
 
+    os.environ["API_CACHE_SECONDS"] = "0"     # tests compare against the database as it is now
     return TestClient(app)
 
 

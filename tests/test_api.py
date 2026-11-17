@@ -122,3 +122,20 @@ def test_co2_forecast_without_inputs_is_404(client):
 
     day = tomorrow_fi() + timedelta(days=1)
     assert client.get("/api/co2-forecast", params={"day": day.isoformat()}).status_code == 404
+
+
+def test_repeated_requests_are_served_from_the_cache(client, monkeypatch):
+    """The warehouse changes daily: a repeated query must not hit the database again while fresh."""
+    import api
+
+    calls = []
+    real = api._query
+    monkeypatch.setattr(api, "_query", lambda sql, params=None: calls.append(sql) or real(sql, params))
+    monkeypatch.setenv("API_CACHE_SECONDS", "300")
+    monkeypatch.setattr(api, "_cache", {})
+    first = client.get("/api/datasets").json()
+    second = client.get("/api/datasets").json()
+    assert first == second and len(calls) == 1
+    monkeypatch.setenv("API_CACHE_SECONDS", "0")
+    client.get("/api/datasets")
+    assert len(calls) == 2

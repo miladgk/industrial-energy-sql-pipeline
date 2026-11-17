@@ -16,6 +16,13 @@ GET /api/co2-forecast            hourly CO2 intensity forecast for one Finnish d
 GET /api/grid-events             frequency, nuclear, inertia and price events
 GET /api/temperature-sensitivity how much each degree of cold raises consumption
 
+Caching
+-------
+The warehouse changes once a day, so each query result is kept for
+API_CACHE_SECONDS (default 300) and concurrent requests for the same query
+wait for one database run instead of each starting their own. Set
+API_CACHE_SECONDS=0 to always query (the tests do).
+
 Usage
 -----
     uvicorn src.api:app --reload --port 8000
@@ -25,6 +32,8 @@ Then open http://localhost:8000/docs (interactive Swagger UI).
 import logging
 import os
 import sys
+import threading
+import time
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Optional
@@ -79,7 +88,32 @@ app.add_middleware(
 # Helpers
 # ──────────────────────────────────────────────────────────────
 
+_cache: dict = {}                    # (sql, params) -> (expires_at, rows)
+_cache_locks: dict = {}
+_cache_guard = threading.Lock()
+
+
+def _cache_seconds() -> float:
+    return float(os.environ.get("API_CACHE_SECONDS", 300))
+
+
 def _fetch_rows(sql: str, params=None) -> list[dict]:
+    """Rows of *sql*, from the cache while fresh (see Caching above); copies, so callers may change them."""
+    ttl = _cache_seconds()
+    if ttl <= 0:
+        return _query(sql, params)
+    key = (sql, tuple(sorted(params.items())) if isinstance(params, dict) else params)
+    with _cache_guard:
+        lock = _cache_locks.setdefault(key, threading.Lock())
+    with lock:                                   # one database run per key, however many requests wait
+        hit = _cache.get(key)
+        if hit is None or hit[0] < time.monotonic():
+            hit = (time.monotonic() + ttl, _query(sql, params))
+            _cache[key] = hit
+    return [dict(r) for r in hit[1]]
+
+
+def _query(sql: str, params=None) -> list[dict]:
     """Run *sql* in a read-only transaction and return the rows as JSON-safe dicts."""
     conn = get_connection()
     try:
