@@ -143,3 +143,16 @@ def test_temperature_file_is_consistent():
     assert sum(b["weekday_days"] + b["weekend_days"] for b in t["bins"]) == t["days"]
     assert all(b["to_c"] - b["from_c"] == 3 for b in t["bins"])
     assert t["coldest_day"]["temp_c"] < t["warmest_day"]["temp_c"]
+
+
+def test_wind_allocation_shares_add_up_to_one_megawatt():
+    """Consumption = wind + nuclear + hydro + other + net imports, so each split of +1 MW sums to 1."""
+    d = _load("wind_allocation.json")
+    for driver in ("wind", "nuclear"):
+        parts = d[driver]
+        assert sum(p["share"] for p in parts.values()) == pytest.approx(1.0, abs=0.01), driver
+        assert all(p["ci_low"] <= p["share"] <= p["ci_high"] for p in parts.values()), driver
+    for s in d["seasons"]:
+        assert sum(p["share"] for p in s["wind"].values()) == pytest.approx(1.0, abs=0.01), s["season"]
+    assert d["hours"] >= 24 * 300
+    assert abs(d["net_import_check"]["r_identity_vs_measured_194"]) > 0.99     # 194 confirms Fingrid's definition

@@ -12,6 +12,7 @@ Run only these:   pytest -m e2e          (needs: pip install playwright
 """
 
 import json
+import math
 import os
 import re
 
@@ -22,6 +23,11 @@ pytestmark = pytest.mark.e2e
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 FONT_HOSTS = ("https://fonts.googleapis.com/", "https://fonts.gstatic.com/")
+
+
+def js_round(x):
+    """Math.round, which the page uses: halves go up (Python's round() goes to the even neighbour)."""
+    return math.floor(x + 0.5)
 
 
 def _data(name):
@@ -61,7 +67,7 @@ def test_hero_numbers_equal_the_data_files(open_dashboard):
     wind = next(r for r in sc["summary"] if r["variable"] == "wind" and r["product"] == "day_ahead")
     page = open_dashboard()
     expect(page.locator("#proof-rows")).to_have_text(f"{eng['partitioning']['total_rows']:,}")
-    expect(page.locator("#proof-wind")).to_have_text(f"{round(wind['mae_mw']):,} MW")
+    expect(page.locator("#proof-wind")).to_have_text(f"{js_round(wind['mae_mw']):,} MW")
     expect(page.locator("#proof-co2")).to_have_text(f"{co2['backtest']['saving_pct']:.1f}%")
     expect(page.locator("#proof-events")).to_have_text(f"{sum(c['year'] for c in ev['counts'].values()):,}")
     expect(page.locator(".n-datasets").first).to_have_text(str(eng["datasets"]))
@@ -72,7 +78,7 @@ def test_numbers_are_not_hard_coded_in_the_html(open_dashboard):
     page = open_dashboard(block=("*",))
     page.wait_for_load_state("networkidle")
     for tile in ("proof-rows", "proof-wind", "proof-co2", "proof-events", "mk-co2-best", "mk-co2-low",
-                 "mk-ev-freq", "mk-ev-peak-min", "mk-cold-slope", "mk-cold-r2", "mk-craft-speedup", "mk-craft-tests"):
+                 "mk-ev-freq", "mk-ev-peak-min", "mk-cold-slope", "mk-cold-r2", "mk-wa-imports", "mk-wa-cons", "mk-craft-speedup", "mk-craft-tests"):
         assert page.locator(f"#{tile}").inner_text() == "–", tile
 
 
@@ -105,11 +111,11 @@ def test_forecast_scorecard_shows_the_published_numbers(open_dashboard):
     page = open_dashboard()
     _open_pane(page, "pane-forecasts")
     kpis = page.locator("#fc-kpis .kpi strong")
-    expect(kpis.first).to_have_text(f"{round(wind['mae_mw']):,} MW")
+    expect(kpis.first).to_have_text(f"{js_round(wind['mae_mw']):,} MW")
     expect(page.locator("#fc-hour-chart path").first).to_be_visible()
     expect(page.locator("#fc-misses tr")).to_have_count(5)
     page.locator('#fc-tabs button[data-var="consumption"]').click()
-    expect(kpis.first).to_have_text(f"{round(cons['mae_mw']):,} MW")
+    expect(kpis.first).to_have_text(f"{js_round(cons['mae_mw']):,} MW")
     expect(page.locator("#fc-takeaway")).to_contain_text("consumption")
 
 
@@ -143,12 +149,41 @@ def test_cold_chapter_shows_the_fitted_model(open_dashboard):
     t = _data("temperature.json")
     wd = next(f for f in t["fits"] if f["day_type"] == "weekday")
     page = open_dashboard()
-    expect(page.locator("#mk-cold-slope")).to_have_text(f"+{round(wd['mw_per_degree']):,} MW")
+    expect(page.locator("#mk-cold-slope")).to_have_text(f"+{js_round(wd['mw_per_degree']):,} MW")
     expect(page.locator("#bento-cold-chart path")).to_have_count(3)
     we = next(f for f in t["fits"] if f["day_type"] == "weekend")
     _open_pane(page, "pane-cold")
-    expect(page.locator("#cold-kpis .kpi strong").first).to_have_text(f"+{round(we['mw_per_degree']):,} MW")
+    expect(page.locator("#cold-kpis .kpi strong").first).to_have_text(f"+{js_round(we['mw_per_degree']):,} MW")
     expect(page.locator("#cold-takeaway")).to_contain_text(f"{wd['balance_point_c']} °C")
+
+
+def test_wind_balance_shows_the_published_shares(open_dashboard):
+    d = _data("wind_allocation.json")
+    pct = lambda v: f"{js_round(v * 100)}%"
+    page = open_dashboard()
+    expect(page.locator("#mk-wa-imports")).to_have_text(pct(d["wind"]["imports"]["share"]))
+    expect(page.locator("#mk-wa-cons")).to_have_text(pct(d["wind"]["consumption"]["share"]))
+    rows = page.locator("#alloc-bars .alloc-row")
+    expect(rows).to_have_count(2 + len(d["seasons"]))                       # wind, each season, nuclear
+    expect(rows.first.locator(".alloc-track i")).to_have_count(4)
+    _open_pane(page, "pane-wind")
+    expect(page.locator("#wa-table tr")).to_have_count(4)
+    expect(page.locator("#wa-table tr").first).to_contain_text(pct(d["wind"]["imports"]["share"]))
+    expect(page.locator("#wa-seasons tr")).to_have_count(len(d["seasons"]))
+    expect(page.locator("#wa-checks")).to_contain_text(f"{abs(d['net_import_check']['r_identity_vs_measured_194']):.4f}")
+
+
+def test_wind_balance_rows_can_be_read_with_the_keyboard(open_dashboard):
+    d = _data("wind_allocation.json")
+    page = open_dashboard()
+    row = page.locator("#alloc-bars .alloc-row").first
+    expect(row).to_have_attribute("aria-label", re.compile(rf"lower imports {js_round(d['wind']['imports']['share'] * 100)}%"))
+    row.focus()
+    tip = page.locator("#alloc-bars .alloc-tip")
+    expect(tip).to_be_visible()
+    expect(tip).to_contain_text("Wind · year")
+    page.keyboard.press("Tab")
+    expect(tip).to_contain_text(next(s["season"] for s in d["seasons"]).capitalize())
 
 
 def test_engineering_shows_partitions_benchmark_and_tests(open_dashboard):
