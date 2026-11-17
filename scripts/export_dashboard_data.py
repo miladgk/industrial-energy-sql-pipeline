@@ -421,6 +421,91 @@ def export_wind_allocation(days: int = 365) -> None:
     })
 
 
+FORECAST_RANGES_SQL = "sql/analysis/25_forecast_errors_hourly.sql"
+RANGES_RECORD_DAYS = 14
+
+
+def export_forecast_ranges() -> None:
+    """Calibrated 80 % / 95 % ranges around Fingrid's day-ahead forecasts for tomorrow, and the backtest."""
+    sys.path.insert(0, os.path.join(ROOT, "src"))
+    import numpy as np
+    import forecast_ranges as fr
+    from analysis_window import tomorrow_fi
+
+    end = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=3)
+    conn = _db()
+    try:
+        with open(os.path.join(ROOT, FORECAST_RANGES_SQL), encoding="utf-8") as fh:
+            rows = _rows(conn, fh.read(), {"start": end - timedelta(days=430), "end": end})
+    finally:
+        conn.close()
+
+    tomorrow = tomorrow_fi()
+    r1 = lambda v: None if v is None or not np.isfinite(v) else round(float(v), 1)
+    out = {}
+    for variable in ("wind", "consumption"):
+        s = fr.Series([r for r in rows if r["variable"] == variable])
+        known = sorted({d for d, a in zip(s.day, s.actual) if not np.isnan(a)})
+        days = [d for d in known if s.known_days(s.calibration(d)) >= fr.MIN_CAL_DAYS]
+        if len(days) < 60:
+            raise SystemExit(f"forecast-ranges: only {len(days)} {variable} days to backtest: run src/sync_fingrid.py first")
+        bt = fr.backtest(s, variable, days)
+        future = sorted({d for d, a in zip(s.day, s.actual) if np.isnan(a) and d >= tomorrow - timedelta(days=1)})
+        target = tomorrow if tomorrow in future else (future[-1] if future else None)
+        r = fr.ranges_for_day(s, target, fr.PUBLISHED, bt["alphas"]) if target else None
+        if r is None:
+            raise SystemExit(f"forecast-ranges: no {variable} forecast to put ranges around")
+        b = {lv: tuple(fr.clip(variable, x) for x in r["bounds"][lv]) for lv in fr.LEVELS}
+        hours = [{"hour_fi": int(s.hour[i]), "forecast_mw": r1(s.forecast[i]),
+                  "lo80_mw": r1(b[0.8][0][k]), "hi80_mw": r1(b[0.8][1][k]),
+                  "lo95_mw": r1(b[0.95][0][k]), "hi95_mw": r1(b[0.95][1][k])} for k, i in enumerate(r["idx"])]
+        record = []
+        for d in days[-RANGES_RECORD_DAYS:]:
+            p = bt["published"].get(d)
+            if p is None:
+                continue
+            lo, hi = (fr.clip(variable, x) for x in p["bounds"][0.8])
+            for k, i in enumerate(p["idx"]):
+                record.append({"day_fi": d.isoformat(), "hour_fi": int(s.hour[i]), "actual_mw": r1(s.actual[i]),
+                               "forecast_mw": r1(s.forecast[i]), "lo80_mw": r1(lo[k]), "hi80_mw": r1(hi[k])})
+        hit = [x["lo80_mw"] <= x["actual_mw"] <= x["hi80_mw"] for x in record if x["actual_mw"] is not None]
+        out[variable] = {
+            "target_day": target.isoformat(),
+            "hours": hours,
+            "mean_width80_mw": r1(np.mean([h["hi80_mw"] - h["lo80_mw"] for h in hours])),
+            "mean_width95_mw": r1(np.mean([h["hi95_mw"] - h["lo95_mw"] for h in hours])),
+            "alphas": {str(lv): round(a, 4) for lv, a in bt["alphas"].items()},
+            "backtest": {"first_day": days[0].isoformat(), "last_day": days[-1].isoformat(), "days": len(days),
+                         "methods": {m: {str(lv): {k: (round(v, 4) if k == "coverage" else r1(v) if k != "hours" else v)
+                                                   for k, v in per[lv].items()} for lv in fr.LEVELS}
+                                     for m, per in bt["table"].items()}},
+            "record_days": RANGES_RECORD_DAYS,
+            "record_coverage80": round(sum(hit) / len(hit), 4) if hit else None,
+            "record": record,
+        }
+    _write("forecast_ranges.json", {
+        "generated_at": _now(),
+        "source": "Fingrid Open Data API (CC BY 4.0): day-ahead forecasts of wind (246) and consumption (165), "
+                  "measured wind (75) and consumption (124)",
+        "target_is_tomorrow": all(v["target_day"] == tomorrow.isoformat() for v in out.values()),
+        "method": f"{fr.PUBLISHED}: split conformal prediction on Fingrid's own recent errors, grouped by six-hour "
+                  f"block and forecast-level tercile (Mondrian), with adaptive conformal inference (gamma {fr.GAMMA}) "
+                  f"correcting the miss rate day by day. Each day is calibrated on the {fr.CAL_DAYS} days ending two "
+                  "days before it, i.e. only on errors known when Fingrid issues its forecast.",
+        "levels": list(fr.LEVELS),
+        "methods_explained": {
+            "global": "one set of quantiles from all recent errors",
+            "by_hour": "quantiles per six-hour block of the Finnish day",
+            "mondrian": "quantiles per six-hour block and forecast-level tercile",
+            "adaptive": "mondrian, with the target miss rate adjusted after every known day (published)",
+        },
+        "wind": out["wind"],
+        "consumption": out["consumption"],
+        "sql": [FORECAST_RANGES_SQL],
+        "code": "src/forecast_ranges.py",
+    })
+
+
 def export_fingrid_latest(hours: int = 6) -> None:
     """Newest raw value of each dataset in the last few hours: two small requests, no history."""
     sys.path.insert(0, os.path.join(ROOT, "src"))
@@ -465,6 +550,8 @@ PAGE_SQL_FILES = [
     "sql/analysis/23_temperature_sensitivity.sql",
     "sql/analysis/24_wind_allocation_panel.sql",
     "src/wind_allocation.py",
+    "sql/analysis/25_forecast_errors_hourly.sql",
+    "src/forecast_ranges.py",
 ]
 
 
@@ -577,11 +664,13 @@ PARTS = {
     "grid-events": export_grid_events,
     "temperature": export_temperature,
     "wind-allocation": export_wind_allocation,
+    "forecast-ranges": export_forecast_ranges,
     "fingrid-latest": export_fingrid_latest,
     "sql": export_sql_sources,
     "engineering": export_engineering,
 }
-DAILY_PARTS = ["fingrid-recent", "forecast-scorecard", "co2-forecast", "grid-events", "temperature", "wind-allocation"]
+DAILY_PARTS = ["fingrid-recent", "forecast-scorecard", "co2-forecast", "grid-events", "temperature", "wind-allocation",
+               "forecast-ranges"]
 
 
 def main() -> None:

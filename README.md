@@ -20,6 +20,7 @@ every day, and answers questions no single chart does:
 | What unusual happened on the grid? | 802 frequency excursions, 6 fast nuclear drops, 14 low-inertia periods, 12 imbalance-price spikes. The minute before a full hour is out of band 2.1x as often as an average minute. | `sql/schema/15`, `sql/analysis/20-21` |
 | How much does cold raise demand? | Below about 15 °C each degree colder adds 154 MW on a weekday (1.5% of average use; r² 0.89). The coldest day (-25 °C) used 14.8 GW, 1.8x the warmest. | `sql/analysis/22-23` |
 | Where does an extra MW of wind go? | About 54% replaces imports (74% in summer), 11% replaces hydro, 15% other production (25% in winter, when CHP runs) and 20% is matched by higher consumption. Extra nuclear brings the same +20% consumption, which points to demand following cheap power rather than to wind chill. | `sql/analysis/24`, `src/wind_allocation.py` |
+| How wrong will tomorrow's forecast be? | Calibrated 80% / 95% ranges around Fingrid's day-ahead wind and consumption forecasts (conformal prediction, grouped by time of day and forecast level, adapting day by day). Replayed over 341 days with only what was known at issue time: wind 79.5% / 93.5% of hours inside, consumption 79.1% / 93.6%; interval score 4-8% better than one set of quantiles. | `sql/analysis/25`, `src/forecast_ranges.py` |
 
 Numbers as of November 2026; the site always shows the current ones.
 
@@ -46,7 +47,8 @@ flowchart LR
 
 **Daily refresh** (`.github/workflows/refresh_fingrid.yml`, 10:53 UTC, after Fingrid
 publishes the next day's forecasts at 12:00 Finnish time): start PostgreSQL, restore
-yesterday's warehouse from the release asset, sync the last 7 days from Fingrid,
+yesterday's warehouse and FMI forecast archive from the release assets, store today's
+FMI weather forecasts (src/fmi_forecast.py), sync the last 7 days from Fingrid,
 publish the new snapshot, run the analyses, commit the dashboard JSON and redeploy
 Pages. A normal run takes about 2 minutes and some 30 API requests. No server runs between
 refreshes.
@@ -122,6 +124,7 @@ whole). `tests/test_performance.py` checks the plans with EXPLAIN in CI.
 | Balancing | 319 imbalance price, 375/376 activated mFRR up/down, 377 mFRR need |
 | CO2 and stability | 396 CO2 intensity of consumption, 260 kinetic energy, 422/423 frequency deviation, 177 frequency (1-min) |
 | Weather | 178 Helsinki, 182 Jyväskylä, 196 Oulu, 185 Rovaniemi temperature (3-min) |
+| Weather forecasts (FMI, CC BY 4.0, no key) | temperature and wind speed for those four cities plus Vaasa, Kokkola, Pori and Raahe, FMI's edited forecast and the Harmonie model, archived every day as issued in `weather_forecast` (FMI keeps no archive of its own) |
 
 Listed with their purpose in `src/fingrid_catalog.py`.
 
@@ -144,6 +147,7 @@ All logic lives in SQL; the API, the reports and the dashboard export run the sa
 | `sql/analysis/22_temperature_daily.sql` | daily four-city temperature and national consumption | two-level aggregation, `HAVING` |
 | `sql/analysis/23_temperature_sensitivity.sql` | hinge model per day type; the balance point (5-20 °C) is searched in SQL, best r² kept | `generate_series` grid, `regr_r2`, `DISTINCT ON` |
 | `sql/analysis/24_wind_allocation_panel.sql` + `src/wind_allocation.py` | the hourly power balance (consumption = wind + nuclear + hydro + other + net imports); each part regressed on wind, nuclear and heating degrees with hour, weekday and month fixed effects, Newey-West (HAC) 95% intervals, per season | `FILTER` pivot, completeness rules; numpy OLS + HAC |
+| `sql/analysis/25_forecast_errors_hourly.sql` + `src/forecast_ranges.py` | Fingrid's day-ahead forecasts next to what happened; split conformal ranges (global, by hour, Mondrian by hour block x forecast level, adaptive conformal inference), each day calibrated on the 90 days ending two days before it and replayed as a backtest (coverage, width, interval score) | `LEFT JOIN` for the future, `VALUES` pairs; numpy |
 | `sql/etl/02_data_quality_checks.sql` | default partition empty, no empty or stale dataset, 30-day coverage, 0 Hz gap markers | |
 
 ---
@@ -171,7 +175,7 @@ a server.
 
 ## Tests
 
-137 tests in eight layers, all run in CI on Python 3.11/3.12 and PostgreSQL 14/15/16,
+152 tests in eight layers, all run in CI on Python 3.11/3.12 and PostgreSQL 14/15/16,
 against the restored real warehouse:
 
 | Layer | What it guards |
@@ -228,8 +232,8 @@ For the daily workflow on a fork, add the key as the repository secret
 │   ├── export_dashboard_data.py
 │   └── benchmark_warehouse.py
 ├── sql/
-│   ├── schema/                 # 13 warehouse, 14 CO2 model, 15 event detector
-│   ├── analysis/               # 13-24, one query per file
+│   ├── schema/                 # 13 warehouse, 14 CO2 model, 15 event detector, 16 FMI forecast archive
+│   ├── analysis/               # 13-25, one query per file
 │   └── etl/02_data_quality_checks.sql
 ├── src/
 │   ├── fingrid_api.py          # API client (key, paging, retries, 429 back-off)
@@ -241,6 +245,8 @@ For the daily workflow on a fork, add the key as the repository secret
 │   ├── run_report.py           # every analysis -> outputs/*.csv
 │   ├── analysis_window.py      # default parameters for the analysis SQL
 │   ├── wind_allocation.py      # fixed-effects regression with Newey-West intervals
+│   ├── forecast_ranges.py      # conformal ranges around Fingrid's forecasts + backtest
+│   ├── fmi_forecast.py         # daily FMI weather forecast archive
 │   ├── db_connection.py
 │   └── api.py                  # FastAPI
 └── tests/                      # eight layers + load/locustfile.py

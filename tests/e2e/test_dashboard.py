@@ -39,7 +39,12 @@ def _data(name):
 
 def _open_pane(page, pane):
     """Open the inspector drawer on one pane, the way a visitor does: the tile's inspect button."""
-    page.locator(f'.inspect-btn[data-open-drawer="{pane}"]').click()
+    button = page.locator(f'.inspect-btn[data-open-drawer="{pane}"]')
+    if button.count():
+        button.click()
+    else:                                     # e.g. Forecasts: reached from the hero's past-year view or a tab
+        page.locator("#hero-inspect").click()
+        page.locator(f'.drawer-tabs .dtab[data-pane="{pane}"]').click()
     expect(page.locator(f"#{pane}")).to_be_visible()
 
 
@@ -85,8 +90,40 @@ def test_numbers_are_not_hard_coded_in_the_html(open_dashboard):
 def test_hero_chart_shows_the_published_grid_summary(open_dashboard):
     recent = _data("fingrid_recent_daily.json")
     page = open_dashboard()
+    page.locator('#hero-view button[data-view="grid"]').click()
     expect(page.locator("#bento-hero-chart path").first).to_be_visible()
     expect(page.locator("#hero-mini-kpis strong").first).to_have_text(f"{recent['summary']['wind_mean_mw']:,.0f} MW")
+
+
+def test_hero_opens_on_tomorrows_ranges(open_dashboard):
+    r = _data("forecast_ranges.json")
+    page = open_dashboard()
+    expect(page.locator('#hero-view button[data-view="ranges"]')).to_have_attribute("aria-pressed", "true")
+    for v, chart in (("wind", "#range-wind-chart"), ("consumption", "#range-cons-chart")):
+        expect(page.locator(f"#mk-range-{v}")).to_have_text(f"±{js_round(r[v]['mean_width80_mw'] / 2):,} MW")
+        expect(page.locator(f"{chart} path.band")).to_have_count(2)             # 95 % and 80 %
+    expect(page.locator("#bento-hero-chart")).to_be_hidden()
+    page.locator("#hero-inspect").click()
+    expect(page.locator("#pane-ranges")).to_be_visible()
+    expect(page.locator("#rg-backtest tr")).to_have_count(4)
+    adaptive = r["wind"]["backtest"]["methods"]["adaptive"]["0.8"]
+    expect(page.locator("#rg-backtest tr").last).to_contain_text(f"{adaptive['coverage'] * 100:.1f}%")
+    expect(page.locator("#rg-record-wind path.band")).to_have_count(1)
+
+
+def test_range_tooltip_names_both_ranges(open_dashboard):
+    page = open_dashboard()
+    hit = page.locator("#range-cons-chart .tip-hit")
+    hit.focus()
+    page.keyboard.press("Home")
+    expect(hit).to_have_attribute("aria-valuetext", re.compile(r"80%: [\d,]+ MW – [\d,]+ MW, 95%: "))
+
+
+def test_hero_falls_back_to_the_past_year_without_ranges(open_dashboard):
+    page = open_dashboard(block=("forecast_ranges.json",))
+    expect(page.locator("#bento-hero-chart path").first).to_be_visible()
+    expect(page.locator('#hero-view button[data-view="grid"]')).to_have_attribute("aria-pressed", "true")
+    expect(page.locator("#hero-inspect")).to_have_attribute("data-open-drawer", "pane-forecasts")
 
 
 def test_latest_fingrid_ticker_shows_finnish_time(open_dashboard):
@@ -204,7 +241,7 @@ def test_engineering_shows_partitions_benchmark_and_tests(open_dashboard):
 
 def test_hovering_a_chart_shows_a_tooltip(open_dashboard):
     page = open_dashboard()
-    chart = page.locator("#bento-hero-chart")
+    chart = page.locator("#range-wind-chart")
     chart.scroll_into_view_if_needed()
     chart.locator(".tip-hit").hover()
     expect(chart.locator("tspan").nth(1)).to_contain_text("MW")
@@ -319,7 +356,7 @@ def test_one_missing_data_file_does_not_break_the_rest(open_dashboard):
     page = open_dashboard(block=("forecast_scorecard.json",))
     expect(page.locator("#mk-co2-best")).not_to_have_text("–")
     expect(page.locator("#mk-ev-freq")).not_to_have_text("–")
-    expect(page.locator("#bento-hero-chart path").first).to_be_visible()
+    expect(page.locator("#range-wind-chart path").first).to_be_visible()
     _open_pane(page, "pane-forecasts")
     expect(page.locator("#fc-error")).to_contain_text("could not be loaded")
     assert not [p for p in page.problems if p.startswith("uncaught")], page.problems
