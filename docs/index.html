@@ -292,8 +292,17 @@
     }
 
     @media (min-width: 1440px) and (min-height: 840px) {
-      body {
-        overflow: hidden;
+      /* small tiles: the chart fills whatever height the row leaves, instead of setting it */
+      .tile:not(.tile-hero) .chart-stage {
+        min-height: 80px;
+      }
+
+      .tile:not(.tile-hero) .chart-stage > svg.chart {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        max-height: none;
       }
 
       .tile-hero .chart-stage {
@@ -307,8 +316,7 @@
       }
 
       .cockpit {
-        height: calc(100vh - 84px);
-        overflow: hidden;
+        min-height: calc(100vh - 84px);   /* fills the screen, and grows rather than cutting content off */
       }
     }
 
@@ -419,7 +427,7 @@
       display: flex;
       flex-direction: column;
       justify-content: space-between;
-      min-height: 0;
+      min-height: auto;            /* a tile grows with its content; it never cuts it off */
       position: relative;
       transition: border-color .2s, transform .2s;
     }
@@ -530,7 +538,7 @@
 
     .chart-stage {
       flex: 1;
-      min-height: 115px;
+      min-height: 150px;
       display: flex;
       flex-direction: column;
       justify-content: center;
@@ -552,6 +560,11 @@
     svg.chart text {
       font: 11px Inter, sans-serif;
       fill: var(--muted);
+    }
+
+    svg.chart text.unit {
+      font-weight: 600;
+      fill: var(--ink-2);
     }
 
     svg.chart .lbl {
@@ -597,7 +610,19 @@
       background: color-mix(in srgb, var(--real) 7%, var(--surface));
     }
 
+    .inspect-btn {
+      gap: 10px;
+    }
+
+    .inspect-btn > span:first-child {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      min-width: 0;
+    }
+
     .inspect-btn .tag {
+      white-space: nowrap;
       font: 500 10.5px "JetBrains Mono", monospace;
       color: var(--muted);
     }
@@ -762,7 +787,7 @@
     .range-stage svg.chart,
     .tile-hero .chart-stage .range-stage svg.chart {
       flex: 1;
-      min-height: 110px;
+      min-height: 84px;
       max-height: 260px;
     }
 
@@ -1214,10 +1239,10 @@
           tomorrow's cleanest hours, and logging grid anomalies.</p>
       </div>
       <div class="thesis-stats">
-        <div class="t-stat"><strong id="proof-rows">–</strong><span>warehouse rows</span></div>
-        <div class="t-stat"><strong id="proof-wind">–</strong><span>day-ahead wind miss</span></div>
-        <div class="t-stat"><strong id="proof-co2">–</strong><span>CO₂ saved by the forecast's pick</span></div>
-        <div class="t-stat"><strong id="proof-events">–</strong><span>grid events (12m)</span></div>
+        <div class="t-stat"><strong id="proof-rows">–</strong><span>data rows stored</span></div>
+        <div class="t-stat"><strong id="proof-wind">–</strong><span>avg miss of Fingrid's wind forecast</span></div>
+        <div class="t-stat"><strong id="proof-co2">–</strong><span>less CO₂ in the hour we pick</span></div>
+        <div class="t-stat"><strong id="proof-events">–</strong><span>unusual grid events, past year</span></div>
       </div>
     </section>
 
@@ -1229,8 +1254,8 @@
         <div>
           <div class="tile-head">
             <div>
-              <div class="eyebrow"><i></i>01 · Pulse & Forecast Integrity</div>
-              <h2>Wind, Demand & <span class="serif">Forecast Error.</span></h2>
+              <div class="eyebrow"><i></i>01 · Forecasts</div>
+              <h2 id="hero-title">Wind & consumption <span class="serif">forecast.</span></h2>
             </div>
             <div class="seg" id="hero-view" role="group" aria-label="Hero chart">
               <button type="button" data-view="ranges" aria-pressed="true">Tomorrow</button>
@@ -1254,15 +1279,15 @@
             <svg id="range-wind-chart" class="chart" role="img" aria-label="Tomorrow's wind forecast with 80% and 95% ranges"></svg>
             <p class="range-cap" id="range-cons-cap">Consumption</p>
             <svg id="range-cons-chart" class="chart" role="img" aria-label="Tomorrow's consumption forecast with 80% and 95% ranges"></svg>
-            <div class="legend tile-legend"><span><i style="background:var(--ink-2)"></i>Fingrid's day-ahead forecast</span><span><i
+            <div class="legend tile-legend"><span><i style="background:var(--ink-2)"></i>Fingrid forecast</span><span><i
                   class="sq" style="background:var(--ink-2);opacity:.45"></i>80% range</span><span><i class="sq"
                   style="background:var(--ink-2);opacity:.2"></i>95% range</span></div>
           </div>
         </div>
 
         <button type="button" class="inspect-btn" id="hero-inspect" data-open-drawer="pane-ranges">
-          <span id="hero-inspect-label">Inspect the Backtest: Did the Ranges Hold?</span>
-          <span class="tag" id="hero-inspect-tag">25_forecast_errors_hourly.sql ↗</span>
+          <span id="hero-inspect-label">Did the ranges hold? Backtest</span>
+          <span class="tag" id="hero-inspect-tag">Details →</span>
         </button>
       </article>
 
@@ -1271,13 +1296,13 @@
         <div>
           <div class="tile-head">
             <div>
-              <div class="eyebrow"><i></i>02 · Carbon Optics</div>
-              <h2>Cleanest <span class="serif" id="co2-tile-when">Hours Tomorrow.</span></h2>
+              <div class="eyebrow"><i></i>02 · CO₂ intensity</div>
+              <h2>Cleanest hours <span class="serif" id="co2-tile-when">tomorrow.</span></h2>
             </div>
           </div>
           <div class="mini-kpis">
-            <div class="mkpi"><strong id="mk-co2-best">–</strong><span>cleanest 3h window</span></div>
-            <div class="mkpi"><strong id="mk-co2-low">–</strong><span>lowest intensity</span></div>
+            <div class="mkpi"><strong id="mk-co2-best">–</strong><span>cleanest 3 hours, Finnish time</span></div>
+            <div class="mkpi"><strong id="mk-co2-low">–</strong><span>lowest CO₂ per kWh</span></div>
           </div>
         </div>
 
@@ -1288,8 +1313,8 @@
         </div>
 
         <button type="button" class="inspect-btn" data-open-drawer="pane-co2">
-          <span>Inspect Yesterday's Replay & Regression SQL</span>
-          <span class="tag">14_co2_forecast.sql ↗</span>
+          <span>Yesterday's check & the model</span>
+          <span class="tag">Details →</span>
         </button>
       </article>
 
@@ -1298,13 +1323,13 @@
         <div>
           <div class="tile-head">
             <div>
-              <div class="eyebrow"><i></i>03 · Grid Anomalies</div>
-              <h2>When the Grid <span class="serif">Trembles.</span></h2>
+              <div class="eyebrow"><i></i>03 · Grid frequency (target 50 Hz)</div>
+              <h2>Off-target frequency <span class="serif">by minute.</span></h2>
             </div>
           </div>
           <div class="mini-kpis">
-            <div class="mkpi"><strong id="mk-ev-freq">–</strong><span>frequency excursions</span></div>
-            <div class="mkpi"><strong id="mk-ev-peak-min">–</strong><span>worst minute of hour</span></div>
+            <div class="mkpi"><strong id="mk-ev-freq">–</strong><span>outside 49.9–50.1 Hz, past year</span></div>
+            <div class="mkpi"><strong id="mk-ev-peak-min">–</strong><span>worst minute of the hour</span></div>
           </div>
         </div>
 
@@ -1315,8 +1340,8 @@
         </div>
 
         <button type="button" class="inspect-btn" data-open-drawer="pane-events">
-          <span>Open Event Log & Detector SQL</span>
-          <span class="tag">15_grid_events.sql ↗</span>
+          <span>Event log & how events are found</span>
+          <span class="tag">Details →</span>
         </button>
       </article>
 
@@ -1325,13 +1350,13 @@
         <div>
           <div class="tile-head">
             <div>
-              <div class="eyebrow"><i></i>04 · Thermodynamics</div>
-              <h2>Cost of <span class="serif">Arctic Cold.</span></h2>
+              <div class="eyebrow"><i></i>04 · Weather & demand</div>
+              <h2>Extra demand <span class="serif">per °C colder.</span></h2>
             </div>
           </div>
           <div class="mini-kpis">
-            <div class="mkpi"><strong id="mk-cold-slope">–</strong><span>added per °C below threshold</span></div>
-            <div class="mkpi"><strong id="mk-cold-r2">–</strong><span>weekday model r²</span></div>
+            <div class="mkpi"><strong id="mk-cold-slope">–</strong><span id="mk-cold-slope-label">per °C colder, weekdays</span></div>
+            <div class="mkpi"><strong id="mk-cold-r2">–</strong><span>explained by temperature</span></div>
           </div>
         </div>
 
@@ -1339,13 +1364,13 @@
           <svg id="bento-cold-chart" class="chart" role="img" aria-label="Consumption against temperature">
             <desc>Consumption curve vs outdoor temperature.</desc>
           </svg>
-          <div class="legend tile-legend"><span><i style="background:var(--fc-da)"></i>Weekdays</span><span><i
-                style="background:var(--fc-id)"></i>Weekends</span><span><i style="background:var(--ink-2)"></i>Model</span></div>
         </div>
+        <div class="legend tile-legend"><span><i style="background:var(--fc-da)"></i>Weekdays</span><span><i
+                style="background:var(--fc-id)"></i>Weekends</span><span><i style="background:var(--ink-2)"></i>Model</span></div>
 
         <button type="button" class="inspect-btn" data-open-drawer="pane-cold">
-          <span>Inspect 4-City Thermal Model</span>
-          <span class="tag">23_temperature_sensitivity.sql ↗</span>
+          <span>Weekdays vs weekends & the model</span>
+          <span class="tag">Details →</span>
         </button>
       </article>
 
@@ -1354,16 +1379,16 @@
         <div>
           <div class="tile-head">
             <div>
-              <div class="eyebrow"><i></i>05 · Power Balance</div>
-              <h2>Where Extra <span class="serif">Wind Goes.</span></h2>
+              <div class="eyebrow"><i></i>05 · Power balance</div>
+              <h2>Where 1 extra MW <span class="serif">of wind goes.</span></h2>
             </div>
           </div>
         </div>
 
         <div class="wide-body">
           <div class="mini-kpis">
-            <div class="mkpi"><strong id="mk-wa-imports">–</strong><span>of each extra MW of wind replaces imports</span></div>
-            <div class="mkpi"><strong id="mk-wa-cons">–</strong><span>is matched by higher consumption</span></div>
+            <div class="mkpi"><strong id="mk-wa-imports">–</strong><span>of each extra MW of wind means lower imports</span></div>
+            <div class="mkpi"><strong id="mk-wa-cons">–</strong><span>means higher consumption</span></div>
           </div>
           <div>
           <div class="alloc" id="alloc-bars" aria-label="Share of an extra MW of wind or nuclear by where it goes"></div>
@@ -1375,8 +1400,8 @@
         </div>
 
         <button type="button" class="inspect-btn" data-open-drawer="pane-wind">
-          <span>Inspect the Regression, Seasons & Nuclear</span>
-          <span class="tag">24_wind_allocation_panel.sql ↗</span>
+          <span>Seasons, nuclear & the regression</span>
+          <span class="tag">Details →</span>
         </button>
       </article>
 
@@ -1385,21 +1410,21 @@
         <div>
           <div class="tile-head">
             <div>
-              <div class="eyebrow"><i></i>06 · PostgreSQL Craft</div>
-              <h2>Partitioned, <span class="serif">Tested & Fast.</span></h2>
+              <div class="eyebrow"><i></i>06 · Engineering</div>
+              <h2>Database speed <span class="serif">& tests.</span></h2>
             </div>
           </div>
           <p class="tile-copy" id="mk-craft-summary">Monthly table partitioning, primary-key indexing, automated CI
             quality gates, and reproducible snapshots.</p>
           <div class="mini-kpis">
-            <div class="mkpi"><strong id="mk-craft-speedup">–</strong><span>index query speedup</span></div>
-            <div class="mkpi"><strong id="mk-craft-tests">–</strong><span>automated CI tests</span></div>
+            <div class="mkpi"><strong id="mk-craft-speedup">–</strong><span>faster queries with an index</span></div>
+            <div class="mkpi"><strong id="mk-craft-tests">–</strong><span>automated tests</span></div>
           </div>
         </div>
 
         <button type="button" class="inspect-btn" data-open-drawer="pane-craft">
-          <span>Launch Partition Pruning & CI Inspector</span>
-          <span class="tag">Architecture · CLI ↗</span>
+          <span>Partitions, benchmark & tests</span>
+          <span class="tag">Details →</span>
         </button>
       </article>
 
@@ -1802,10 +1827,17 @@ make test</pre>
     const charts = new Map();
     const svgEl = (tag, attrs = {}) => { const n = document.createElementNS(NS, tag); for (const k in attrs) n.setAttribute(k, attrs[k]); return n; };
 
+    const sized = new WeakMap();                 // last drawn size of each chart
+    const resizeWatch = "ResizeObserver" in window ? new ResizeObserver(entries => entries.forEach(({ target }) => {
+      const r = target.getBoundingClientRect(), last = sized.get(target);
+      if (!r.width || !charts.has(target) || (last && Math.abs(last[0] - r.width) < 1 && Math.abs(last[1] - r.height) < 1)) return;
+      drawLine(target, charts.get(target));
+    })) : null;
     function lineChart(svg, cfg) {
       if (!svg) return;
       charts.set(svg, cfg);
       drawLine(svg, cfg);
+      if (resizeWatch) resizeWatch.observe(svg);
     }
     function redrawAllCharts() {
       charts.forEach((cfg, svg) => {
@@ -1819,17 +1851,18 @@ make test</pre>
 
     function drawLine(svg, cfg) {
       const { series, labels, height = 220, yFmt = null, xTick = () => null, tipTitle = l => l, tipValue = v => fmt(v, 1),
-        points = [], forceZero = true, yMin, yMax, directLabels = false, bands = [], tipExtra = null } = cfg;
+        points = [], forceZero = true, yMin, yMax, directLabels = false, bands = [], tipExtra = null, yUnit = null } = cfg;
       // A redraw (resize, theme, opening the drawer) replaces the chart: keep the reader's place and focus.
       const hadFocus = svg.contains(document.activeElement);
       const keep = Array.from(svg.childNodes).filter(n => n.nodeName === "desc" || n.nodeName === "title");
       svg.replaceChildren(...keep);
       const rect = svg.getBoundingClientRect();
       const W = Math.max(240, Math.round(rect.width || svg.parentNode.clientWidth || 420));
-      const H = Math.max(130, Math.round(rect.height || height));
+      const H = Math.max(70, Math.round(rect.height || height));
+      sized.set(svg, [rect.width, rect.height]);
       svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
 
-      const m = { l: 44, r: directLabels ? 86 : 12, t: 10, b: 24 };
+      const m = { l: 44, r: directLabels ? 86 : 12, t: yUnit ? 22 : 10, b: 24 };
       const vals = [...series.flatMap(s => s.values), ...bands.flatMap(b => [...b.lo, ...b.hi])].filter(v => Number.isFinite(v));
       if (!vals.length) return;
       let lo = yMin ?? Math.min(...vals), hi = yMax ?? Math.max(...vals);
@@ -1845,6 +1878,7 @@ make test</pre>
       const y = v => H - m.b - (v - lo) * (H - m.t - m.b) / ((hi - lo) || 1);
       const g = svgEl("g");
       svg.appendChild(g);
+      if (yUnit) { const u = svgEl("text", { x: 2, y: 11, class: "unit" }); u.textContent = yUnit; g.appendChild(u); }
 
       for (let v = lo, t = 0; v <= hi + step * 1e-6; v += step, t++) {
         const ty = y(v);
@@ -1956,6 +1990,11 @@ make test</pre>
     window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(redrawAllCharts, 150); });
 
     /* ───────── 4. RENDERERS FOR BOTH BENTO TILES & DEEP DRAWERS ───────── */
+    // "today", "tomorrow" or the date, judged by today's date in Finland (not when the file was built)
+    function dayWord(isoDay) {
+      const fiDay = offset => new Date(Date.now() + offset * 864e5).toLocaleDateString("en-CA", { timeZone: "Europe/Helsinki" });
+      return isoDay === fiDay(0) ? "today" : isoDay === fiDay(1) ? "tomorrow" : `on ${dayFmt(isoDay + "T12:00:00Z")}`;
+    }
     const signed = v => `${v > 0 ? "+" : v < 0 ? "−" : ""}${fmt(Math.abs(Math.round(v)))}`;
     const hrs = h => `${String(h).padStart(2, "0")}:00`;
     const hourSpan = (h, n = 1) => `${hrs(h)}–${hrs((h + n) % 24)}`;
@@ -1963,13 +2002,13 @@ make test</pre>
 
     let cachedGrid = null, cachedRanges = null;
     const HERO_INSPECT = {
-      ranges: ["pane-ranges", "Inspect the Backtest: Did the Ranges Hold?", "25_forecast_errors_hourly.sql ↗"],
-      grid: ["pane-forecasts", "Inspect Forecast Scorecard, Balancing & SQL", "2 SQL files · Tables ↗"],
+      ranges: ["pane-ranges", "Did the ranges hold? Backtest", "Details →"],
+      grid: ["pane-forecasts", "Forecast accuracy & balancing", "Details →"],
     };
     function rangeConfig(v, color, hours) {
       const mw = n => `${fmt(Math.round(n))} MW`;
       return {
-        height: 150, forceZero: v === "wind",
+        height: 150, forceZero: v === "wind", yUnit: "MW",
         series: [{ name: "Fingrid forecast", short: "Forecast", values: hours.map(h => h.forecast_mw), color, width: 2 }],
         bands: [
           { lo: hours.map(h => h.lo95_mw), hi: hours.map(h => h.hi95_mw), color, opacity: .16 },
@@ -1991,18 +2030,20 @@ make test</pre>
       $("hero-inspect").dataset.openDrawer = pane; $("hero-inspect-label").textContent = label; $("hero-inspect-tag").textContent = tag;
 
       if (mode === "ranges") {
-        const r = cachedRanges, when = r.target_is_tomorrow ? "tomorrow" : dayFmt(r.wind.target_day + "T12:00:00Z");
-        $("hero-tile-copy").textContent = `Fingrid's day-ahead forecast for ${when}, hour by hour (Finnish time), with the ranges reality is likely to land in: calibrated on Fingrid's own recent errors.`;
+        const r = cachedRanges, when = dayWord(r.wind.target_day);
+        $("hero-title").replaceChildren(document.createTextNode("Wind & consumption "), el("span", { class: "serif" }, `${when}.`));
+        $("hero-tile-copy").textContent = `Fingrid's forecast, hour by hour (Finnish time). The shaded bands show where the real value will most likely be: 80% chance inside the dark band, 95% inside the light one.`;
         $("hero-mini-kpis").replaceChildren(
-          ...[["wind", "wind, 80% range"], ["consumption", "consumption, 80% range"]].map(([v, text]) => {
+          ...[["wind", "wind uncertainty, 80% band"], ["consumption", "consumption uncertainty, 80% band"]].map(([v, text]) => {
             const d = el("div", { class: "mkpi" });
-            d.append(el("strong", { id: `mk-range-${v}` }, `±${fmt(Math.round(r[v].mean_width80_mw / 2))} MW`), el("span", {}, `${text} ${when}`));
+            d.append(el("strong", { id: `mk-range-${v}` }, `±${fmt(Math.round(r[v].mean_width80_mw / 2))} MW`), el("span", {}, text));
             return d;
           }));
         lineChart($("range-wind-chart"), rangeConfig("wind", "var(--real)", r.wind.hours));
         lineChart($("range-cons-chart"), rangeConfig("consumption", "var(--cons)", r.consumption.hours));
       } else if (mode === "grid" && cachedGrid) {
         const data = cachedGrid, sm = data.summary;
+        $("hero-title").replaceChildren(document.createTextNode("Wind & consumption, "), el("span", { class: "serif" }, "past year."));
         $("hero-tile-copy").textContent = "Daily average wind production vs. national consumption over the last 12 months, refreshed daily via GitHub Actions.";
         $("hero-mini-kpis").replaceChildren(
           el("div", { class: "mkpi" }, null), el("div", { class: "mkpi" }, null)
@@ -2011,7 +2052,7 @@ make test</pre>
         $("hero-mini-kpis").children[1].append(el("strong", {}, `${sm.wind_share_pct}%`), el("span", {}, "wind share of consumption"));
 
         lineChart($("bento-hero-chart"), {
-          height: 290, directLabels: true,
+          height: 290, directLabels: true, yUnit: "MW",
           series: [
             { name: "Consumption", short: "Demand", values: data.days.map(d => d.consumption_mw), color: "var(--cons)", width: 1.7 },
             { name: "Wind", short: "Wind", values: data.days.map(d => d.wind_mw), color: "var(--real)", width: 2 },
@@ -2030,9 +2071,9 @@ make test</pre>
     function renderRanges(r) {
       if (!r || !r.wind) return;
       cachedRanges = r;
-      const when = r.target_is_tomorrow ? "tomorrow" : dayFmt(r.wind.target_day + "T12:00:00Z");
+      const when = dayWord(r.wind.target_day);
       const mw = n => `${fmt(Math.round(n))} MW`;
-      $("rg-title").textContent = `How wrong will ${when === "tomorrow" ? "tomorrow's" : `the ${when}`} forecast be?`;
+      $("rg-title").textContent = `How far off can the forecast for ${when.replace(/^on /, "")} be?`;
       $("rg-intro").textContent = `Fingrid publishes one number per hour. These ranges say where the real value is likely to land: 80% of hours should fall inside the dark band, 95% inside the light one.`;
       $("rg-kpis").replaceChildren(
         kpi(`±${fmt(Math.round(r.wind.mean_width80_mw / 2))} MW`, `wind 80% range ${when}`),
@@ -2041,7 +2082,7 @@ make test</pre>
         kpi(`${fmt(r.consumption.record_coverage80 * 100, 0)}%`, `of consumption hours inside it, last ${r.consumption.record_days} days`),
       );
       const recordCfg = (rec, color) => ({
-        height: 160, forceZero: false, directLabels: false,
+        height: 160, forceZero: false, directLabels: false, yUnit: "MW",
         series: [{ name: "Measured", short: "Measured", values: rec.map(x => x.actual_mw ?? NaN), color: "var(--ink)", width: 1.4 }],
         bands: [{ lo: rec.map(x => x.lo80_mw), hi: rec.map(x => x.hi80_mw), color, opacity: .30 }],
         labels: rec.map(x => `${x.day_fi} ${hrs(x.hour_fi)}`),
@@ -2141,14 +2182,15 @@ make test</pre>
     function renderCo2(c) {
       if (!c || !c.hours) return;
       const g = v => `${fmt(v, 1)} g`;
-      const when = c.target_is_tomorrow ? "tomorrow" : "today";
-      $("co2-tile-when").textContent = `Hours ${when[0].toUpperCase() + when.slice(1)}.`;
+      const when = dayWord(c.target_day);
+      $("co2-tile-when").textContent = `${when}.`;
       $("co2-title").textContent = `When is electricity cleanest ${when}?`;
       $("mk-co2-best").textContent = hourSpan(c.best_3h.hour_fi, 3);
       $("mk-co2-low").textContent = `${g(c.cleanest_hour.co2)}/kWh`;
 
       const H = c.hours, idx = h => H.findIndex(x => x.hour_start === h.hour_start);
       const chartCfg = {
+        yUnit: "g CO₂ per kWh",
         height: 150,
         series: [{ name: "CO₂ Forecast", values: H.map(x => x.co2_forecast), color: "var(--fc-da)", width: 2 }],
         labels: H.map(x => hrs(x.hour_fi)),
@@ -2201,6 +2243,7 @@ make test</pre>
       $("mk-ev-peak-min").textContent = `:${String(worst.minute_of_hour).padStart(2, "0")} (${fmt(worst.pct_outside, 1)}%)`;
 
       const minCfg = {
+        yUnit: "% of minutes outside 49.9–50.1 Hz",
         height: 150,
         series: [{ name: "Outside 49.9–50.1 Hz", values: M.map(m => m.pct_outside), color: "var(--fc-da)", width: 2 }],
         labels: M.map(m => `:${String(m.minute_of_hour).padStart(2, "0")}`),
@@ -2230,19 +2273,20 @@ make test</pre>
       const wd = t.fits.find(f => f.day_type === "weekday"), we = t.fits.find(f => f.day_type === "weekend");
       const deg = v => `${v < 0 ? "−" : ""}${fmt(Math.abs(v), 1)} °C`;
       $("mk-cold-slope").textContent = `+${fmt(Math.round(wd.mw_per_degree))} MW`;
-      $("mk-cold-r2").textContent = `${fmt(wd.r2, 2)}`;
+      $("mk-cold-r2").textContent = `${fmt(wd.r2 * 100, 0)}%`;
+      $("mk-cold-slope-label").textContent = `per °C below ${wd.balance_point_c} °C, weekdays`;
 
       const B = t.bins, labels = B.map(b => `${b.from_c}`);
       const model = B.map(b => wd.base_mw + wd.mw_per_degree * Math.max(wd.balance_point_c - (b.from_c + b.to_c) / 2, 0));
       const coldCfg = {
-        height: 150, forceZero: false,
+        height: 150, forceZero: false, yUnit: "MW, daily average",
         series: [
           { name: "Weekdays", short: "Weekday", values: B.map(b => b.weekday_mw ?? NaN), color: "var(--fc-da)", width: 2, dots: true },
           { name: "Weekends", short: "Weekend", values: B.map(b => b.weekend_mw ?? NaN), color: "var(--fc-id)", width: 1.5 },
           { name: "Model", short: "Fit", values: model, color: "var(--ink-2)", width: 1.2, dash: "4 3" },
         ],
         labels,
-        xTick: (i, l) => i % 3 === 0 ? `${(+l < 0 ? "−" : "") + Math.abs(+l)}°` : null,
+        xTick: (i, l) => i % 3 === 0 ? `${(+l < 0 ? "−" : "") + Math.abs(+l)} °C` : null,
         tipTitle: l => `${l}°C band`, tipValue: v => `${fmt(Math.round(v))} MW`
       };
       lineChart($("bento-cold-chart"), coldCfg);
