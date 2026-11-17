@@ -49,6 +49,11 @@ DATASETS = [
     # Grid events (sql/schema/15_grid_events.sql)
     (188, "nuclear",                 "Nuclear power production - real-time data",                  "MW",       "actual",    M3),
     (177, "frequency",               "Frequency - real-time data",                                 "Hz",       "system",    M1),
+    # Where an extra MW of wind goes (sql/analysis/24, src/wind_allocation.py)
+    (191, "hydro",                   "Hydro power production - real-time data",                    "MW",       "actual",    M3),
+    # 194 is positive when Finland exports (checked: r = -0.998 against consumption - production)
+    (194, "net_export",              "Net import/export of electricity - real-time data",           "MW",       "actual",    M3),
+    (398, "battery_discharge",       "Battery energy storage systems discharging power - real-time data", "MW", "actual",   M3),
     # Weather: how much colder days raise consumption (sql/analysis/22-23)
     (178, "temp_helsinki",           "Temperature in Helsinki - real time data",                   "C",        "weather",   M3),
     (182, "temp_jyvaskyla",          "Temperature in Jyväskylä - real time data",                  "C",        "weather",   M3),

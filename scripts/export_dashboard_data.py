@@ -358,6 +358,69 @@ def export_temperature(days: int = 365) -> None:
     })
 
 
+WIND_ALLOCATION_SQL = "sql/analysis/24_wind_allocation_panel.sql"
+WIND_ALLOCATION_PARTS = {"net_import_mw": "imports", "hydro_mw": "hydro", "other_mw": "other", "consumption_mw": "consumption"}
+
+
+def export_wind_allocation(days: int = 365) -> None:
+    """Where an extra MW of wind (and of nuclear) goes: src/wind_allocation.py on the hourly balance."""
+    sys.path.insert(0, os.path.join(ROOT, "src"))
+    import numpy as np
+    import wind_allocation as wa
+    from analysis_window import default_window
+
+    w = default_window(days=days)
+    conn = _db()
+    try:
+        with open(os.path.join(ROOT, WIND_ALLOCATION_SQL), encoding="utf-8") as fh:
+            rows = _rows(conn, fh.read(), w)
+    finally:
+        conn.close()
+    if len(rows) < 24 * 300:
+        raise SystemExit(f"wind-allocation: only {len(rows)} complete hours: run src/sync_fingrid.py first")
+
+    def shares(fitted: dict, driver: str) -> dict:
+        # "pushed out" shares are minus the coefficient; consumption is the coefficient itself
+        out = {}
+        for response, name in WIND_ALLOCATION_PARTS.items():
+            c = fitted["responses"][response][driver]
+            sign = 1 if response == "consumption_mw" else -1
+            lo, hi = sorted((sign * c["ci_low"], sign * c["ci_high"]))
+            out[name] = {"share": round(sign * c["coef"], 3), "ci_low": round(lo, 3), "ci_high": round(hi, 3)}
+        return out
+
+    overall = wa.fit(rows, wa.RESPONSES + ("battery_mw",))
+    seasons = wa.by_season(rows)
+    measured = [(float(r["net_import_mw"]), float(r["net_import_measured_mw"])) for r in rows
+                if r["net_import_measured_mw"] is not None]
+    a, b = np.array(measured).T
+    bat = overall["responses"]["battery_mw"]["wind_mw"]
+    _write("wind_allocation.json", {
+        "generated_at": _now(),
+        "source": "Fingrid Open Data API (CC BY 4.0): consumption (124), production (74), wind (75), nuclear (188), "
+                  "hydro (191), measured net export (194), battery discharge (398), temperatures (178, 182, 196, 185)",
+        "window_start": w["start"].strftime("%Y-%m-%d"),
+        "window_end_exclusive": w["end"].strftime("%Y-%m-%d"),
+        "hours": overall["hours"],
+        "model": "hourly OLS of imports, hydro, other production and consumption on wind, nuclear and "
+                 f"max({wa.HEATING_BALANCE_C:g} C - temperature, 0), with Finnish hour-of-day, weekday and month fixed "
+                 f"effects; 95 % intervals from Newey-West standard errors ({wa.HAC_LAGS} hourly lags). "
+                 "Associations after controlling for weather and calendar, not proven causal effects.",
+        "identity": "consumption = wind + nuclear + hydro + other + net imports (Fingrid's definition of consumption), "
+                    "so the four shares of +1 MW add up to 1",
+        "wind": shares(overall, "wind_mw"),
+        "nuclear": shares(overall, "nuclear_mw"),
+        "r2": {WIND_ALLOCATION_PARTS[k]: round(v["r2"], 3) for k, v in overall["responses"].items() if k in WIND_ALLOCATION_PARTS},
+        "seasons": [{"season": name, "months": list(wa.SEASONS[name]), "hours": f["hours"], "wind": shares(f, "wind_mw")}
+                    for name, f in seasons.items()],
+        "battery_per_mw_wind": {"coef": round(bat["coef"], 4), "ci_low": round(bat["ci_low"], 4), "ci_high": round(bat["ci_high"], 4)},
+        "net_import_check": {"hours": len(measured), "r_identity_vs_measured_194": round(float(np.corrcoef(a, b)[0, 1]), 4),
+                             "mean_difference_mw": round(float((a - b).mean()), 1)},
+        "sql": [WIND_ALLOCATION_SQL],
+        "code": "src/wind_allocation.py",
+    })
+
+
 def export_fingrid_latest(hours: int = 6) -> None:
     """Newest raw value of each dataset in the last few hours: two small requests, no history."""
     sys.path.insert(0, os.path.join(ROOT, "src"))
@@ -400,6 +463,8 @@ PAGE_SQL_FILES = [
     "sql/analysis/13_forecast_scorecard.sql",
     "sql/analysis/17_forecast_error_vs_balancing.sql",
     "sql/analysis/23_temperature_sensitivity.sql",
+    "sql/analysis/24_wind_allocation_panel.sql",
+    "src/wind_allocation.py",
 ]
 
 
@@ -511,11 +576,12 @@ PARTS = {
     "co2-forecast": export_co2_forecast,
     "grid-events": export_grid_events,
     "temperature": export_temperature,
+    "wind-allocation": export_wind_allocation,
     "fingrid-latest": export_fingrid_latest,
     "sql": export_sql_sources,
     "engineering": export_engineering,
 }
-DAILY_PARTS = ["fingrid-recent", "forecast-scorecard", "co2-forecast", "grid-events", "temperature"]
+DAILY_PARTS = ["fingrid-recent", "forecast-scorecard", "co2-forecast", "grid-events", "temperature", "wind-allocation"]
 
 
 def main() -> None:
