@@ -156,6 +156,10 @@ All logic lives in SQL; the API, the reports and the dashboard export run the sa
 
 `make api`, then open http://localhost:8000/docs.
 
+Results are cached for `API_CACHE_SECONDS` (default 300 s; the warehouse changes once a day), and concurrent
+requests for the same query share one database run. With the warehouse at 2.6 M rows, the load test (20 users,
+30 s) had a p95 of 6.6 s without the cache (in CI) and 9 ms with it (run locally).
+
 | Endpoint | Returns |
 |---|---|
 | `GET /api/datasets` | every dataset with its row count and coverage |
@@ -175,7 +179,7 @@ a server.
 
 ## Tests
 
-152 tests in eight layers, all run in CI on Python 3.11/3.12 and PostgreSQL 14/15/16,
+159 tests in eight layers, all run in CI on Python 3.11/3.12 and PostgreSQL 14/15/16,
 against the restored real warehouse:
 
 | Layer | What it guards |

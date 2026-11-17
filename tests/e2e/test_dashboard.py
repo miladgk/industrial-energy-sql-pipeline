@@ -30,6 +30,15 @@ def js_round(x):
     return math.floor(x + 0.5)
 
 
+def _day_word(iso_day):
+    """What the page calls a day: "today" or "tomorrow" in Finland, otherwise its date."""
+    from datetime import date, datetime, timedelta
+    from zoneinfo import ZoneInfo
+    today = datetime.now(ZoneInfo("Europe/Helsinki")).date()
+    day = date.fromisoformat(iso_day)
+    return "today" if day == today else "tomorrow" if day == today + timedelta(days=1) else day.strftime("%-d %b %Y")
+
+
 def _data(name):
     with open(os.path.join(ROOT, "docs", "data", name), encoding="utf-8") as fh:
         return json.load(fh)
@@ -164,7 +173,7 @@ def test_co2_forecast_names_the_published_cleanest_hour(open_dashboard):
     _open_pane(page, "pane-co2")
     start = c["cleanest_hour"]["hour_fi"]
     expect(page.locator("#co2-kpis .kpi strong").first).to_have_text(f"{start:02d}:00–{(start + 1) % 24:02d}:00")
-    expect(page.locator("#co2-title")).to_contain_text("tomorrow" if c["target_is_tomorrow"] else "today")
+    expect(page.locator("#co2-title")).to_contain_text(_day_word(c["target_day"]))
     expect(page.locator("#co2-past-chart path")).to_have_count(2)
     expect(page.locator("#co2-record .kpi")).to_have_count(4)
 
@@ -373,3 +382,30 @@ def test_no_horizontal_scrolling_on_a_phone(open_dashboard):
     page.wait_for_function("document.querySelector('.drawer').getBoundingClientRect().x < 0.01")   # slide-in done
     box = page.locator(".drawer").bounding_box()
     assert box["x"] >= 0 and box["x"] + box["width"] <= 375.5, box
+
+
+@pytest.mark.parametrize("width,height", [(1442, 900), (1440, 840), (1536, 864), (1920, 1080), (1366, 768)])
+def test_tiles_never_cut_off_their_content(open_dashboard, width, height):
+    """Every tile shows all it holds, buttons stay on one line, charts are drawn at their real size."""
+    page = open_dashboard(viewport={"width": width, "height": height})
+    expect(page.locator("#mk-craft-tests")).not_to_have_text("–")
+    page.wait_for_timeout(400)                               # let the size observer redraw
+    problems = page.evaluate("""(() => { const out = [];
+      document.querySelectorAll('.tile').forEach(t => { const tb = t.getBoundingClientRect();
+        t.querySelectorAll('*').forEach(c => { const b = c.getBoundingClientRect();
+          if (b.width && (b.bottom > tb.bottom + 1 || b.right > tb.right + 1)) out.push('cut: ' + t.querySelector('h2').textContent); });
+        if (tb.right > innerWidth + 1) out.push('off screen: ' + t.querySelector('h2').textContent); });
+      document.querySelectorAll('.inspect-btn').forEach(b => { if (b.getBoundingClientRect().height > 44) out.push('button wraps: ' + b.textContent.trim()); });
+      document.querySelectorAll('svg.chart').forEach(s => { const r = s.getBoundingClientRect(), vb = (s.getAttribute('viewBox') || '').split(' ').map(Number);
+        if (r.width && vb.length === 4 && (Math.abs(r.width - vb[2]) > 2 || Math.abs(r.height - vb[3]) > 2)) out.push('chart scaled: ' + s.id); });
+      return [...new Set(out)]; })()""")
+    assert problems == [], problems
+    assert page.evaluate("document.documentElement.scrollWidth - window.innerWidth") <= 0
+
+
+def test_charts_name_their_units(open_dashboard):
+    page = open_dashboard()
+    expect(page.locator("#range-wind-chart text.unit")).to_have_text("MW")
+    expect(page.locator("#bento-co2-chart text.unit")).to_have_text("g CO₂ per kWh")
+    expect(page.locator("#bento-ev-chart text.unit")).to_contain_text("% of minutes")
+    expect(page.locator("#bento-cold-chart text.unit")).to_contain_text("MW")
