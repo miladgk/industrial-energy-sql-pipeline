@@ -747,6 +747,37 @@
       }
     }
 
+    .range-stage {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      min-height: 0;
+    }
+
+    .range-stage[hidden],
+    svg.chart[hidden] {
+      display: none;
+    }
+
+    .range-stage svg.chart,
+    .tile-hero .chart-stage .range-stage svg.chart {
+      flex: 1;
+      min-height: 110px;
+      max-height: 260px;
+    }
+
+    #hero-view button {
+      white-space: nowrap;
+    }
+
+    .range-cap {
+      margin: 4px 0 0;
+      font: 500 11px "JetBrains Mono", monospace;
+      color: var(--muted);
+      letter-spacing: .04em;
+      text-transform: uppercase;
+    }
+
     .tile-legend {
       margin-top: 6px;
       font-size: 11px;
@@ -1201,6 +1232,10 @@
               <div class="eyebrow"><i></i>01 · Pulse & Forecast Integrity</div>
               <h2>Wind, Demand & <span class="serif">Forecast Error.</span></h2>
             </div>
+            <div class="seg" id="hero-view" role="group" aria-label="Hero chart">
+              <button type="button" data-view="ranges" aria-pressed="true">Tomorrow</button>
+              <button type="button" data-view="grid" aria-pressed="false">Past year</button>
+            </div>
           </div>
           <p class="tile-copy" id="hero-tile-copy">Daily average wind production vs. national consumption over the last
             12 months, updated daily via GitHub Actions.</p>
@@ -1211,14 +1246,23 @@
         </div>
 
         <div class="chart-stage">
-          <svg id="bento-hero-chart" class="chart" role="img" aria-label="Primary grid and forecast chart">
-            <desc>Interactive visualization of Finland's electricity grid.</desc>
+          <svg id="bento-hero-chart" class="chart" role="img" aria-label="Daily wind and consumption, last 12 months" hidden>
+            <desc>Daily average wind production and consumption over the last 12 months.</desc>
           </svg>
+          <div class="range-stage" id="range-stage">
+            <p class="range-cap" id="range-wind-cap">Wind power</p>
+            <svg id="range-wind-chart" class="chart" role="img" aria-label="Tomorrow's wind forecast with 80% and 95% ranges"></svg>
+            <p class="range-cap" id="range-cons-cap">Consumption</p>
+            <svg id="range-cons-chart" class="chart" role="img" aria-label="Tomorrow's consumption forecast with 80% and 95% ranges"></svg>
+            <div class="legend tile-legend"><span><i style="background:var(--ink-2)"></i>Fingrid's day-ahead forecast</span><span><i
+                  class="sq" style="background:var(--ink-2);opacity:.45"></i>80% range</span><span><i class="sq"
+                  style="background:var(--ink-2);opacity:.2"></i>95% range</span></div>
+          </div>
         </div>
 
-        <button type="button" class="inspect-btn" data-open-drawer="pane-forecasts">
-          <span>Inspect Forecast Scorecard, Balancing & SQL</span>
-          <span class="tag">2 SQL files · Tables ↗</span>
+        <button type="button" class="inspect-btn" id="hero-inspect" data-open-drawer="pane-ranges">
+          <span id="hero-inspect-label">Inspect the Backtest: Did the Ranges Hold?</span>
+          <span class="tag" id="hero-inspect-tag">25_forecast_errors_hourly.sql ↗</span>
         </button>
       </article>
 
@@ -1372,6 +1416,7 @@
 
       <nav class="drawer-tabs" role="tablist" aria-label="Inspector Sections">
         <button type="button" class="dtab" role="tab" data-pane="pane-forecasts" aria-selected="true">Forecasts</button>
+        <button type="button" class="dtab" role="tab" data-pane="pane-ranges" aria-selected="false">Ranges</button>
         <button type="button" class="dtab" role="tab" data-pane="pane-co2" aria-selected="false">CO₂ model</button>
         <button type="button" class="dtab" role="tab" data-pane="pane-events" aria-selected="false">Grid events</button>
         <button type="button" class="dtab" role="tab" data-pane="pane-cold" aria-selected="false">Cold</button>
@@ -1447,6 +1492,56 @@
           </details>
           <details class="sql" id="sql-17">
             <summary>Inspect SQL · sql/analysis/17_forecast_error_vs_balancing.sql</summary>
+            <pre>Loading…</pre>
+          </details>
+        </div>
+
+        <!-- PANE 1b: TOMORROW'S RANGES -->
+        <div class="drawer-pane" id="pane-ranges">
+          <h4 style="margin-top:0" id="rg-title">How wrong will tomorrow's forecast be?</h4>
+          <p class="note" id="rg-intro"></p>
+          <div class="kpis-4" id="rg-kpis"></div>
+
+          <h4>Did the 80% ranges hold? The last 14 days</h4>
+          <p class="range-cap">Wind power</p>
+          <div style="height:170px; margin:4px 0 8px;"><svg id="rg-record-wind" class="chart"
+              aria-label="Last 14 days: measured wind against the 80% range"></svg></div>
+          <p class="range-cap">Consumption</p>
+          <div style="height:170px; margin:4px 0 8px;"><svg id="rg-record-cons" class="chart"
+              aria-label="Last 14 days: measured consumption against the 80% range"></svg></div>
+          <div class="legend"><span><i style="background:var(--ink)"></i>Measured by Fingrid</span><span><i
+                class="sq" style="background:var(--ink-2);opacity:.45"></i>80% range issued the day before</span></div>
+
+          <h4>Backtest: every day replayed with only what was known then</h4>
+          <p class="note" id="rg-bt-note"></p>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Method</th>
+                  <th class="r">Wind 80%</th>
+                  <th class="r">Wind 95%</th>
+                  <th class="r">Consumption 80%</th>
+                  <th class="r">Consumption 95%</th>
+                </tr>
+              </thead>
+              <tbody id="rg-backtest">
+                <tr>
+                  <td colspan="5">Loading…</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="takeaway" id="rg-takeaway"></p>
+          <h4>How it works</h4>
+          <p class="note" id="rg-method"></p>
+          <p id="rg-error" class="load-error" role="alert" style="color:var(--fault)"></p>
+          <details class="sql" id="sql-25">
+            <summary>Inspect SQL · sql/analysis/25_forecast_errors_hourly.sql</summary>
+            <pre>Loading…</pre>
+          </details>
+          <details class="sql" id="code-fr">
+            <summary>Inspect Python · src/forecast_ranges.py</summary>
             <pre>Loading…</pre>
           </details>
         </div>
@@ -1724,7 +1819,7 @@ make test</pre>
 
     function drawLine(svg, cfg) {
       const { series, labels, height = 220, yFmt = null, xTick = () => null, tipTitle = l => l, tipValue = v => fmt(v, 1),
-        points = [], forceZero = true, yMin, yMax, directLabels = false } = cfg;
+        points = [], forceZero = true, yMin, yMax, directLabels = false, bands = [], tipExtra = null } = cfg;
       // A redraw (resize, theme, opening the drawer) replaces the chart: keep the reader's place and focus.
       const hadFocus = svg.contains(document.activeElement);
       const keep = Array.from(svg.childNodes).filter(n => n.nodeName === "desc" || n.nodeName === "title");
@@ -1735,7 +1830,7 @@ make test</pre>
       svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
 
       const m = { l: 44, r: directLabels ? 86 : 12, t: 10, b: 24 };
-      const vals = series.flatMap(s => s.values).filter(v => Number.isFinite(v));
+      const vals = [...series.flatMap(s => s.values), ...bands.flatMap(b => [...b.lo, ...b.hi])].filter(v => Number.isFinite(v));
       if (!vals.length) return;
       let lo = yMin ?? Math.min(...vals), hi = yMax ?? Math.max(...vals);
       if (yMin == null && forceZero) lo = Math.min(lo, 0);
@@ -1760,6 +1855,13 @@ make test</pre>
         const t = xTick(i, l, W < 420);
         if (t == null) return;
         const tx = svgEl("text", { x: x(i), y: H - 6, "text-anchor": "middle" }); tx.textContent = t; g.appendChild(tx);
+      });
+
+      bands.forEach(b => {                       // a shaded range: along the upper edge, back along the lower
+        const ok = labels.map((_, i) => Number.isFinite(b.lo[i]) && Number.isFinite(b.hi[i]));
+        const top = labels.map((_, i) => ok[i] ? `${x(i).toFixed(1)},${y(b.hi[i]).toFixed(1)}` : null).filter(Boolean);
+        const bottom = labels.map((_, i) => ok[i] ? `${x(i).toFixed(1)},${y(b.lo[i]).toFixed(1)}` : null).filter(Boolean).reverse();
+        if (top.length) g.appendChild(svgEl("path", { d: `M${top.join("L")}L${bottom.join("L")}Z`, style: `fill:${b.color}`, "fill-opacity": b.opacity ?? .2, class: "band" }));
       });
 
       series.forEach(s => {
@@ -1816,7 +1918,7 @@ make test</pre>
           dots[k].setAttribute("visibility", Number.isFinite(v) ? "visible" : "hidden");
           if (Number.isFinite(v)) { dots[k].setAttribute("cx", gx); dots[k].setAttribute("cy", y(v)); }
         });
-        const lines = describe();
+        const lines = [...describe(), ...(tipExtra ? tipExtra(cur) : [])];
         announce(lines);
         text.replaceChildren(...lines.map((line, k) => { const t = svgEl("tspan", { dy: k ? 15 : 0, class: k ? "" : "t0" }); t.textContent = line; return t; }));
         tip.setAttribute("visibility", "visible");
@@ -1859,11 +1961,47 @@ make test</pre>
     const hourSpan = (h, n = 1) => `${hrs(h)}–${hrs((h + n) % 24)}`;
     function kpi(value, label) { const d = el("div", { class: "kpi" }); d.append(el("strong", {}, value), el("span", {}, label)); return d; }
 
-    let cachedGrid = null;
+    let cachedGrid = null, cachedRanges = null;
+    const HERO_INSPECT = {
+      ranges: ["pane-ranges", "Inspect the Backtest: Did the Ranges Hold?", "25_forecast_errors_hourly.sql ↗"],
+      grid: ["pane-forecasts", "Inspect Forecast Scorecard, Balancing & SQL", "2 SQL files · Tables ↗"],
+    };
+    function rangeConfig(v, color, hours) {
+      const mw = n => `${fmt(Math.round(n))} MW`;
+      return {
+        height: 150, forceZero: v === "wind",
+        series: [{ name: "Fingrid forecast", short: "Forecast", values: hours.map(h => h.forecast_mw), color, width: 2 }],
+        bands: [
+          { lo: hours.map(h => h.lo95_mw), hi: hours.map(h => h.hi95_mw), color, opacity: .16 },
+          { lo: hours.map(h => h.lo80_mw), hi: hours.map(h => h.hi80_mw), color, opacity: .30 },
+        ],
+        labels: hours.map(h => hrs(h.hour_fi)),
+        xTick: (i, l) => i % 6 === 0 ? l : null,
+        tipTitle: l => `${l} Finnish time`, tipValue: mw,
+        tipExtra: i => [`80%: ${mw(hours[i].lo80_mw)} – ${mw(hours[i].hi80_mw)}`, `95%: ${mw(hours[i].lo95_mw)} – ${mw(hours[i].hi95_mw)}`],
+      };
+    }
     function renderHeroChamber(mode) {
       const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+      if (mode === "ranges" && !cachedRanges) mode = "grid";
+      document.querySelectorAll("#hero-view button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.view === mode)));
+      $("bento-hero-chart").toggleAttribute("hidden", mode !== "grid");   // SVG has no .hidden property
+      $("range-stage").hidden = mode !== "ranges";
+      const [pane, label, tag] = HERO_INSPECT[mode];
+      $("hero-inspect").dataset.openDrawer = pane; $("hero-inspect-label").textContent = label; $("hero-inspect-tag").textContent = tag;
 
-      if (mode === "grid" && cachedGrid) {
+      if (mode === "ranges") {
+        const r = cachedRanges, when = r.target_is_tomorrow ? "tomorrow" : dayFmt(r.wind.target_day + "T12:00:00Z");
+        $("hero-tile-copy").textContent = `Fingrid's day-ahead forecast for ${when}, hour by hour (Finnish time), with the ranges reality is likely to land in: calibrated on Fingrid's own recent errors.`;
+        $("hero-mini-kpis").replaceChildren(
+          ...[["wind", "wind, 80% range"], ["consumption", "consumption, 80% range"]].map(([v, text]) => {
+            const d = el("div", { class: "mkpi" });
+            d.append(el("strong", { id: `mk-range-${v}` }, `±${fmt(Math.round(r[v].mean_width80_mw / 2))} MW`), el("span", {}, `${text} ${when}`));
+            return d;
+          }));
+        lineChart($("range-wind-chart"), rangeConfig("wind", "var(--real)", r.wind.hours));
+        lineChart($("range-cons-chart"), rangeConfig("consumption", "var(--cons)", r.consumption.hours));
+      } else if (mode === "grid" && cachedGrid) {
         const data = cachedGrid, sm = data.summary;
         $("hero-tile-copy").textContent = "Daily average wind production vs. national consumption over the last 12 months, refreshed daily via GitHub Actions.";
         $("hero-mini-kpis").replaceChildren(
@@ -1884,6 +2022,58 @@ make test</pre>
           tipValue: v => `${fmt(Math.round(v))} MW`
         });
       }
+    }
+    $("hero-view").addEventListener("click", e => { const b = e.target.closest("button"); if (b) renderHeroChamber(b.dataset.view); });
+
+    /* Tomorrow's ranges: drawer */
+    const METHOD_NAMES = { global: "Global", by_hour: "By hour", mondrian: "Mondrian", adaptive: "Adaptive (published)" };
+    function renderRanges(r) {
+      if (!r || !r.wind) return;
+      cachedRanges = r;
+      const when = r.target_is_tomorrow ? "tomorrow" : dayFmt(r.wind.target_day + "T12:00:00Z");
+      const mw = n => `${fmt(Math.round(n))} MW`;
+      $("rg-title").textContent = `How wrong will ${when === "tomorrow" ? "tomorrow's" : `the ${when}`} forecast be?`;
+      $("rg-intro").textContent = `Fingrid publishes one number per hour. These ranges say where the real value is likely to land: 80% of hours should fall inside the dark band, 95% inside the light one.`;
+      $("rg-kpis").replaceChildren(
+        kpi(`±${fmt(Math.round(r.wind.mean_width80_mw / 2))} MW`, `wind 80% range ${when}`),
+        kpi(`${fmt(r.wind.record_coverage80 * 100, 0)}%`, `of wind hours inside it, last ${r.wind.record_days} days`),
+        kpi(`±${fmt(Math.round(r.consumption.mean_width80_mw / 2))} MW`, `consumption 80% range ${when}`),
+        kpi(`${fmt(r.consumption.record_coverage80 * 100, 0)}%`, `of consumption hours inside it, last ${r.consumption.record_days} days`),
+      );
+      const recordCfg = (rec, color) => ({
+        height: 160, forceZero: false, directLabels: false,
+        series: [{ name: "Measured", short: "Measured", values: rec.map(x => x.actual_mw ?? NaN), color: "var(--ink)", width: 1.4 }],
+        bands: [{ lo: rec.map(x => x.lo80_mw), hi: rec.map(x => x.hi80_mw), color, opacity: .30 }],
+        labels: rec.map(x => `${x.day_fi} ${hrs(x.hour_fi)}`),
+        xTick: (i, l) => l.endsWith("12:00") && i % 48 < 24 ? dayFmt(l.slice(0, 10) + "T12:00:00Z").replace(/ \d{4}$/, "") : null,
+        tipTitle: l => `${dayFmt(l.slice(0, 10) + "T12:00:00Z")} ${l.slice(11)} Finnish time`, tipValue: mw,
+        tipExtra: i => [`80% range: ${mw(rec[i].lo80_mw)} – ${mw(rec[i].hi80_mw)}`, rec[i].actual_mw == null ? "" : (rec[i].actual_mw >= rec[i].lo80_mw && rec[i].actual_mw <= rec[i].hi80_mw ? "inside" : "outside")],
+      });
+      lineChart($("rg-record-wind"), recordCfg(r.wind.record, "var(--real)"));
+      lineChart($("rg-record-cons"), recordCfg(r.consumption.record, "var(--cons)"));
+
+      const cell = (v, lv) => { const m = r[v].backtest.methods; return (k) => m[k][lv]; };
+      const bt = r.wind.backtest;
+      $("rg-bt-note").textContent = `${fmt(bt.days)} days replayed (${dayFmt(bt.first_day + "T12:00:00Z")} – ${dayFmt(bt.last_day + "T12:00:00Z")}). Each cell: share of hours inside, mean width, interval score (width plus a penalty for every miss; lower is better).`;
+      $("rg-backtest").replaceChildren(...Object.keys(METHOD_NAMES).map(k => {
+        const tr = el("tr");
+        tr.appendChild(el("td", {}, METHOD_NAMES[k]));
+        [["wind", "0.8"], ["wind", "0.95"], ["consumption", "0.8"], ["consumption", "0.95"]].forEach(([v, lv]) => {
+          const c = cell(v, lv)(k);
+          const td = el("td", { class: "r" });
+          td.append(el("b", {}, `${fmt(c.coverage * 100, 1)}%`), el("br"),
+            el("small", { style: "color:var(--muted)" }, `${fmt(Math.round(c.mean_width_mw))} MW · ${fmt(Math.round(c.interval_score))}`));
+          tr.appendChild(td);
+        });
+        if (k === "adaptive") tr.style.background = "var(--band)";
+        return tr;
+      }));
+      const gain = (v, lv) => { const m = r[v].backtest.methods; return 100 * (1 - m.adaptive[lv].interval_score / m.global[lv].interval_score); };
+      $("rg-takeaway").replaceChildren(el("b", {}, "Takeaway: "), document.createTextNode(
+        `Grouping errors by time of day and forecast level, and letting the target miss rate adapt day by day, scores ` +
+        `${fmt(gain("wind", "0.8"), 0)}–${fmt(Math.max(gain("wind", "0.95"), gain("consumption", "0.8"), gain("consumption", "0.95")), 0)}% better than one set of quantiles, ` +
+        `and brings coverage closer to its target. The ranges still fall slightly short of 80% and 95%: errors within a day move together, and the method can only learn from days that were complete when the forecast was issued.`));
+      $("rg-method").textContent = r.method;
     }
 
     function renderLatestTicker(lt) {
@@ -2068,7 +2258,7 @@ make test</pre>
 
     /* Craft, Pipeline, Partitions & SQL Drawer */
     const STAGES = [
-      ["01 · Source", "Fingrid Open Data API", "<b><span class=\"n-datasets\">25</span> datasets at 1-min to 1-hr resolution.</b> Actuals, day-ahead/intraday forecasts, balancing mFRR, CO₂ intensity, nuclear, frequency, inertia, and 4-city temperatures."],
+      ["01 · Source", "Fingrid Open Data API", "<b><span class=\"n-datasets\">25</span> datasets at 1-min to 1-hr resolution.</b> Actuals, day-ahead/intraday forecasts, balancing mFRR, CO₂ intensity, nuclear, hydro, trade, batteries, frequency, inertia, and 4-city temperatures, plus FMI weather forecasts archived daily as issued."],
       ["02 · Sync", "Incremental & Idempotent", "<b>Zero duplicate writes.</b> Re-reads trailing 7 days to capture Fingrid revisions and executes idempotent PostgreSQL upserts skipping unchanged rows."],
       ["03 · Warehouse", "Partitioned PostgreSQL", "<b>Monthly table partitioning.</b> <code>fingrid_observation</code> partitions by month on composite primary key <code>(dataset_id, start_time)</code>."],
       ["04 · Quality", "5 Automated Gates", "<b>Fail-fast validation.</b> Checks default partition leakage, stale datasets, 30-day completeness, and 0 Hz sensor gap markers."],
@@ -2245,7 +2435,8 @@ make test</pre>
         "sql/schema/15_grid_events.sql": "sql-15", "sql/schema/14_co2_forecast.sql": "sql-14",
         "sql/analysis/13_forecast_scorecard.sql": "sql-13", "sql/analysis/17_forecast_error_vs_balancing.sql": "sql-17",
         "sql/analysis/23_temperature_sensitivity.sql": "sql-23",
-        "sql/analysis/24_wind_allocation_panel.sql": "sql-24", "src/wind_allocation.py": "code-wa"
+        "sql/analysis/24_wind_allocation_panel.sql": "sql-24", "src/wind_allocation.py": "code-wa",
+        "sql/analysis/25_forecast_errors_hourly.sql": "sql-25", "src/forecast_ranges.py": "code-fr"
       };
       src.files.forEach(f => {
         const d = $(map[f.path]); if (!d) return;
@@ -2262,18 +2453,19 @@ make test</pre>
 
     /* ───────── 5. BOOTSTRAP DATA PIPELINE ───────── */
     (async function main() {
-      const files = ["fingrid_recent_daily", "forecast_scorecard", "co2_forecast", "grid_events", "temperature", "wind_allocation", "sql_sources", "engineering"];
-      const [recent, scorecard, co2, events, temperature, windAlloc, sql, eng] = await Promise.all(files.map(f => safe(getJSON(`data/${f}.json`))));
+      const files = ["fingrid_recent_daily", "forecast_scorecard", "co2_forecast", "grid_events", "temperature", "wind_allocation", "forecast_ranges", "sql_sources", "engineering"];
+      const [recent, scorecard, co2, events, temperature, windAlloc, ranges, sql, eng] = await Promise.all(files.map(f => safe(getJSON(`data/${f}.json`))));
       safe(getJSON("data/fingrid_latest.json", { cache: "no-store" })).then(renderLatestTicker);
 
       const failed = (data, file, id) => { if (!data && id) $(id).textContent = `data/${file}.json could not be loaded; the rest of the page still works.`; };
       [[scorecard, "forecast_scorecard", "fc-error"], [co2, "co2_forecast", "co2-error"], [events, "grid_events", "ev-error"],
-       [temperature, "temperature", "cold-error"], [windAlloc, "wind_allocation", "wa-error"]].forEach(([d, f, id]) => failed(d, f, id));
+       [temperature, "temperature", "cold-error"], [windAlloc, "wind_allocation", "wa-error"], [ranges, "forecast_ranges", "rg-error"]].forEach(([d, f, id]) => failed(d, f, id));
       if (eng) { datasetCount = eng.datasets; document.querySelectorAll(".n-datasets").forEach(n => { n.textContent = eng.datasets; }); }
       if (!recent) $("hero-tile-copy").textContent = "data/fingrid_recent_daily.json could not be loaded.";
 
       cachedGrid = recent;
-      renderHeroChamber("grid");
+      renderRanges(ranges);
+      renderHeroChamber(ranges ? "ranges" : "grid");
       renderForecasts(scorecard);
       renderCo2(co2);
       renderEvents(events);

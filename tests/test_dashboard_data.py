@@ -156,3 +156,21 @@ def test_wind_allocation_shares_add_up_to_one_megawatt():
         assert sum(p["share"] for p in s["wind"].values()) == pytest.approx(1.0, abs=0.01), s["season"]
     assert d["hours"] >= 24 * 300
     assert abs(d["net_import_check"]["r_identity_vs_measured_194"]) > 0.99     # 194 confirms Fingrid's definition
+
+
+def test_forecast_ranges_are_ordered_and_scored():
+    d = _load("forecast_ranges.json")
+    for v in ("wind", "consumption"):
+        x = d[v]
+        assert 23 <= len(x["hours"]) <= 25                                   # 23 or 25 on DST days
+        for h in x["hours"]:
+            assert h["lo95_mw"] <= h["lo80_mw"] <= h["hi80_mw"] <= h["hi95_mw"], (v, h)
+            if v == "wind":
+                assert h["lo95_mw"] >= 0
+        methods = x["backtest"]["methods"]
+        assert set(methods) == {"global", "by_hour", "mondrian", "adaptive"}
+        for per in methods.values():
+            for c in per.values():
+                assert 0 < c["coverage"] <= 1 and c["mean_width_mw"] > 0 and c["interval_score"] >= c["mean_width_mw"]
+        assert x["backtest"]["days"] >= 60
+        assert len(x["record"]) <= x["record_days"] * 25

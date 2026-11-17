@@ -43,6 +43,7 @@ concurrency:
 env:
   SNAPSHOT_TAG: warehouse-snapshot
   SNAPSHOT_FILE: fingrid_observation.csv.gz
+  FORECAST_ARCHIVE: weather_forecast.csv.gz
 
 jobs:
   refresh:
@@ -97,6 +98,18 @@ jobs:
             echo "::notice::No snapshot yet: the sync will backfill from Fingrid."
           fi
 
+      # FMI serves only today's forecasts, so yesterday's archive is restored and today's issue added.
+      - name: Restore the weather forecast archive
+        run: |
+          if gh release download "$SNAPSHOT_TAG" --pattern "$FORECAST_ARCHIVE" --dir /tmp/snapshot; then
+            python src/fmi_forecast.py restore "/tmp/snapshot/$FORECAST_ARCHIVE"
+          else
+            echo "::notice::No forecast archive yet: it starts with today's issue."
+          fi
+
+      - name: Archive today's FMI weather forecasts
+        run: python src/fmi_forecast.py fetch
+
       - name: Sync from Fingrid
         env:
           FINGRID_API_KEY: ${{ secrets.FINGRID_API_KEY }}
@@ -113,9 +126,11 @@ jobs:
               --notes "Every row of fingrid_observation as CSV (dataset_id, start_time, end_time, value), replaced daily by .github/workflows/refresh_fingrid.yml. Source: Fingrid Open Data, CC BY 4.0 (https://data.fingrid.fi)."
           fi
           gh release upload "$SNAPSHOT_TAG" "/tmp/$SNAPSHOT_FILE" --clobber
+          python src/fmi_forecast.py dump "/tmp/$FORECAST_ARCHIVE"
+          gh release upload "$SNAPSHOT_TAG" "/tmp/$FORECAST_ARCHIVE" --clobber
 
       - name: Build the dashboard data
-        run: python scripts/export_dashboard_data.py --parts fingrid-recent forecast-scorecard co2-forecast grid-events temperature
+        run: python scripts/export_dashboard_data.py      # every part in DAILY_PARTS
 
       # Off main (a test run of a PR branch), keep the files as a run artifact instead of
       # committing: a bot commit on a PR branch leaves its CI waiting for manual approval.
@@ -124,19 +139,13 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: dashboard-data
-          path: |
-            docs/data/fingrid_recent_daily.json
-            docs/data/forecast_scorecard.json
-            docs/data/co2_forecast.json
-            docs/data/grid_events.json
-            docs/data/temperature.json
+          path: docs/data/*.json
 
       - name: Commit if the data changed
         id: commit
         if: github.ref == 'refs/heads/main'
         run: |
-          files="docs/data/fingrid_recent_daily.json docs/data/forecast_scorecard.json docs/data/co2_forecast.json docs/data/grid_events.json docs/data/temperature.json"
-          git add $files
+          git add docs/data      # fingrid_latest.json is git-ignored; the rest is what the export wrote
           if git diff --cached --quiet; then
             echo "No change in the dashboard data."
             echo "changed=false" >> "$GITHUB_OUTPUT"
