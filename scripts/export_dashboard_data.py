@@ -640,6 +640,67 @@ def export_hydro_flex() -> None:
     })
 
 
+PRICE_WIND_SQL = "sql/analysis/29_price_wind_panel.sql"
+
+
+def export_price_wind() -> None:
+    """Does wind make electricity cheaper? src/price_wind.py on three years of ENTSO-E prices."""
+    sys.path.insert(0, os.path.join(ROOT, "src"))
+    import price_wind as pw
+    from analysis_window import default_window
+
+    w = default_window(days=HYDRO_DAYS)
+    conn = _db()
+    try:
+        with open(os.path.join(ROOT, PRICE_WIND_SQL), encoding="utf-8") as fh:
+            panel = _rows(conn, fh.read(), w)
+        with open(os.path.join(ROOT, HYDRO_STATE_SQL), encoding="utf-8") as fh:
+            state = _rows(conn, fh.read(), {"start": (w["start"] - timedelta(days=2)).date(), "end": w["end"].date()})
+        latest = _rows(conn, "SELECT area, max(end_time) AS last_end FROM entsoe_price GROUP BY area ORDER BY area")
+    finally:
+        conn.close()
+    rows = pw.join_state(panel, state)
+    if len(rows) < 24 * 365:
+        # No ENTSO-E token (a fork) or a fresh archive: keep the published file rather than fail the refresh.
+        print(f"::warning::price-wind: only {len(rows)} hours with a price and a water state; price_wind.json left as it is.")
+        return
+    r1, r3 = (lambda v: round(float(v), 1)), (lambda v: round(float(v), 3))
+    fitted = pw.fit(rows)
+    eff = lambda f, s=0.0: {k: r1(v) for k, v in pw.per_gw(f, s).items()}
+    inter = pw.storage_interaction(fitted)
+    _write("price_wind.json", {
+        "generated_at": _now(),
+        "source": "ENTSO-E Transparency Platform: day-ahead prices for FI, SE1, SE3, EE and NO4; Fingrid Open Data "
+                  "(CC BY 4.0): day-ahead wind (246) and consumption (165) forecasts, measured wind (75), nuclear (188) "
+                  "and temperatures (178, 182, 196, 185); SYKE Hydrology API (CC BY 4.0): reservoir levels",
+        "window_start": w["start"].strftime("%Y-%m-%d"),
+        "window_end_exclusive": w["end"].strftime("%Y-%m-%d"),
+        "hours": fitted["hours"],
+        "r2": r3(fitted["r2"]),
+        "model": "hourly OLS of the Finnish day-ahead price on Fingrid's day-ahead wind and consumption forecasts, "
+                 "wind x storage, nuclear, heating degrees, reservoir storage and inflow of the day before (against "
+                 "their 2000-2022 norm), with hour, weekday, month and year fixed effects; Newey-West 95 % intervals "
+                 "(24 h). Associations, not proven causes.",
+        "per_gw": eff(fitted),
+        "per_gw_checks": {"prices_clipped_1_99": eff(pw.fit(rows, clip=(1, 99))),
+                          "measured_wind": eff(pw.fit(rows, "wind_mw"))},
+        "consumption_per_gw": {k: r1(v) for k, v in pw.consumption_effect(fitted).items()},
+        "at_storage": [{"percentile": a["percentile"], "storage_z": r3(a["storage_z"]),
+                        **{k: r1(a[k]) for k in ("eur_per_gw", "ci_low", "ci_high")}}
+                       for a in pw.at_storage_percentiles(fitted, state)],
+        "storage_interaction": {"per_unit": r1(inter["per_unit"]), "ci_low": r1(inter["ci_low"]),
+                                "ci_high": r1(inter["ci_high"]), "p_value": round(inter["p_value"], 4)},
+        "by_wind_bin": [{k: (r3(v) if k.startswith("share") else r1(v) if isinstance(v, float) else v)
+                         for k, v in b.items()} for b in pw.by_wind_bin(rows)],
+        "capture_by_year": [{"year": c["year"], "hours": c["hours"], "partial": c["hours"] < 24 * 360,
+                             "average": r1(c["average"]), "wind_captured": r1(c["wind_captured"]),
+                             "ratio": r3(c["ratio"])} for c in pw.capture_by_year(rows)],
+        "latest_price": {r["area"]: r["last_end"] for r in latest},
+        "sql": [PRICE_WIND_SQL, HYDRO_STATE_SQL],
+        "code": ["src/price_wind.py", "src/entsoe_prices.py"],
+    })
+
+
 WEATHER_MODEL_SQL = "sql/analysis/26_weather_model_panel.sql"
 WEATHER_RECORD_DAYS = 14
 
@@ -738,6 +799,8 @@ PAGE_SQL_FILES = [
     "src/hydro_flex.py",
     "sql/analysis/28_consumption_hourly.sql",
     "src/strike_effect.py",
+    "sql/analysis/29_price_wind_panel.sql",
+    "src/price_wind.py",
 ]
 
 
@@ -853,12 +916,13 @@ PARTS = {
     "forecast-ranges": export_forecast_ranges,
     "weather-model": export_weather_model,
     "hydro-flex": export_hydro_flex,
+    "price-wind": export_price_wind,
     "fingrid-latest": export_fingrid_latest,
     "sql": export_sql_sources,
     "engineering": export_engineering,
 }
 DAILY_PARTS = ["fingrid-recent", "forecast-scorecard", "co2-forecast", "grid-events", "temperature", "wind-allocation",
-               "forecast-ranges", "weather-model", "hydro-flex"]
+               "forecast-ranges", "weather-model", "hydro-flex", "price-wind"]
 
 
 def main() -> None:

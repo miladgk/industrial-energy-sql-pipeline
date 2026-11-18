@@ -1464,6 +1464,7 @@
         <button type="button" class="dtab" role="tab" data-pane="pane-cold" aria-selected="false">Cold</button>
         <button type="button" class="dtab" role="tab" data-pane="pane-strikes" aria-selected="false">Strikes 2024</button>
         <button type="button" class="dtab" role="tab" data-pane="pane-wind" aria-selected="false">Wind balance</button>
+        <button type="button" class="dtab" role="tab" data-pane="pane-price" aria-selected="false">Wind &amp; price</button>
         <button type="button" class="dtab" role="tab" data-pane="pane-craft" aria-selected="false">Engineering</button>
       </nav>
 
@@ -1935,6 +1936,10 @@
           <p class="note">Water data by <a href="https://www.syke.fi/en" rel="noopener">SYKE</a> (Finnish Environment Institute, CC BY 4.0)
             and <a href="https://www.nve.no/" rel="noopener">NVE</a> (NLOD).</p>
           <p id="hf-error" class="load-error" role="alert" style="color:var(--fault)"></p>
+          <button type="button" class="inspect-btn" data-open-drawer="pane-price">
+            <span>What wind does to the price</span>
+            <span class="tag">Details →</span>
+          </button>
           <details class="sql" id="sql-27">
             <summary>Inspect SQL · sql/analysis/27_hydrology_state.sql</summary>
             <pre>Loading…</pre>
@@ -1954,6 +1959,73 @@
           </details>
           <details class="sql" id="code-wa">
             <summary>Inspect Python · src/wind_allocation.py</summary>
+            <pre>Loading…</pre>
+          </details>
+        </div>
+
+        <!-- PANE: WIND AND THE PRICE -->
+        <div class="drawer-pane" id="pane-price">
+          <h4 style="margin-top:0">Does wind make electricity cheaper?</h4>
+          <p class="note" id="pw-intro"></p>
+          <div class="kpis-3" id="pw-kpis"></div>
+          <p class="range-cap">Finnish day-ahead price by the wind forecast for that hour (GW)</p>
+          <div style="height:190px; margin:4px 0 8px;"><svg id="pw-chart" class="chart"
+              aria-label="Median Finnish day-ahead price at each level of forecast wind, with the middle half of hours"></svg></div>
+          <div class="legend"><span><i style="background:var(--rec)"></i>Median price</span><span><i
+                style="background:var(--ink-2)"></i>25th and 75th percentile (dashed)</span></div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Forecast wind</th>
+                  <th class="r">Median €/MWh</th>
+                  <th class="r" title="Share of hours with a price at or below zero">≤ 0 €</th>
+                  <th class="r" title="Share of hours in which Finland's price was below northern Sweden's (SE1)">Below SE1</th>
+                </tr>
+              </thead>
+              <tbody id="pw-table">
+                <tr>
+                  <td colspan="4">Loading…</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="takeaway" id="pw-takeaway"></p>
+
+          <h4>Does the water in the reservoirs change it?</h4>
+          <p class="note" id="pw-water"></p>
+          <p class="takeaway" id="pw-water-takeaway"></p>
+
+          <h4>What does wind earn?</h4>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Year</th>
+                  <th class="r">Average price</th>
+                  <th class="r">Wind earned</th>
+                  <th class="r">Share</th>
+                </tr>
+              </thead>
+              <tbody id="pw-capture">
+                <tr>
+                  <td colspan="4">Loading…</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="takeaway" id="pw-capture-takeaway"></p>
+
+          <h4>How it works</h4>
+          <p class="note" id="pw-method"></p>
+          <p class="note">Prices: <a href="https://transparency.entsoe.eu/" rel="noopener">ENTSO-E Transparency Platform</a>.</p>
+          <p id="pw-error" class="load-error" role="alert" style="color:var(--fault)"></p>
+          <details class="sql" id="sql-29">
+            <summary>Inspect SQL · sql/analysis/29_price_wind_panel.sql</summary>
+            <pre>Loading…</pre>
+          </details>
+          <details class="sql" id="code-pw">
+            <summary>Inspect Python · src/price_wind.py</summary>
             <pre>Loading…</pre>
           </details>
         </div>
@@ -2934,6 +3006,61 @@ make test</pre>
         el("a", { href: e.source, rel: "noopener" }, e.name)]));
     }
 
+    /* Wind and the day-ahead price (ENTSO-E) */
+    function renderPriceWind(d) {
+      if (!d || !d.by_wind_bin) return;
+      const eur = (v, n = 1) => `${fmt(v, n)} €/MWh`;
+      const bins = d.by_wind_bin, top = bins[bins.length - 1], low = bins[0];
+      const binName = b => b.gw_to == null ? `${b.gw_from}+ GW` : `${b.gw_from}–${b.gw_to} GW`;
+      const full = d.capture_by_year.filter(c => !c.partial);
+      const lastFull = full[full.length - 1];
+      $("pw-intro").textContent = `Finland's electricity price for each hour is set at noon the day before, in the Nordic–Baltic day-ahead auction, from bids that already know the weather forecast. Over ${fmt(d.hours)} hours (${dayFmt(d.window_start + "T00:00:00Z")} – ${dayFmt(d.window_end_exclusive + "T00:00:00Z")}) the price is set against Fingrid's day-ahead wind forecast for the same hour.`;
+      $("pw-kpis").replaceChildren(
+        kpi(`−${fmt(d.per_gw.eur_per_gw, 0)} €/MWh`, `per extra GW of forecast wind, on average (${fmt(d.per_gw.ci_low, 0)}–${fmt(d.per_gw.ci_high, 0)})`),
+        kpi(`${pct(lastFull.ratio)}`, `of the average price is what wind earned in ${lastFull.year}`),
+        kpi(`${pct(top.share_below_se1)}`, `of hours above ${top.gw_from} GW: Finland cheaper than northern Sweden`),
+      );
+      lineChart($("pw-chart"), {
+        height: 180, forceZero: true, directLabels: false, yUnit: "€/MWh",
+        series: [
+          { name: "Median price", short: "Median", values: bins.map(b => b.median), color: "var(--rec)", width: 2 },
+          { name: "75th percentile", short: "75th", values: bins.map(b => b.p75), color: "var(--ink-2)", width: 1.2, dash: "4 3" },
+          { name: "25th percentile", short: "25th", values: bins.map(b => b.p25), color: "var(--ink-2)", width: 1.2, dash: "4 3" },
+        ],
+        labels: bins.map(b => b.gw_to == null ? `${b.gw_from}+` : `${b.gw_from}–${b.gw_to}`),
+        xTick: (i, l) => l,
+        tipTitle: l => `Forecast wind ${l} GW`, tipValue: v => eur(v),
+        tipExtra: i => [`${fmt(bins[i].hours)} hours`],
+      });
+      $("pw-table").replaceChildren(...bins.map(b => {
+        const tr = el("tr");
+        const n = el("td"); n.append(el("b", {}, binName(b)), el("br"), el("small", { style: "color:var(--muted)" }, `${fmt(b.hours)} hours`));
+        const m = el("td", { class: "r" }); m.append(el("b", {}, fmt(b.median, 0)), el("br"), el("small", { style: "color:var(--muted)" }, `${fmt(b.p25, 0)}–${fmt(b.p75, 0)}`));
+        tr.append(n, m, el("td", { class: "r" }, pct(b.share_zero_or_below)), el("td", { class: "r" }, pct(b.share_below_se1)));
+        return tr;
+      }));
+      const c = d.per_gw_checks;
+      $("pw-takeaway").replaceChildren(el("b", {}, "Takeaway: "), document.createTextNode(
+        `Yes, strongly. With weather, the calendar, nuclear, demand and the reservoirs held fixed, each extra GW of forecast wind goes with a price ${eur(d.per_gw.eur_per_gw)} lower (95% interval ${fmt(d.per_gw.ci_low, 1)}–${fmt(d.per_gw.ci_high, 1)}; ${fmt(c.prices_clipped_1_99.eur_per_gw, 1)} with price spikes clipped, ${fmt(c.measured_wind.eur_per_gw, 1)} with measured instead of forecast wind). ` +
+        `The effect is not a straight line: the median falls from ${fmt(low.median, 0)} to ${fmt(bins[2].median, 0)} €/MWh over the first ${bins[2].gw_from} GW, then flattens near zero, most likely because the price cannot fall far below the bids of plants that would rather keep running than stop (nuclear, combined heat and power). ` +
+        `On the windiest hours Finland was cheaper than northern Sweden ${pct(top.share_below_se1)} of the time (${pct(low.share_below_se1)} on the calmest): a transmission limit was binding, so not all of the cheap wind could flow out.`));
+      const [dry, , wet] = d.at_storage, si = d.storage_interaction;
+      $("pw-water").textContent = `The same regression with wind × reservoir storage of the day before (five reservoir and lake levels against their 2000–2022 level for the date, as in the hydrology chapter). On the driest tenth of days one more GW of wind takes ${eur(dry.eur_per_gw)} off the price (${fmt(dry.ci_low, 1)}–${fmt(dry.ci_high, 1)}); on the fullest tenth ${eur(wet.eur_per_gw)} (${fmt(wet.ci_low, 1)}–${fmt(wet.ci_high, 1)}); p = ${fmt(si.p_value, 3)} for the difference.`;
+      $("pw-water-takeaway").replaceChildren(el("b", {}, "Takeaway: "), document.createTextNode(
+        si.p_value < 0.05
+          ? `Wind lowers the price more when the reservoirs are full. That is consistent with the hydrology chapter, where hydro makes less room for wind on full-reservoir days: water that must be released cannot be held back, so more of the extra power has to find buyers at a lower price. The difference is modest (about ${fmt(wet.eur_per_gw - dry.eur_per_gw, 0)} €/MWh per GW between the driest and fullest tenth).`
+          : `The water makes no clear difference to how much wind lowers the price; the difference between dry and full days could be chance.`));
+      $("pw-capture").replaceChildren(...d.capture_by_year.map(x => {
+        const tr = el("tr");
+        tr.append(el("td", {}, `${x.year}${x.partial ? " (so far)" : ""}`), el("td", { class: "r" }, fmt(x.average, 1)),
+          el("td", { class: "r" }, fmt(x.wind_captured, 1)), el("td", { class: "r" }, pct(x.ratio)));
+        return tr;
+      }));
+      $("pw-capture-takeaway").replaceChildren(el("b", {}, "Takeaway: "), document.createTextNode(
+        `An average MWh of Finnish wind sold for ${full.map(x => `${pct(x.ratio)} of the average price in ${x.year}`).join(" and ")}. Finland's wind farms blow at the same time, so they sell most when they have pushed the price down themselves. Prices in €/MWh; wind earned = the hourly price weighted by measured wind output.`));
+      $("pw-method").textContent = `Model: ${d.model} Each extra GW of forecast consumption raises the price by ${eur(d.consumption_per_gw.eur_per_gw)} (${fmt(d.consumption_per_gw.ci_low, 1)}–${fmt(d.consumption_per_gw.ci_high, 1)}), for scale. R² = ${fmt(d.r2, 2)}. Two zones count as the same price when they differ by at most half a cent per MWh. Since October 2025 the auction sets 15-minute prices; they are averaged to the hour.`;
+    }
+
     function renderSql(src) {
       if (!src) return;
       const map = {
@@ -2944,7 +3071,8 @@ make test</pre>
         "sql/analysis/25_forecast_errors_hourly.sql": "sql-25", "src/forecast_ranges.py": "code-fr",
         "sql/analysis/26_weather_model_panel.sql": "sql-26", "src/weather_model.py": "code-wm",
         "sql/analysis/27_hydrology_state.sql": "sql-27", "src/hydro_flex.py": "code-hf",
-        "sql/analysis/28_consumption_hourly.sql": "sql-28", "src/strike_effect.py": "code-st"
+        "sql/analysis/28_consumption_hourly.sql": "sql-28", "src/strike_effect.py": "code-st",
+        "sql/analysis/29_price_wind_panel.sql": "sql-29", "src/price_wind.py": "code-pw"
       };
       src.files.forEach(f => {
         const d = $(map[f.path]); if (!d) return;
@@ -2961,14 +3089,14 @@ make test</pre>
 
     /* ───────── 5. BOOTSTRAP DATA PIPELINE ───────── */
     (async function main() {
-      const files = ["fingrid_recent_daily", "forecast_scorecard", "co2_forecast", "grid_events", "temperature", "wind_allocation", "forecast_ranges", "sql_sources", "engineering", "weather_model", "weather_lead_time", "hydro_flex", "strike_effect"];
-      const [recent, scorecard, co2, events, temperature, windAlloc, ranges, sql, eng, weatherModel, leadTime, hydroFlex, strikes] = await Promise.all(files.map(f => safe(getJSON(`data/${f}.json`))));
+      const files = ["fingrid_recent_daily", "forecast_scorecard", "co2_forecast", "grid_events", "temperature", "wind_allocation", "forecast_ranges", "sql_sources", "engineering", "weather_model", "weather_lead_time", "hydro_flex", "strike_effect", "price_wind"];
+      const [recent, scorecard, co2, events, temperature, windAlloc, ranges, sql, eng, weatherModel, leadTime, hydroFlex, strikes, priceWind] = await Promise.all(files.map(f => safe(getJSON(`data/${f}.json`))));
       safe(getJSON("data/fingrid_latest.json", { cache: "no-store" })).then(renderLatestTicker);
 
       const failed = (data, file, id) => { if (!data && id) $(id).textContent = `data/${file}.json could not be loaded; the rest of the page still works.`; };
       [[scorecard, "forecast_scorecard", "fc-error"], [co2, "co2_forecast", "co2-error"], [events, "grid_events", "ev-error"],
        [temperature, "temperature", "cold-error"], [windAlloc, "wind_allocation", "wa-error"], [ranges, "forecast_ranges", "rg-error"],
-       [weatherModel, "weather_model", "wm-error"], [hydroFlex, "hydro_flex", "hf-error"], [strikes, "strike_effect", "st-error"]].forEach(([d, f, id]) => failed(d, f, id));
+       [weatherModel, "weather_model", "wm-error"], [hydroFlex, "hydro_flex", "hf-error"], [strikes, "strike_effect", "st-error"], [priceWind, "price_wind", "pw-error"]].forEach(([d, f, id]) => failed(d, f, id));
       if (eng) { datasetCount = eng.datasets; document.querySelectorAll(".n-datasets").forEach(n => { n.textContent = eng.datasets; }); }
       if (!recent) $("hero-tile-copy").textContent = "data/fingrid_recent_daily.json could not be loaded.";
 
@@ -2983,6 +3111,7 @@ make test</pre>
       renderWeatherModel(weatherModel, leadTime);
       renderHydroFlex(hydroFlex);
       renderStrikes(strikes);
+      renderPriceWind(priceWind);
       renderEngineering(eng);
       renderSql(sql);
 
