@@ -186,6 +186,8 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git commit -m "Refresh Fingrid dashboard data ($(date -u +%Y-%m-%d))"
+            # A long run (a history fill takes hours) can see main move under it: replay on top, once.
+            git pull --rebase origin main
             git push
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
