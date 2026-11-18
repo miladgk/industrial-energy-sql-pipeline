@@ -226,6 +226,24 @@ def test_wind_balance_shows_the_published_shares(open_dashboard):
     expect(page.locator("#mk-wa-imports-label")).to_contain_text(f"{pct(sweden)} of it over the Swedish borders")
 
 
+def test_public_weather_pane_shows_the_backtest(open_dashboard):
+    d = _data("weather_model.json")
+    mw = lambda v: f"{js_round(v):,} MW"
+    page = open_dashboard()
+    page.locator("#hero-inspect").click()
+    page.locator("#pane-ranges [data-open-drawer=pane-model]").click()
+    expect(page.locator("#pane-model")).to_be_visible()
+    expect(page.locator("#wm-kpis .kpi strong").first).to_have_text(mw(d["wind"]["backtest"]["mae_mw"]["fingrid"]))
+    rows = page.locator("#wm-backtest tr")
+    expect(rows).to_have_count(3)
+    expect(rows.nth(1)).to_contain_text(mw(d["wind"]["backtest"]["mae_mw"]["weather"]))
+    expect(rows.nth(2)).to_contain_text(mw(d["consumption"]["backtest"]["mae_mw"]["weather_fingrid"]))
+    expect(page.locator("#wm-record-wind path")).not_to_have_count(0)
+    expect(page.locator("#wm-lead tr")).to_have_count(3)
+    expect(page.locator("#wm-days tr")).to_have_count(len(d["fingrid_by_day_type"]))
+    expect(page.locator("#wm-takeaway")).to_contain_text("Fingrid")
+
+
 def test_wind_balance_rows_can_be_read_with_the_keyboard(open_dashboard):
     d = _data("wind_allocation.json")
     page = open_dashboard()

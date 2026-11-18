@@ -564,6 +564,87 @@ def export_fingrid_latest(hours: int = 6) -> None:
 
 
 GITHUB_BLOB = "https://github.com/miladgk/industrial-energy-sql-pipeline/blob/main/"
+WEATHER_MODEL_SQL = "sql/analysis/26_weather_model_panel.sql"
+WEATHER_RECORD_DAYS = 14
+
+
+def export_weather_model() -> None:
+    """Can public weather forecasts and the calendar beat Fingrid? Backtest, tomorrow, and Fingrid by kind of day."""
+    sys.path.insert(0, os.path.join(ROOT, "src"))
+    import weather_model as wm
+    from analysis_window import tomorrow_fi
+
+    end = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=3)
+    conn = _db()
+    try:
+        with open(os.path.join(ROOT, WEATHER_MODEL_SQL), encoding="utf-8") as fh:
+            rows = _rows(conn, fh.read(), {"start": end - timedelta(days=430), "end": end})
+    finally:
+        conn.close()
+    if len(rows) < 24 * (wm.BACKTEST_DAYS + wm.MIN_TRAIN_DAYS):
+        raise SystemExit(f"weather-model: only {len(rows)} hours of weather: run src/openmeteo_forecast.py fetch first")
+    df = wm.panel(rows)
+    r1 = lambda v: None if v is None or v != v else round(float(v), 1)          # v != v: NaN
+    tomorrow = tomorrow_fi()
+    out = {}
+    for variable in ("wind", "consumption"):
+        bt = wm.backtest(df, variable)
+        if bt["days"] < 60:
+            raise SystemExit(f"weather-model: only {bt['days']} {variable} days to backtest")
+        rec = bt["rows"][bt["rows"]["day"] >= sorted(bt["rows"]["day"].unique())[-WEATHER_RECORD_DAYS]]
+        future = sorted(d for d in df["day"].unique() if d >= tomorrow - timedelta(days=1))
+        target, fc = None, None
+        for d in ([tomorrow] if tomorrow in future else []) + future[::-1]:
+            fc = wm.forecast_day(df, variable, d)
+            if fc is not None:
+                target = d
+                break
+        if fc is None:
+            raise SystemExit(f"weather-model: no day with a Fingrid {variable} forecast and weather to forecast")
+        local = fc["hour_start"].dt.tz_convert(wm.HELSINKI)
+        out[variable] = {
+            "target_day": target.isoformat(),
+            "hours": [{"hour_fi": int(t.hour), "fingrid_mw": r1(f), "weather_mw": r1(w), "weather_fingrid_mw": r1(c)}
+                      for t, f, w, c in zip(local, fc["fingrid"], fc["weather"], fc["weather_fingrid"])],
+            "backtest": {k: bt[k] for k in ("days", "hours", "first_day", "last_day")}
+                        | {"mae_mw": {k: r1(v) for k, v in bt["mae_mw"].items()},
+                           "rmse_mw": {k: r1(v) for k, v in bt["rmse_mw"].items()},
+                           "bias_mw": {k: r1(v) for k, v in bt["bias_mw"].items()},
+                           "skill_vs_fingrid": {k: round(v, 4) for k, v in bt["skill_vs_fingrid"].items()},
+                           "diebold_mariano": {m: {k: (round(v, 4) if isinstance(v, float) else v) for k, v in d.items()}
+                                               for m, d in bt["diebold_mariano"].items()},
+                           "by_month": [{k: (v if k == "month" else r1(v)) for k, v in m.items()} for m in bt["by_month"]]},
+            "record_days": WEATHER_RECORD_DAYS,
+            "record": [{"day_fi": str(r["day"]), "hour_fi": int(r["hour_fi"]), "actual_mw": r1(r["actual"]),
+                        "fingrid_mw": r1(r["fingrid"]), "weather_mw": r1(r["weather"]),
+                        "weather_fingrid_mw": r1(r["weather_fingrid"])} for _, r in rec.iterrows()],
+        }
+    _write("weather_model.json", {
+        "generated_at": _now(),
+        "source": "Open-Meteo Previous Runs API (CC BY 4.0): temperature and 100 m wind speed forecast 48 h ahead at "
+                  "15 places; Fingrid Open Data API (CC BY 4.0): wind (75), consumption (124), day-ahead forecasts "
+                  "(246, 165), wind capacity (268); Finnish public holidays computed",
+        "target_is_tomorrow": all(v["target_day"] == tomorrow.isoformat() for v in out.values()),
+        "models": {
+            "fingrid": "Fingrid's own day-ahead forecast, issued at 12:00 Finnish time the day before",
+            "weather": "gradient-boosted trees on the weather forecast 48 h earlier, the calendar (holidays, eves, "
+                       "bridge days, Christmas period, July, sun elevation) and history known at issue time",
+            "weather_fingrid": "Fingrid's forecast plus a heavily regularised learned correction from the same inputs",
+        },
+        "method": f"Rolling origin: the last {wm.BACKTEST_DAYS} days are forecast with models refitted every "
+                  f"{wm.REFIT_DAYS} days on everything known two days before. Diebold-Mariano test on daily mean "
+                  f"absolute errors with Newey-West variance ({wm.DM_LAGS} lags); a p-value above 0.05 means the "
+                  "difference from Fingrid could be chance. Six settings of the correction model were tried on this "
+                  "backtest and none beat Fingrid by more than 2 %; the most regularised one is published.",
+        "wind": out["wind"],
+        "consumption": out["consumption"],
+        "fingrid_by_day_type": [{k: (r1(v) if k.endswith("_mw") else v) for k, v in d.items()}
+                                for d in wm.errors_by_day_type(df[df["day"] < tomorrow - timedelta(days=1)])],
+        "sql": [WEATHER_MODEL_SQL],
+        "code": ["src/weather_model.py", "src/openmeteo_forecast.py", "src/finnish_calendar.py"],
+    })
+
+
 PAGE_SQL_FILES = [
     "sql/schema/13_fingrid_warehouse.sql",
     "sql/schema/14_co2_forecast.sql",
@@ -575,6 +656,8 @@ PAGE_SQL_FILES = [
     "src/wind_allocation.py",
     "sql/analysis/25_forecast_errors_hourly.sql",
     "src/forecast_ranges.py",
+    "sql/analysis/26_weather_model_panel.sql",
+    "src/weather_model.py",
 ]
 
 
@@ -688,12 +771,13 @@ PARTS = {
     "temperature": export_temperature,
     "wind-allocation": export_wind_allocation,
     "forecast-ranges": export_forecast_ranges,
+    "weather-model": export_weather_model,
     "fingrid-latest": export_fingrid_latest,
     "sql": export_sql_sources,
     "engineering": export_engineering,
 }
 DAILY_PARTS = ["fingrid-recent", "forecast-scorecard", "co2-forecast", "grid-events", "temperature", "wind-allocation",
-               "forecast-ranges"]
+               "forecast-ranges", "weather-model"]
 
 
 def main() -> None:

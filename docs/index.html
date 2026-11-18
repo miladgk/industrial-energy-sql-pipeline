@@ -54,6 +54,7 @@
       --prec: #ec4899;
       --fc-da: #3b82f6;
       --fc-id: #ec4899;
+      --wm: #e0730f;
       --al-imports: #3987e5;
       --al-hydro: #d95926;
       --al-other: #199e70;
@@ -87,6 +88,7 @@
       --prec: #db2777;
       --fc-da: #2563eb;
       --fc-id: #db2777;
+      --wm: #c2410c;
       --al-imports: #2a78d6;
       --al-hydro: #eb6834;
       --al-other: #1baf7a;
@@ -1456,6 +1458,7 @@
       <nav class="drawer-tabs" role="tablist" aria-label="Inspector Sections">
         <button type="button" class="dtab" role="tab" data-pane="pane-forecasts" aria-selected="true">Forecasts</button>
         <button type="button" class="dtab" role="tab" data-pane="pane-ranges" aria-selected="false">Ranges</button>
+        <button type="button" class="dtab" role="tab" data-pane="pane-model" aria-selected="false">Public data vs Fingrid</button>
         <button type="button" class="dtab" role="tab" data-pane="pane-co2" aria-selected="false">CO₂ model</button>
         <button type="button" class="dtab" role="tab" data-pane="pane-events" aria-selected="false">Grid events</button>
         <button type="button" class="dtab" role="tab" data-pane="pane-cold" aria-selected="false">Cold</button>
@@ -1572,6 +1575,10 @@
             </table>
           </div>
           <p class="takeaway" id="rg-takeaway"></p>
+          <button type="button" class="inspect-btn" data-open-drawer="pane-model">
+            <span>Can public weather data beat these forecasts?</span>
+            <span class="tag">Details →</span>
+          </button>
           <h4>How it works</h4>
           <p class="note" id="rg-method"></p>
           <p id="rg-error" class="load-error" role="alert" style="color:var(--fault)"></p>
@@ -1581,6 +1588,98 @@
           </details>
           <details class="sql" id="code-fr">
             <summary>Inspect Python · src/forecast_ranges.py</summary>
+            <pre>Loading…</pre>
+          </details>
+        </div>
+
+        <!-- PANE 1c: PUBLIC WEATHER MODEL VS FINGRID -->
+        <div class="drawer-pane" id="pane-model">
+          <h4 style="margin-top:0">Can public data beat Fingrid's forecast?</h4>
+          <p class="note" id="wm-intro"></p>
+          <div class="kpis-4" id="wm-kpis"></div>
+
+          <h4>Backtest: half a year replayed with only what was known then</h4>
+          <p class="note" id="wm-bt-note"></p>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Forecast</th>
+                  <th class="r">Wind error</th>
+                  <th class="r">Consumption error</th>
+                </tr>
+              </thead>
+              <tbody id="wm-backtest">
+                <tr>
+                  <td colspan="3">Loading…</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="takeaway" id="wm-takeaway"></p>
+
+          <h4>The last 14 days</h4>
+          <p class="range-cap">Wind power</p>
+          <div style="height:170px; margin:4px 0 8px;"><svg id="wm-record-wind" class="chart"
+              aria-label="Last 14 days: measured wind, Fingrid's forecast and the public-weather model"></svg></div>
+          <p class="range-cap">Consumption</p>
+          <div style="height:170px; margin:4px 0 8px;"><svg id="wm-record-cons" class="chart"
+              aria-label="Last 14 days: measured consumption, Fingrid's forecast and the public-weather model"></svg></div>
+          <div class="legend"><span><i style="background:var(--ink)"></i>Measured</span><span><i
+                style="background:var(--fc-da)"></i>Fingrid day-ahead</span><span><i
+                style="background:var(--wm)"></i>Public-weather model (dashed)</span></div>
+
+          <h4>Why it loses: the weather is older</h4>
+          <p class="note" id="wm-lead-note"></p>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Weather forecast made</th>
+                  <th class="r">Wind error</th>
+                  <th class="r">Consumption error</th>
+                </tr>
+              </thead>
+              <tbody id="wm-lead">
+                <tr>
+                  <td colspan="3">Loading…</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="takeaway" id="wm-lead-takeaway"></p>
+
+          <h4>Does Fingrid miss more on holidays?</h4>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Kind of day</th>
+                  <th class="r">Days</th>
+                  <th class="r">Consumption error</th>
+                  <th class="r">Bias</th>
+                </tr>
+              </thead>
+              <tbody id="wm-days">
+                <tr>
+                  <td colspan="4">Loading…</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="takeaway" id="wm-days-takeaway"></p>
+
+          <h4>How it works</h4>
+          <p class="note" id="wm-method"></p>
+          <p class="note">Weather data by <a href="https://open-meteo.com/" rel="noopener">Open-Meteo.com</a> (CC BY 4.0);
+            power data by <a href="https://data.fingrid.fi" rel="noopener">Fingrid Open Data</a> (CC BY 4.0).</p>
+          <p id="wm-error" class="load-error" role="alert" style="color:var(--fault)"></p>
+          <details class="sql" id="sql-26">
+            <summary>Inspect SQL · sql/analysis/26_weather_model_panel.sql</summary>
+            <pre>Loading…</pre>
+          </details>
+          <details class="sql" id="code-wm">
+            <summary>Inspect Python · src/weather_model.py</summary>
             <pre>Loading…</pre>
           </details>
         </div>
@@ -2356,7 +2455,7 @@ make test</pre>
 
     /* Craft, Pipeline, Partitions & SQL Drawer */
     const STAGES = [
-      ["01 · Source", "Fingrid Open Data API", "<b><span class=\"n-datasets\">25</span> datasets at 1-min to 1-hr resolution.</b> Actuals, day-ahead/intraday forecasts, balancing mFRR, CO₂ intensity, nuclear, hydro, trade, batteries, frequency, inertia, and 4-city temperatures, plus FMI weather forecasts archived daily as issued."],
+      ["01 · Source", "Fingrid Open Data API", "<b><span class=\"n-datasets\">25</span> datasets at 1-min to 1-hr resolution.</b> Actuals, day-ahead/intraday forecasts, balancing mFRR, CO₂ intensity, nuclear, hydro, trade, batteries, frequency, inertia, and 4-city temperatures, plus FMI weather forecasts archived daily as issued and Open-Meteo forecasts made two days ahead."],
       ["02 · Sync", "Incremental & Idempotent", "<b>Zero duplicate writes.</b> Re-reads trailing 7 days to capture Fingrid revisions and executes idempotent PostgreSQL upserts skipping unchanged rows."],
       ["03 · Warehouse", "Partitioned PostgreSQL", "<b>Monthly table partitioning.</b> <code>fingrid_observation</code> partitions by month on composite primary key <code>(dataset_id, start_time)</code>."],
       ["04 · Quality", "5 Automated Gates", "<b>Fail-fast validation.</b> Checks default partition leakage, stale datasets, 30-day completeness, and 0 Hz sensor gap markers."],
@@ -2574,6 +2673,89 @@ make test</pre>
       }));
     }
 
+    /* Public data vs Fingrid: the weather model's backtest, record, lead time and calendar */
+    const WM_NAMES = { fingrid: "Fingrid day-ahead", weather: "Public-weather model", weather_fingrid: "Fingrid + learned correction" };
+    const DAY_NAMES = { weekday: "Ordinary weekday", weekend: "Weekend", holiday: "Public holiday", holiday_eve: "Eve of a holiday",
+      bridge_day: "Bridge day", christmas_period: "Christmas period (24 Dec – 6 Jan)", july: "July (industry on holiday)" };
+    function renderWeatherModel(d, lead) {
+      if (!d || !d.wind) return;
+      const mw = n => `${fmt(Math.round(n))} MW`;
+      const W = d.wind.backtest, C = d.consumption.backtest;
+      const worse = (b, k) => `${fmt(Math.abs(b.skill_vs_fingrid[k]) * 100, 0)}% ${b.skill_vs_fingrid[k] < 0 ? "worse" : "better"}`;
+      $("wm-intro").textContent = `A model built only on public weather forecasts (Open-Meteo, made two days ahead) and the Finnish calendar, against Fingrid's own day-ahead forecast. Errors are mean absolute errors per hour; lower is better.`;
+      $("wm-kpis").replaceChildren(
+        kpi(mw(W.mae_mw.fingrid), "Fingrid's wind error"),
+        kpi(mw(W.mae_mw.weather), `public-weather wind error (${worse(W, "weather")})`),
+        kpi(mw(C.mae_mw.fingrid), "Fingrid's consumption error"),
+        kpi(mw(C.mae_mw.weather), `public-weather consumption error (${worse(C, "weather")})`),
+      );
+      $("wm-bt-note").textContent = `${fmt(W.days)} days (${dayFmt(W.first_day + "T12:00:00Z")} – ${dayFmt(W.last_day + "T12:00:00Z")}), refitted weekly on what was known two days before. Small print: Diebold-Mariano p-value against Fingrid (below 0.05 = a real difference, not luck).`;
+      const p = (b, k) => k === "fingrid" ? "reference" : b.diebold_mariano[k].p_value < 0.001 ? "p < 0.001" : `p = ${fmt(b.diebold_mariano[k].p_value, 2)}`;
+      $("wm-backtest").replaceChildren(...Object.keys(WM_NAMES).map(k => {
+        const tr = el("tr"); tr.appendChild(el("td", {}, WM_NAMES[k]));
+        [W, C].forEach(b => {
+          const td = el("td", { class: "r" });
+          td.append(el("b", {}, mw(b.mae_mw[k])), el("br"), el("small", { style: "color:var(--muted)" }, p(b, k)));
+          tr.appendChild(td);
+        });
+        if (k === "fingrid") tr.style.background = "var(--band)";
+        return tr;
+      }));
+      const corr = k => d[k].backtest.diebold_mariano.weather_fingrid.p_value;
+      const change = k => `${fmt(Math.abs(d[k].backtest.skill_vs_fingrid.weather_fingrid) * 100, 1)}% ${d[k].backtest.skill_vs_fingrid.weather_fingrid < 0 ? "larger" : "smaller"}`;
+      const beaten = ["wind", "consumption"].some(k => corr(k) < 0.05 && d[k].backtest.skill_vs_fingrid.weather_fingrid > 0);
+      $("wm-takeaway").replaceChildren(el("b", {}, "Takeaway: "), document.createTextNode(
+        `${beaten ? "Partly" : "No"}. On its own the public-weather model's errors are ${worse(W, "weather").replace("worse", "larger").replace("better", "smaller")} than Fingrid's for wind ` +
+        `and ${worse(C, "weather").replace("worse", "larger").replace("better", "smaller")} for consumption. ` +
+        `Used to correct Fingrid's forecast, it leaves the error ${change("wind")} for wind and ${change("consumption")} for consumption (p = ${fmt(corr("wind"), 2)} and ${fmt(corr("consumption"), 2)}). ` +
+        (beaten ? `The correction is a real improvement where p is below 0.05.` : `Neither is more than luck: Fingrid's forecast already contains what public weather forecasts and the calendar know.`)));
+
+      const recordCfg = rec => ({
+        height: 160, forceZero: false, directLabels: false, yUnit: "MW",
+        series: [
+          { name: "Measured", short: "Measured", values: rec.map(x => x.actual_mw ?? NaN), color: "var(--ink)", width: 1.4 },
+          { name: "Fingrid", short: "Fingrid", values: rec.map(x => x.fingrid_mw ?? NaN), color: "var(--fc-da)", width: 1.4 },
+          { name: "Public weather", short: "Public", values: rec.map(x => x.weather_mw ?? NaN), color: "var(--wm)", width: 1.4, dash: "4 3" },
+        ],
+        labels: rec.map(x => `${x.day_fi} ${hrs(x.hour_fi)}`),
+        xTick: (i, l) => l.endsWith("12:00") && i % 48 < 24 ? dayFmt(l.slice(0, 10) + "T12:00:00Z").replace(/ \d{4}$/, "") : null,
+        tipTitle: l => `${dayFmt(l.slice(0, 10) + "T12:00:00Z")} ${l.slice(11)} Finnish time`, tipValue: mw,
+      });
+      lineChart($("wm-record-wind"), recordCfg(d.wind.record));
+      lineChart($("wm-record-cons"), recordCfg(d.consumption.record));
+
+      if (lead && lead.variables) {
+        const lw = lead.variables.wind, lc = lead.variables.consumption;
+        $("wm-lead-note").textContent = `The same backtest with weather forecasts of different ages. Only the two-day-old forecast was out when Fingrid issued its forecast; the others are for comparison and no forecaster could have had them. Fingrid: ${mw(lw.fingrid_mae_mw)} wind, ${mw(lc.fingrid_mae_mw)} consumption. Computed ${dayFmt(lead.generated_at)} with scripts/weather_lead_time.py.`;
+        $("wm-lead").replaceChildren(...lw.leads.map((x, i) => {
+          const tr = el("tr");
+          tr.append(el("td", {}, x.lead === "newest" ? "Newest (hindsight)" : `${x.lead.replace(" (published)", "")} before${i === 0 ? " (published)" : ""}`),
+            el("td", { class: "r" }, mw(x.mae_mw)), el("td", { class: "r" }, mw(lc.leads[i].mae_mw)));
+          return tr;
+        }));
+        const first = lw.leads[0].mae_mw, last = lw.leads[lw.leads.length - 1].mae_mw;
+        const share = (first - last) / (first - lw.fingrid_mae_mw);
+        $("wm-lead-takeaway").replaceChildren(el("b", {}, "Takeaway: "), document.createTextNode(
+          `For wind, fresher weather closes ${fmt(Math.min(share, 1) * 100, 0)}% of the gap to Fingrid: the gap is mostly the age of the weather forecast, and Fingrid also sees its wind farms' own output. ` +
+          `For consumption, fresher weather does not help (${mw(lc.leads[0].mae_mw)} → ${mw(lc.leads[lc.leads.length - 1].mae_mw)}): Fingrid's advantage there is information beyond the weather.`));
+      }
+
+      $("wm-days").replaceChildren(...d.fingrid_by_day_type.map(r => {
+        const tr = el("tr");
+        tr.append(el("td", {}, DAY_NAMES[r.kind] || r.kind), el("td", { class: "r" }, fmt(r.days)),
+          el("td", { class: "r" }, mw(r.mae_mw)), el("td", { class: "r" }, `${r.bias_mw > 0 ? "+" : r.bias_mw < 0 ? "−" : ""}${mw(Math.abs(r.bias_mw))}`));
+        return tr;
+      }));
+      const by = k => d.fingrid_by_day_type.find(r => r.kind === k);
+      const wd = by("weekday"), hol = by("holiday");
+      if (wd && hol) $("wm-days-takeaway").replaceChildren(el("b", {}, "Takeaway: "), document.createTextNode(
+        `Fingrid misses consumption by ${mw(hol.mae_mw)} on public holidays against ${mw(wd.mae_mw)} on ordinary weekdays, and tends to forecast too little on them (bias ${mw(hol.bias_mw)}; negative = too low). ` +
+        (hol.mae_mw < 1.2 * wd.mae_mw
+          ? `With ${hol.days} holidays in the data that difference is small and uncertain: the calendar is not where Fingrid is weak.`
+          : `Even with only ${hol.days} holidays in the data, that is a clear gap: holidays are a weak spot.`)));
+      $("wm-method").textContent = `${d.method} Models: ${Object.values(d.models).join("; ")}. Weather: ${d.source}.`;
+    }
+
     function renderSql(src) {
       if (!src) return;
       const map = {
@@ -2581,7 +2763,8 @@ make test</pre>
         "sql/analysis/13_forecast_scorecard.sql": "sql-13", "sql/analysis/17_forecast_error_vs_balancing.sql": "sql-17",
         "sql/analysis/23_temperature_sensitivity.sql": "sql-23",
         "sql/analysis/24_wind_allocation_panel.sql": "sql-24", "src/wind_allocation.py": "code-wa",
-        "sql/analysis/25_forecast_errors_hourly.sql": "sql-25", "src/forecast_ranges.py": "code-fr"
+        "sql/analysis/25_forecast_errors_hourly.sql": "sql-25", "src/forecast_ranges.py": "code-fr",
+        "sql/analysis/26_weather_model_panel.sql": "sql-26", "src/weather_model.py": "code-wm"
       };
       src.files.forEach(f => {
         const d = $(map[f.path]); if (!d) return;
@@ -2598,13 +2781,14 @@ make test</pre>
 
     /* ───────── 5. BOOTSTRAP DATA PIPELINE ───────── */
     (async function main() {
-      const files = ["fingrid_recent_daily", "forecast_scorecard", "co2_forecast", "grid_events", "temperature", "wind_allocation", "forecast_ranges", "sql_sources", "engineering"];
-      const [recent, scorecard, co2, events, temperature, windAlloc, ranges, sql, eng] = await Promise.all(files.map(f => safe(getJSON(`data/${f}.json`))));
+      const files = ["fingrid_recent_daily", "forecast_scorecard", "co2_forecast", "grid_events", "temperature", "wind_allocation", "forecast_ranges", "sql_sources", "engineering", "weather_model", "weather_lead_time"];
+      const [recent, scorecard, co2, events, temperature, windAlloc, ranges, sql, eng, weatherModel, leadTime] = await Promise.all(files.map(f => safe(getJSON(`data/${f}.json`))));
       safe(getJSON("data/fingrid_latest.json", { cache: "no-store" })).then(renderLatestTicker);
 
       const failed = (data, file, id) => { if (!data && id) $(id).textContent = `data/${file}.json could not be loaded; the rest of the page still works.`; };
       [[scorecard, "forecast_scorecard", "fc-error"], [co2, "co2_forecast", "co2-error"], [events, "grid_events", "ev-error"],
-       [temperature, "temperature", "cold-error"], [windAlloc, "wind_allocation", "wa-error"], [ranges, "forecast_ranges", "rg-error"]].forEach(([d, f, id]) => failed(d, f, id));
+       [temperature, "temperature", "cold-error"], [windAlloc, "wind_allocation", "wa-error"], [ranges, "forecast_ranges", "rg-error"],
+       [weatherModel, "weather_model", "wm-error"]].forEach(([d, f, id]) => failed(d, f, id));
       if (eng) { datasetCount = eng.datasets; document.querySelectorAll(".n-datasets").forEach(n => { n.textContent = eng.datasets; }); }
       if (!recent) $("hero-tile-copy").textContent = "data/fingrid_recent_daily.json could not be loaded.";
 
@@ -2616,6 +2800,7 @@ make test</pre>
       renderEvents(events);
       renderCold(temperature);
       renderWindAllocation(windAlloc);
+      renderWeatherModel(weatherModel, leadTime);
       renderEngineering(eng);
       renderSql(sql);
 

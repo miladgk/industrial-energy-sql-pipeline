@@ -110,6 +110,11 @@ jobs:
       - name: Archive today's FMI weather forecasts
         run: python src/fmi_forecast.py fetch
 
+      # Two-day-old forecasts for every hour since the warehouse began (backfills on the first run).
+      # They live in the same weather_forecast table, so the archive asset keeps them too.
+      - name: Archive Open-Meteo forecasts made two days ahead
+        run: python src/openmeteo_forecast.py fetch
+
       - name: Sync from Fingrid
         env:
           FINGRID_API_KEY: ${{ secrets.FINGRID_API_KEY }}
