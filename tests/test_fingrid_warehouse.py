@@ -181,3 +181,126 @@ def test_day_ahead_forecasts_are_stored_ahead_others_only_once_ended(db, test_da
     db.commit()
     sync_fingrid.sync_dataset(db, "key", test_dataset, now, api, backfill_days=2, revision_days=1)
     assert max(r[1] for r in _stored(db, test_dataset)) <= now
+
+
+# ── Older history (--from) ─────────────────────────────────────
+
+class FlakyAPI(FakeAPI):
+    """A FakeAPI that fails every call after the first *ok* ones, like a run cut short by a rate limit."""
+
+    def __init__(self, first, last, ok):
+        super().__init__(first, last)
+        self.ok = ok
+
+    def __call__(self, *args):
+        if len(self.calls) >= self.ok:
+            self.calls.append(None)
+            raise RuntimeError("rate limited")
+        return super().__call__(*args)
+
+
+def _contiguous(rows):
+    return all(a[1] == b[0] for a, b in zip(rows, rows[1:]))
+
+
+def test_history_fills_backwards_and_a_cut_short_run_resumes(db, test_dataset):
+    from sync_fingrid import sync_dataset
+
+    now = datetime(2001, 3, 10, 6, 7, tzinfo=UTC)
+    history = datetime(2001, 1, 1, tzinfo=UTC)
+    sync_dataset(db, "key", test_dataset, now, FakeAPI(history, now), backfill_days=5, revision_days=1)
+    assert _stored(db, test_dataset)[0][0] == datetime(2001, 3, 5, tzinfo=UTC)
+
+    # The forward step takes one call; the history then gets its newest window (1-5 March)
+    # before the "rate limit" stops it.
+    flaky = FlakyAPI(history, now, ok=2)
+    with pytest.raises(RuntimeError):
+        sync_dataset(db, "key", test_dataset, now, flaky, backfill_days=5, revision_days=1, history_from=history)
+    rows = _stored(db, test_dataset)
+    assert rows[0][0] == datetime(2001, 3, 1, tzinfo=UTC) and _contiguous(rows)   # no hole left behind
+
+    res = sync_dataset(db, "key", test_dataset, now, FakeAPI(history, now), backfill_days=5, revision_days=1,
+                       history_from=history)
+    rows = _stored(db, test_dataset)
+    assert rows[0][0] == history and res["oldest"] == history and _contiguous(rows)
+    assert len(rows) == (datetime(2001, 3, 10, 6, tzinfo=UTC) - history) / Q
+    again = sync_dataset(db, "key", test_dataset, now, FakeAPI(history, now), backfill_days=5, revision_days=1,
+                         history_from=history)
+    assert again["history_fetched"] == 0                                           # nothing older is asked for
+
+
+def test_history_stops_where_the_dataset_begins(db, test_dataset):
+    from sync_fingrid import sync_dataset
+
+    now = datetime(2001, 4, 10, tzinfo=UTC)
+    api = FakeAPI(datetime(2001, 4, 1, tzinfo=UTC), now)           # the series starts on 1 April
+    sync_dataset(db, "key", test_dataset, now, api, backfill_days=5, revision_days=1)
+    api.calls.clear()
+    res = sync_dataset(db, "key", test_dataset, now, api, backfill_days=5, revision_days=1,
+                       history_from=datetime(2001, 1, 1, tzinfo=UTC))
+    history_calls = [c for c in api.calls if c[1] <= datetime(2001, 4, 5, tzinfo=UTC)]
+    assert [c[0].month for c in history_calls] == [4, 3, 2]          # newest first; March and February empty
+    assert res["oldest"] == datetime(2001, 4, 1, tzinfo=UTC)
+
+
+def test_a_window_that_fills_a_page_is_halved(monkeypatch):
+    import sync_fingrid
+
+    monkeypatch.setattr(sync_fingrid, "PAGE_SIZE", 200)          # as if the data were finer than expected
+    start, end = datetime(2001, 1, 1, tzinfo=UTC), datetime(2001, 1, 8, tzinfo=UTC)
+    api = FakeAPI(start, end)
+    rows = sync_fingrid.fetch_window(api, TEST_ID, "key", start, end)
+    times = [r["startTime"] for r in rows]
+    assert len(rows) == 7 * 96 and len(set(times)) == len(times) and times == sorted(times)
+    assert len(api.calls) > 1
+
+
+def test_instant_readings_become_slots_unless_a_regular_slot_covers_them(db, test_dataset):
+    import sync_fingrid
+
+    resolution = timedelta(minutes=3)
+    t0 = datetime(2001, 3, 1, tzinfo=UTC)
+    iso = lambda t: t.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    # Old format (instants at :01, :04, ...) for the first hour, both formats in the second
+    # (Fingrid's 2024-04-20 pattern), then regular slots only.
+    old = [{"startTime": iso(t0 + timedelta(minutes=1 + 3 * i)), "endTime": iso(t0 + timedelta(minutes=1 + 3 * i)),
+            "value": 7.0} for i in range(40)]
+    new = [{"startTime": iso(t0 + timedelta(hours=1, minutes=3 * i)),
+            "endTime": iso(t0 + timedelta(hours=1, minutes=3 * i + 3)), "value": 8.0} for i in range(40)]
+    slots, dropped = sync_fingrid.to_slots(old + new, resolution)
+    assert dropped == 20                                       # the second hour's instants repeat the slots
+    assert len(slots) == 60
+    first_hour = sorted(s for s in slots if s[0] < t0 + timedelta(hours=1))
+    assert len(first_hour) == 20 and first_hour[0][:2] == (t0 + timedelta(minutes=1), t0 + timedelta(minutes=4))
+    assert all(a[1] <= b[0] for a, b in zip(sorted(slots), sorted(slots)[1:]))      # no two slots overlap
+
+    def api(dataset_id, api_key, start, end):                 # like the API: rows inside the window
+        s_, e_ = (datetime.strptime(x, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC) for x in (start, end))
+        return [r for r in old + new if s_ <= datetime.strptime(r["startTime"], "%Y-%m-%dT%H:%M:%S.000Z").replace(tzinfo=UTC)
+                and datetime.strptime(r["endTime"], "%Y-%m-%dT%H:%M:%S.000Z").replace(tzinfo=UTC) <= e_]
+    res = sync_fingrid.sync_dataset(db, "key", test_dataset, t0 + timedelta(hours=3), api, backfill_days=1, revision_days=1)
+    rows = _stored(db, test_dataset)
+    assert len(rows) == 60 and all(r[1] > r[0] for r in rows) and res["fetched"] == 60
+    assert all(a[1] <= b[0] for a, b in zip(rows, rows[1:]))                     # none overlap in the table
+
+
+def test_overlapping_series_keep_the_slot_on_the_grid(db, test_dataset):
+    """Fingrid's 2024 pattern: a second 15-minute series shifted by 6 minutes, and 5-minute slots
+    beside 15-minute ones. One series stays: the one on the dataset's own grid."""
+    from sync_fingrid import remove_overlaps
+
+    t0 = datetime(2001, 3, 1, tzinfo=UTC)
+    rows = [(TEST_ID, t0 + i * Q, t0 + (i + 1) * Q, 1.0) for i in range(8)]                        # on the grid
+    rows += [(TEST_ID, t0 + i * Q + timedelta(minutes=6), t0 + (i + 1) * Q + timedelta(minutes=6), 2.0)
+             for i in range(4)]                                                                    # shifted
+    rows += [(TEST_ID, t0 + timedelta(hours=2, minutes=5 * i), t0 + timedelta(hours=2, minutes=5 * i + 5), 3.0)
+             for i in range(6)]                                                                    # finer, alone
+    with db.cursor() as cur:
+        cur.execute("SELECT ensure_fingrid_partitions('2001-03-01', '2001-03-02')")
+        cur.executemany("INSERT INTO fingrid_observation (dataset_id, start_time, end_time, value) "
+                        "VALUES (%s, %s, %s, %s)", rows)
+    db.commit()
+    assert remove_overlaps(db, TEST_ID, t0) == 4
+    stored = _stored(db, TEST_ID)
+    assert [r[2] for r in stored] == [1.0] * 8 + [3.0] * 6          # finer data with nothing to clash with stays
+    assert all(a[1] <= b[0] for a, b in zip(stored, stored[1:]))

@@ -22,7 +22,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from fingrid_catalog import ensure_catalog  # noqa: E402
+from fingrid_catalog import ensure_catalog, refresh_dataset_summary  # noqa: E402
 
 # The column list is written out in each statement (no string formatting in SQL).
 
@@ -61,6 +61,11 @@ def restore(conn, path: str) -> int:
         """)
         added = cur.rowcount
     conn.commit()
+    # A bulk load leaves the planner without statistics and the summary out of date.
+    with conn.cursor() as cur:
+        cur.execute("ANALYZE fingrid_observation")
+    conn.commit()
+    refresh_dataset_summary(conn)
     return added
 
 

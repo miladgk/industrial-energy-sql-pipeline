@@ -31,6 +31,11 @@ on:
   schedule:
     - cron: "53 10 * * *"    # every day 10:53 UTC, after Fingrid's 12:00 Finnish-time publication
   workflow_dispatch:
+    inputs:
+      history_from:
+        description: "Optional, YYYY-MM-DD: also fill older Fingrid history back to this date (one-off, about an hour)"
+        required: false
+        default: ""
 
 permissions:
   contents: write            # commit the refreshed JSON and publish the snapshot release asset
@@ -44,11 +49,13 @@ env:
   SNAPSHOT_TAG: warehouse-snapshot
   SNAPSHOT_FILE: fingrid_observation.csv.gz
   FORECAST_ARCHIVE: weather_forecast.csv.gz
+  HYDROLOGY_ARCHIVE: hydrology.csv.gz
 
 jobs:
   refresh:
     runs-on: ubuntu-latest
-    timeout-minutes: 45      # a full backfill (no snapshot) takes about 15 minutes
+    # A full backfill (no snapshot) takes about 15 minutes; a one-off history fill (history_from) up to a few hours.
+    timeout-minutes: ${{ inputs.history_from != '' && 240 || 45 }}
     services:
       postgres:
         image: postgres:16
@@ -115,10 +122,29 @@ jobs:
       - name: Archive Open-Meteo forecasts made two days ahead
         run: python src/openmeteo_forecast.py fetch
 
+      # Reservoir levels, river flow and snow since 2000 (SYKE, NVE): restored, then the last two weeks
+      # re-fetched (SYKE revises recent values). Without an archive the first run fetches all of it (~3 min).
+      - name: Restore and update the hydrology archive
+        run: |
+          if gh release download "$SNAPSHOT_TAG" --pattern "$HYDROLOGY_ARCHIVE" --dir /tmp/snapshot; then
+            python src/hydrology.py restore "/tmp/snapshot/$HYDROLOGY_ARCHIVE"
+          else
+            echo "::notice::No hydrology archive yet: fetching the full history."
+          fi
+          python src/hydrology.py fetch
+
+      # history_from reaches the script only through the environment (no script injection),
+      # and argparse accepts nothing but a YYYY-MM-DD date.
       - name: Sync from Fingrid
         env:
           FINGRID_API_KEY: ${{ secrets.FINGRID_API_KEY }}
-        run: python src/sync_fingrid.py
+          HISTORY_FROM: ${{ inputs.history_from }}
+        run: |
+          if [ -n "$HISTORY_FROM" ]; then
+            python src/sync_fingrid.py --from "$HISTORY_FROM"
+          else
+            python src/sync_fingrid.py
+          fi
 
       # Only main publishes: a test run of a PR branch must not replace the snapshot main restores.
       - name: Publish the new snapshot
@@ -133,6 +159,8 @@ jobs:
           gh release upload "$SNAPSHOT_TAG" "/tmp/$SNAPSHOT_FILE" --clobber
           python src/fmi_forecast.py dump "/tmp/$FORECAST_ARCHIVE"
           gh release upload "$SNAPSHOT_TAG" "/tmp/$FORECAST_ARCHIVE" --clobber
+          python src/hydrology.py dump "/tmp/$HYDROLOGY_ARCHIVE"
+          gh release upload "$SNAPSHOT_TAG" "/tmp/$HYDROLOGY_ARCHIVE" --clobber
 
       - name: Build the dashboard data
         run: python scripts/export_dashboard_data.py      # every part in DAILY_PARTS

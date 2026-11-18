@@ -167,12 +167,13 @@ def health_check():
 def datasets():
     """Every Fingrid dataset in the warehouse with its row count and time coverage."""
     try:
+        # Counts come from fingrid_dataset_summary (sql/schema/18), refreshed by every load:
+        # counting ten million rows per request would take seconds.
         rows = _fetch_rows("""
             SELECT d.dataset_id, d.key, d.name, d.unit, d.kind, d.resolution,
-                   COUNT(o.start_time) AS rows, MIN(o.start_time) AS first_start, MAX(o.end_time) AS last_end
+                   COALESCE(s.rows, 0) AS rows, s.first_start, s.last_end
             FROM fingrid_dataset d
-            LEFT JOIN fingrid_observation o USING (dataset_id)
-            GROUP BY d.dataset_id
+            LEFT JOIN fingrid_dataset_summary s USING (dataset_id)
             ORDER BY d.dataset_id
         """)
     except Exception as exc:

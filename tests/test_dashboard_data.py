@@ -186,6 +186,22 @@ def test_weather_model_scores_are_consistent():
         assert [x["lead"] for x in lead["variables"][v]["leads"]] == ["48 h (published)", "24 h", "newest"]
 
 
+def test_hydro_flex_is_consistent():
+    """Shares at the three storage levels sum to 1 (the identity), sit inside their intervals, and the
+    levels are ordered percentiles of the storage index that occurred."""
+    d = _load("hydro_flex.json")
+    levels = d["share_at_storage"]
+    assert [a["percentile"] for a in levels] == [10, 50, 90]
+    assert levels[0]["storage_z"] < levels[1]["storage_z"] < levels[2]["storage_z"]
+    assert d["storage_range"]["min"] <= levels[0]["storage_z"] and levels[2]["storage_z"] <= d["storage_range"]["max"]
+    for a in levels:
+        assert sum(x["share"] for x in a["shares"].values()) == pytest.approx(1.0, abs=0.01)
+        assert all(x["ci_low"] <= x["share"] <= x["ci_high"] for x in a["shares"].values())
+    assert d["hours"] >= 24 * 365 * 2
+    assert len(d["terciles"]) == 3 and sum(t["hours"] for t in d["terciles"]) <= d["hours"] + 24
+    assert 0 <= d["per_sd_storage"]["hydro"]["p_value"] <= 1
+
+
 def test_forecast_ranges_are_ordered_and_scored():
     d = _load("forecast_ranges.json")
     for v in ("wind", "consumption"):
