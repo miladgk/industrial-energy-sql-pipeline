@@ -226,6 +226,20 @@ def test_wind_balance_shows_the_published_shares(open_dashboard):
     expect(page.locator("#mk-wa-imports-label")).to_contain_text(f"{pct(sweden)} of it over the Swedish borders")
 
 
+def test_wind_balance_shows_the_water_state(open_dashboard):
+    d = _data("hydro_flex.json")
+    pct = lambda v: f"{js_round(v * 100)}%"
+    page = open_dashboard()
+    _open_pane(page, "pane-wind")
+    rows = page.locator("#hf-table tr")
+    expect(rows).to_have_count(4)
+    dry, _, full = d["share_at_storage"]
+    expect(rows.first).to_contain_text(pct(dry["shares"]["hydro"]["share"]))
+    expect(rows.first).to_contain_text(pct(full["shares"]["hydro"]["share"]))
+    expect(page.locator("#hf-state-chart path")).not_to_have_count(0)
+    expect(page.locator("#hf-takeaway")).to_contain_text(pct(full["shares"]["hydro"]["share"]))
+
+
 def test_public_weather_pane_shows_the_backtest(open_dashboard):
     d = _data("weather_model.json")
     mw = lambda v: f"{js_round(v):,} MW"

@@ -28,6 +28,10 @@ WITH surprise AS (
       ON c.start_time = w.start_time
      AND c.variable = 'consumption'
      AND c.product  = 'day_ahead'
+     -- implied by the join, but PostgreSQL does not carry a range across it: without this
+     -- line the consumption side reads the whole history, not just the window
+     AND c.start_time >= %(start)s
+     AND c.start_time <  %(end)s
     WHERE w.variable = 'wind'
       AND w.product  = 'day_ahead'
       AND w.start_time >= %(start)s

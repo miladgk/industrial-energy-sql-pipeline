@@ -55,7 +55,9 @@ def fetch_dataset_chunk(dataset_id: int, api_key: str, start_time: str, end_time
     req.add_header("Accept", "application/json")
     req.add_header("x-api-key", api_key)
     
-    max_retries = 3
+    # Five tries with doubling waits ride out a burst of 429s during a long history fill;
+    # the server's own Retry-After, when sent, is used instead of the guess.
+    max_retries = 5
     backoff = 2.0
     
     for attempt in range(max_retries):
@@ -69,8 +71,10 @@ def fetch_dataset_chunk(dataset_id: int, api_key: str, start_time: str, end_time
                     print(f"  Warning: Received status code {response.status}. Retrying...")
         except urllib.error.HTTPError as e:
             if e.code == 429:
-                print(f"  [429 Too Many Requests] Rate limit hit. Backing off for {backoff}s...")
-                time.sleep(backoff)
+                retry_after = e.headers.get("Retry-After") if e.headers else None
+                wait = float(retry_after) if retry_after and retry_after.isdigit() else backoff
+                print(f"  [429 Too Many Requests] Rate limit hit. Backing off for {wait:g}s...")
+                time.sleep(min(wait, 120.0))
                 backoff *= 2.0
             elif e.code in (401, 403):
                 raise PermissionError("Fingrid API key is unauthorized or invalid (401/403).")

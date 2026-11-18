@@ -564,6 +564,82 @@ def export_fingrid_latest(hours: int = 6) -> None:
 
 
 GITHUB_BLOB = "https://github.com/miladgk/industrial-energy-sql-pipeline/blob/main/"
+HYDRO_STATE_SQL = "sql/analysis/27_hydrology_state.sql"
+HYDRO_DAYS = 3 * 365
+HYDRO_PART_NAMES = {"hydro_mw": "hydro", "net_import_mw": "imports", "other_mw": "other", "consumption_mw": "consumption"}
+
+
+def export_hydro_flex() -> None:
+    """Does hydro make more room for wind when the reservoirs are full? src/hydro_flex.py over three years."""
+    sys.path.insert(0, os.path.join(ROOT, "src"))
+    import hydro_flex as hf
+    from analysis_window import default_window
+
+    w = default_window(days=HYDRO_DAYS)
+    conn = _db()
+    try:
+        with open(os.path.join(ROOT, WIND_ALLOCATION_SQL), encoding="utf-8") as fh:
+            panel = _rows(conn, fh.read(), w)
+        with open(os.path.join(ROOT, HYDRO_STATE_SQL), encoding="utf-8") as fh:
+            state = _rows(conn, fh.read(), {"start": (w["start"] - timedelta(days=2)).date(), "end": w["end"].date()})
+        cur_state = _rows(conn, "SELECT series, max(day) AS last_day FROM hydrology_daily GROUP BY series ORDER BY series")
+    finally:
+        conn.close()
+    rows = hf.join_state(panel, state)
+    if len(rows) < 24 * 365 * 2:
+        # Until the warehouse holds two years (a one-off `sync_fingrid.py --from`), keep the published file
+        # rather than failing the whole daily refresh.
+        print(f"::warning::hydro-flex: only {len(rows)} hours with a water state; hydro_flex.json left as it is. "
+              "Run the refresh once with history_from to fill older Fingrid history.")
+        return
+    fitted = hf.fit(rows)
+    r3 = lambda v: round(float(v), 3)
+    # Shares on days that actually occurred (10th, 50th and 90th percentile of the storage index),
+    # not at +/-1: the averaged index varies much less than its parts, so +1 is near the fullest day seen.
+    import numpy as np
+    days_z = np.array(sorted({(str(r["day"])[:10], r["storage_z"]) for r in state if r["storage_z"] is not None}))
+    zs = days_z[:, 1].astype(float)
+    at = []
+    for q in (10, 50, 90):
+        z = float(np.percentile(zs, q))
+        at.append({"percentile": q, "storage_z": r3(z),
+                   "shares": {HYDRO_PART_NAMES[k]: {kk: r3(vv) for kk, vv in hf.share_at(fitted, k, z).items()}
+                              for k in hf.PARTS}})
+    inter = {HYDRO_PART_NAMES[k]: {kk: (round(vv, 4) if kk == "p_value" else r3(vv))
+                                   for kk, vv in hf.interaction(fitted, k).items()} for k in hf.PARTS}
+    inflow = {HYDRO_PART_NAMES[k]: {kk: (round(vv, 4) if kk == "p_value" else r3(vv))
+                                    for kk, vv in hf.interaction(fitted, k, "inflow_z").items()} for k in hf.PARTS}
+    terciles = [{"tercile": t["tercile"], "hours": t["hours"], "storage_mean": r3(t["state_mean"]),
+                 "shares": {HYDRO_PART_NAMES[k]: r3(v) for k, v in t["shares"].items()},
+                 "hydro_ci": [r3(x) for x in t["hydro_ci"]]} for t in hf.by_tercile(rows)]
+    daily = [{"day": str(r["day"])[:10], "storage_z": None if r["storage_z"] is None else r3(r["storage_z"]),
+              "inflow_z": None if r["inflow_z"] is None else r3(r["inflow_z"])} for r in state]
+    _write("hydro_flex.json", {
+        "generated_at": _now(),
+        "source": "Fingrid Open Data API (CC BY 4.0): the hourly balance of sql/analysis/24; SYKE Hydrology API "
+                  "(Finnish Environment Institute, CC BY 4.0): water levels of Lokka, Porttipahta, Oulujärvi, Saimaa "
+                  "and Näsijärvi and discharge of the unregulated Tornionjoki; NVE reservoir statistics (NLOD)",
+        "window_start": w["start"].strftime("%Y-%m-%d"),
+        "window_end_exclusive": w["end"].strftime("%Y-%m-%d"),
+        "hours": fitted["hours"],
+        "model": "hourly OLS of hydro, imports, other production and consumption on wind, wind x storage and "
+                 "wind x inflow (the day before, each against its 2000-2022 norm for the date), storage, inflow, "
+                 "nuclear and heating degrees, with hour, weekday, month and year fixed effects; Newey-West 95 % "
+                 "intervals. Associations, not proven causes.",
+        "storage": "mean z-score of five reservoir and lake levels against the same calendar day in 2000-2022 "
+                   "(0 = normal for the date; one unit = one standard deviation of a single reservoir's level)",
+        "share_at_storage": at,
+        "storage_range": {"min": r3(zs.min()), "max": r3(zs.max()), "sd": r3(zs.std())},
+        "per_sd_storage": inter,
+        "per_sd_inflow": inflow,
+        "terciles": terciles,
+        "daily_state": daily,
+        "latest_data": {r["series"]: str(r["last_day"])[:10] for r in cur_state},
+        "sql": [WIND_ALLOCATION_SQL, HYDRO_STATE_SQL],
+        "code": ["src/hydro_flex.py", "src/hydrology.py"],
+    })
+
+
 WEATHER_MODEL_SQL = "sql/analysis/26_weather_model_panel.sql"
 WEATHER_RECORD_DAYS = 14
 
@@ -658,6 +734,8 @@ PAGE_SQL_FILES = [
     "src/forecast_ranges.py",
     "sql/analysis/26_weather_model_panel.sql",
     "src/weather_model.py",
+    "sql/analysis/27_hydrology_state.sql",
+    "src/hydro_flex.py",
 ]
 
 
@@ -772,12 +850,13 @@ PARTS = {
     "wind-allocation": export_wind_allocation,
     "forecast-ranges": export_forecast_ranges,
     "weather-model": export_weather_model,
+    "hydro-flex": export_hydro_flex,
     "fingrid-latest": export_fingrid_latest,
     "sql": export_sql_sources,
     "engineering": export_engineering,
 }
 DAILY_PARTS = ["fingrid-recent", "forecast-scorecard", "co2-forecast", "grid-events", "temperature", "wind-allocation",
-               "forecast-ranges", "weather-model"]
+               "forecast-ranges", "weather-model", "hydro-flex"]
 
 
 def main() -> None:

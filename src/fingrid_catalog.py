@@ -94,3 +94,10 @@ def ensure_catalog(conn, datasets=DATASETS) -> None:
     with conn.cursor() as cur:
         cur.executemany(_UPSERT, datasets)
     conn.commit()
+
+
+def refresh_dataset_summary(conn) -> None:
+    """Recompute fingrid_dataset_summary (sql/schema/18) after a load; GET /api/datasets reads it."""
+    with conn.cursor() as cur:
+        cur.execute("REFRESH MATERIALIZED VIEW fingrid_dataset_summary")
+    conn.commit()

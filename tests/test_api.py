@@ -27,6 +27,14 @@ def _one(db, sql, params=None):
     return row
 
 
+def _all(db, sql, params=None):
+    with db.cursor() as cur:
+        cur.execute(sql, params)
+        rows = cur.fetchall()
+    db.rollback()
+    return rows
+
+
 @pytest.fixture(scope="module")
 def known_day(db):
     """The newest Finnish day whose CO2 forecast has every hour (inputs are complete)."""
@@ -39,10 +47,16 @@ def known_day(db):
 
 
 def test_datasets_match_the_warehouse(client, db):
+    """After a load (which refreshes the summary), the counts are exact."""
+    from fingrid_catalog import refresh_dataset_summary
+
+    refresh_dataset_summary(db)
     body = client.get("/api/datasets").json()
     total, kinds = _one(db, "SELECT COUNT(*), (SELECT COUNT(*) FROM fingrid_dataset) FROM fingrid_observation")
     assert body["total_rows"] == total
     assert len(body["datasets"]) == kinds
+    live = dict(_all(db, "SELECT dataset_id, COUNT(*) FROM fingrid_observation GROUP BY dataset_id"))
+    assert {d["dataset_id"]: d["rows"] for d in body["datasets"] if d["rows"]} == live
     assert {"dataset_id", "key", "unit", "rows", "first_start", "last_end"} <= set(body["datasets"][0])
 
 

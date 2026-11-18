@@ -1853,6 +1853,42 @@
           </div>
           <p class="note">Share of +1 MW of wind, season by season. SE1 northern Sweden, SE3 central Sweden, EE Estonia; DH CHP district-heating and Ind CHP industrial combined heat and power.</p>
 
+          <h4>Does it depend on the water?</h4>
+          <p class="note" id="hf-intro"></p>
+          <p class="range-cap">How full the Finnish reservoirs are, against normal for the date</p>
+          <div style="height:150px; margin:4px 0 8px;"><svg id="hf-state-chart" class="chart"
+              aria-label="Daily reservoir storage index against the 2000-2022 norm, last three years"></svg></div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>+1 MW wind</th>
+                  <th class="r" title="10th percentile of the storage index">Dry</th>
+                  <th class="r">Normal</th>
+                  <th class="r" title="90th percentile of the storage index">Full</th>
+                </tr>
+              </thead>
+              <tbody id="hf-table">
+                <tr>
+                  <td colspan="4">Loading…</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="takeaway" id="hf-takeaway"></p>
+          <p class="note" id="hf-checks"></p>
+          <p class="note">Water data by <a href="https://www.syke.fi/en" rel="noopener">SYKE</a> (Finnish Environment Institute, CC BY 4.0)
+            and <a href="https://www.nve.no/" rel="noopener">NVE</a> (NLOD).</p>
+          <p id="hf-error" class="load-error" role="alert" style="color:var(--fault)"></p>
+          <details class="sql" id="sql-27">
+            <summary>Inspect SQL · sql/analysis/27_hydrology_state.sql</summary>
+            <pre>Loading…</pre>
+          </details>
+          <details class="sql" id="code-hf">
+            <summary>Inspect Python · src/hydro_flex.py</summary>
+            <pre>Loading…</pre>
+          </details>
+
           <h4>How it is estimated</h4>
           <p class="note" id="wa-method"></p>
           <p class="note" id="wa-checks"></p>
@@ -2756,6 +2792,42 @@ make test</pre>
       $("wm-method").textContent = `${d.method} Models: ${Object.values(d.models).join("; ")}. Weather: ${d.source}.`;
     }
 
+    /* Does hydro make room for wind depending on the water? */
+    const HF_PARTS = [["hydro", "Less hydro", "--al-hydro"], ["imports", "Lower imports", "--al-imports"],
+      ["other", "Less other production", "--al-other"], ["consumption", "More consumption", "--al-cons"]];
+    function renderHydroFlex(d) {
+      if (!d || !d.share_at_storage) return;
+      const [dry, mid, full] = d.share_at_storage;
+      $("hf-intro").textContent = `Hydro plants can only hold water back when there is room to store it. Over ${fmt(d.hours)} hours (${dayFmt(d.window_start + "T00:00:00Z")} – ${dayFmt(d.window_end_exclusive + "T00:00:00Z")}) the regression above was refitted with the water state of the day before: five reservoir and lake levels (Lokka, Porttipahta, Oulujärvi, Saimaa, Näsijärvi) against their 2000–2022 level for the same date.`;
+      const st = d.daily_state.filter(x => x.storage_z != null);
+      lineChart($("hf-state-chart"), {
+        height: 140, forceZero: false, directLabels: false, yUnit: "index",
+        series: [{ name: "Storage index", short: "Storage", values: st.map(x => x.storage_z), color: "var(--al-hydro)", width: 1.4 }],
+        labels: st.map(x => x.day),
+        xTick: (i, l) => l.endsWith("-01-01") ? l.slice(0, 4) : null,
+        tipTitle: l => dayFmt(l + "T12:00:00Z"),
+        tipValue: v => `${v > 0 ? "+" : ""}${fmt(v, 2)} (${v > 0 ? "fuller" : "emptier"} than normal for the date)`,
+      });
+      // a compact "15–17%" range fits a phone; a range below zero falls back to "-2% to 5%"
+      const ci = c => `${pct(c.share)} <small style="color:var(--muted)">(${c.ci_low >= 0 ? `${fmt(c.ci_low * 100, 0)}–${pct(c.ci_high)}` : `${pct(c.ci_low)} to ${pct(c.ci_high)}`})</small>`;
+      $("hf-table").replaceChildren(...HF_PARTS.map(([k, name, c]) => {
+        const tr = el("tr"); const td = el("td");
+        td.append(el("i", { style: `display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:7px;background:var(${c})` }), document.createTextNode(name));
+        tr.appendChild(td);
+        [dry, mid, full].forEach(a => { const x = el("td", { class: "r" }); x.innerHTML = ci(a.shares[k]); tr.appendChild(x); });
+        return tr;
+      }));
+      const h = k => k.shares.hydro;
+      const sig = d.per_sd_storage.hydro.p_value < 0.05;
+      $("hf-takeaway").replaceChildren(el("b", {}, "Takeaway: "), document.createTextNode(
+        `On the driest tenth of days hydro takes ${pct(h(dry).share)} of each extra MW of wind, on the fullest tenth only ${pct(h(full).share)}` +
+        (sig ? `: when the reservoirs are full, water has to be released or spilled, so the plants cannot hold back; when they are low, water is worth saving and they do. `
+             : `, but the difference could be chance. `) +
+        `Imports take about ${pct(mid.shares.imports.share)} whatever the water, so the rest falls on other production and on consumption.`));
+      const t = d.terciles;
+      $("hf-checks").textContent = `Dry and full days are the 10th and 90th percentile of the storage index (${fmt(dry.storage_z, 2)} and ${fmt(full.storage_z, 2)}; it ranged from ${fmt(d.storage_range.min, 2)} to ${fmt(d.storage_range.max, 2)}). Check without assuming a straight line: fitted separately on the driest, middle and fullest third of days, hydro takes ${t.map(x => pct(x.shares.hydro)).join(", ")}. Natural inflow (the unregulated Tornionjoki) moves the hydro share by ${fmt(d.per_sd_inflow.hydro.per_sd * 100, 1)} points per standard deviation. Model: ${d.model}`;
+    }
+
     function renderSql(src) {
       if (!src) return;
       const map = {
@@ -2764,7 +2836,8 @@ make test</pre>
         "sql/analysis/23_temperature_sensitivity.sql": "sql-23",
         "sql/analysis/24_wind_allocation_panel.sql": "sql-24", "src/wind_allocation.py": "code-wa",
         "sql/analysis/25_forecast_errors_hourly.sql": "sql-25", "src/forecast_ranges.py": "code-fr",
-        "sql/analysis/26_weather_model_panel.sql": "sql-26", "src/weather_model.py": "code-wm"
+        "sql/analysis/26_weather_model_panel.sql": "sql-26", "src/weather_model.py": "code-wm",
+        "sql/analysis/27_hydrology_state.sql": "sql-27", "src/hydro_flex.py": "code-hf"
       };
       src.files.forEach(f => {
         const d = $(map[f.path]); if (!d) return;
@@ -2781,14 +2854,14 @@ make test</pre>
 
     /* ───────── 5. BOOTSTRAP DATA PIPELINE ───────── */
     (async function main() {
-      const files = ["fingrid_recent_daily", "forecast_scorecard", "co2_forecast", "grid_events", "temperature", "wind_allocation", "forecast_ranges", "sql_sources", "engineering", "weather_model", "weather_lead_time"];
-      const [recent, scorecard, co2, events, temperature, windAlloc, ranges, sql, eng, weatherModel, leadTime] = await Promise.all(files.map(f => safe(getJSON(`data/${f}.json`))));
+      const files = ["fingrid_recent_daily", "forecast_scorecard", "co2_forecast", "grid_events", "temperature", "wind_allocation", "forecast_ranges", "sql_sources", "engineering", "weather_model", "weather_lead_time", "hydro_flex"];
+      const [recent, scorecard, co2, events, temperature, windAlloc, ranges, sql, eng, weatherModel, leadTime, hydroFlex] = await Promise.all(files.map(f => safe(getJSON(`data/${f}.json`))));
       safe(getJSON("data/fingrid_latest.json", { cache: "no-store" })).then(renderLatestTicker);
 
       const failed = (data, file, id) => { if (!data && id) $(id).textContent = `data/${file}.json could not be loaded; the rest of the page still works.`; };
       [[scorecard, "forecast_scorecard", "fc-error"], [co2, "co2_forecast", "co2-error"], [events, "grid_events", "ev-error"],
        [temperature, "temperature", "cold-error"], [windAlloc, "wind_allocation", "wa-error"], [ranges, "forecast_ranges", "rg-error"],
-       [weatherModel, "weather_model", "wm-error"]].forEach(([d, f, id]) => failed(d, f, id));
+       [weatherModel, "weather_model", "wm-error"], [hydroFlex, "hydro_flex", "hf-error"]].forEach(([d, f, id]) => failed(d, f, id));
       if (eng) { datasetCount = eng.datasets; document.querySelectorAll(".n-datasets").forEach(n => { n.textContent = eng.datasets; }); }
       if (!recent) $("hero-tile-copy").textContent = "data/fingrid_recent_daily.json could not be loaded.";
 
@@ -2801,6 +2874,7 @@ make test</pre>
       renderCold(temperature);
       renderWindAllocation(windAlloc);
       renderWeatherModel(weatherModel, leadTime);
+      renderHydroFlex(hydroFlex);
       renderEngineering(eng);
       renderSql(sql);
 
