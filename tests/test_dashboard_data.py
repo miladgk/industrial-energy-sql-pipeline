@@ -202,6 +202,21 @@ def test_hydro_flex_is_consistent():
     assert 0 <= d["per_sd_storage"]["hydro"]["p_value"] <= 1
 
 
+def test_strike_effect_is_consistent():
+    """Each event's GWh equals its mean MW times its hours; the placebo p-value is a share; the daily
+    lines cover the event; the monthly check reports levels and changes."""
+    d = _load("strike_effect.json")
+    assert len(d["events"]) == 3
+    for e in d["events"]:
+        assert e["gwh"] == pytest.approx(e["mean_mw"] * e["hours"] / 1000, rel=0.01)
+        assert 0 <= e["placebo_p"] <= 1 and e["placebo_n"] >= 20
+        assert e["placebo_band_mw"][0] < e["placebo_band_mw"][1]
+        assert e["daily"][0]["day"] == e["start"] and e["daily"][-1]["day"] == e["end"]
+        assert e["source"].startswith("https://")
+    link = d["monthly_link"]["manufacturing"]["all_months"]
+    assert {"r_levels", "r_changes", "slope_t", "n"} <= set(link) and link["n"] >= 24
+
+
 def test_forecast_ranges_are_ordered_and_scored():
     d = _load("forecast_ranges.json")
     for v in ("wind", "consumption"):

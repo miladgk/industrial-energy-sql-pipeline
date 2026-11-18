@@ -23,6 +23,7 @@ every day, and answers questions no single chart does:
 | How wrong will tomorrow's forecast be? | Calibrated 80% / 95% ranges around Fingrid's day-ahead wind and consumption forecasts (conformal prediction, grouped by time of day and forecast level, adapting day by day). Replayed over 341 days with only what was known at issue time: wind 79.5% / 93.5% of hours inside, consumption 79.1% / 93.6%; interval score 4-8% better than one set of quantiles. | `sql/analysis/25`, `src/forecast_ranges.py` |
 | Can public weather data beat Fingrid's forecast? | No. Gradient-boosted trees on Open-Meteo forecasts made two days ahead (15 places) and the Finnish calendar, replayed over 182 days: wind error 534 MW vs Fingrid's 346, consumption 368 vs 290. Used as a correction to Fingrid's forecast it changes the error by under 1% (Diebold-Mariano p = 0.85 and 0.75). For wind, fresher weather closes 93% of the gap; for consumption it closes none. | `sql/analysis/26`, `src/weather_model.py` |
 | Does hydro make more room for wind when its reservoirs are full? | The opposite. Over three years, with five reservoir and lake levels against their 2000-2022 norm for the date (SYKE): on the driest tenth of days hydro absorbs 16% of each extra MW of wind (15-17%), on the fullest tenth 9% (8-11%). Full reservoirs must release water; low ones save it. Imports take about 55% whatever the water. | `sql/analysis/27`, `src/hydro_flex.py` |
+| How much electricity did the 2024 strikes take away? | The four-week ports and transport strike (11 Mar - 7 Apr 2024, paper and pulp mills shut) cut consumption by 1,148 MW on average, 11% or 769 GWh, against a counterfactual of weather and calendar; no strike-free placebo period comes close. The two short February strikes show drops too (-922 and -598 MW) but are within the model's ordinary error (p = 0.05 and 0.10). Monthly industrial output (Statistics Finland) does not explain monthly consumption beyond a shared trend. | `sql/analysis/28`, `src/strike_effect.py` |
 
 Numbers as of November 2026; the site always shows the current ones.
 
@@ -165,6 +166,7 @@ All logic lives in SQL; the API, the reports and the dashboard export run the sa
 | `sql/analysis/23_temperature_sensitivity.sql` | hinge model per day type; the balance point (5-20 °C) is searched in SQL, best r² kept | `generate_series` grid, `regr_r2`, `DISTINCT ON` |
 | `sql/analysis/24_wind_allocation_panel.sql` + `src/wind_allocation.py` | the hourly power balance (consumption = wind + nuclear + hydro + other + net imports); each part regressed on wind, nuclear and heating degrees with hour, weekday and month fixed effects, Newey-West (HAC) 95% intervals, per season; imports split by border and other production by kind of plant, the parts adding up to their totals | `FILTER` pivot, completeness rules; numpy OLS + HAC |
 | `sql/analysis/25_forecast_errors_hourly.sql` + `src/forecast_ranges.py` | Fingrid's day-ahead forecasts next to what happened; split conformal ranges (global, by hour, Mondrian by hour block x forecast level, adaptive conformal inference), each day calibrated on the 90 days ending two days before it and replayed as a backtest (coverage, width, interval score) | `LEFT JOIN` for the future, `VALUES` pairs; numpy |
+| `sql/analysis/28_consumption_hourly.sql` + `src/strike_effect.py` | hourly consumption with measured temperature; gradient-boosted counterfactual trained outside the strikes (+/- 3 days); effect = measured - counterfactual; placebo test refitted on 40 strike-free periods of equal length; monthly residual against Statistics Finland's industrial output index, tested on levels, on month-to-month changes and with a trend | `FILTER` pivot, completeness rules; scikit-learn, pandas |
 | `sql/analysis/27_hydrology_state.sql` + `src/hydro_flex.py` | each reservoir level and the Tornionjoki's log discharge as a z-score against the 2000-2022 norm for the same date (pooled +/- 7 days); the hourly balance regressed on wind, wind x storage and wind x inflow of the day before, with hour, weekday, month and year fixed effects and Newey-West intervals; shares at the 10th/50th/90th percentile of storage, and a check by thirds of days | window-pooled seasonal norms, `LATERAL`; numpy |
 | `sql/analysis/26_weather_model_panel.sql` + `src/weather_model.py` | per hour: actuals, Fingrid's day-ahead forecasts, wind capacity and the two-day-old weather at 15 places; gradient-boosted trees (weather + calendar; and a regularised correction of Fingrid's forecast) in a weekly-refit rolling-origin backtest with Diebold-Mariano tests; Fingrid's error by kind of day. `scripts/weather_lead_time.py` replays it with 24-hour-old and the newest weather | `FILTER` pivot over two tables; scikit-learn, pandas |
 | `sql/etl/02_data_quality_checks.sql` | default partition empty, no empty or stale dataset, 30-day coverage, 0 Hz gap markers | |
@@ -198,7 +200,7 @@ a server.
 
 ## Tests
 
-189 tests in eight layers, all run in CI on Python 3.11/3.12 and PostgreSQL 14/15/16,
+196 tests in eight layers, all run in CI on Python 3.11/3.12 and PostgreSQL 14/15/16,
 against the restored real warehouse:
 
 | Layer | What it guards |
@@ -254,11 +256,12 @@ For the daily workflow on a fork, add the key as the repository secret
 ├── scripts/
 │   ├── export_dashboard_data.py
 │   ├── benchmark_warehouse.py
-│   └── weather_lead_time.py    # how much fresher weather would help (run by hand)
+│   ├── weather_lead_time.py    # how much fresher weather would help (run by hand)
+│   └── strike_effect.py        # the 2024 strikes event study (run by hand)
 ├── sql/
 │   ├── schema/                 # 13 warehouse, 14 CO2 model, 15 event detector, 16 forecast archive,
 │   │                           # 17 hydrology, 18 dataset summary for /api/datasets
-│   ├── analysis/               # 13-27, one query per file
+│   ├── analysis/               # 13-28, one query per file
 │   └── etl/02_data_quality_checks.sql
 ├── src/
 │   ├── fingrid_api.py          # API client (key, paging, retries, 429 back-off)
@@ -277,6 +280,7 @@ For the daily workflow on a fork, add the key as the repository secret
 │   ├── weather_model.py        # public weather vs Fingrid: models, backtest, Diebold-Mariano
 │   ├── hydrology.py            # SYKE reservoir levels, river flow, snow; NVE reservoirs
 │   ├── hydro_flex.py           # does hydro's share of extra wind depend on the water?
+│   ├── strike_effect.py        # counterfactual consumption, placebo test, trend-aware monthly check
 │   ├── db_connection.py
 │   └── api.py                  # FastAPI
 └── tests/                      # eight layers + load/locustfile.py
@@ -288,4 +292,5 @@ Data: [Fingrid Open Data](https://data.fingrid.fi), licensed
 [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Weather data by
 [Open-Meteo.com](https://open-meteo.com/) and the [Finnish Meteorological Institute](https://en.ilmatieteenlaitos.fi/open-data),
 both CC BY 4.0. Water data by [SYKE](https://www.syke.fi/en) (CC BY 4.0) and
-[NVE](https://www.nve.no/) (NLOD). Code: MIT.
+[NVE](https://www.nve.no/) (NLOD). Industrial output by [Statistics Finland](https://stat.fi/en/statistics/ttvi)
+(CC BY 4.0). Code: MIT.

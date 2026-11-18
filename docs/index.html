@@ -1462,6 +1462,7 @@
         <button type="button" class="dtab" role="tab" data-pane="pane-co2" aria-selected="false">CO₂ model</button>
         <button type="button" class="dtab" role="tab" data-pane="pane-events" aria-selected="false">Grid events</button>
         <button type="button" class="dtab" role="tab" data-pane="pane-cold" aria-selected="false">Cold</button>
+        <button type="button" class="dtab" role="tab" data-pane="pane-strikes" aria-selected="false">Strikes 2024</button>
         <button type="button" class="dtab" role="tab" data-pane="pane-wind" aria-selected="false">Wind balance</button>
         <button type="button" class="dtab" role="tab" data-pane="pane-craft" aria-selected="false">Engineering</button>
       </nav>
@@ -1764,8 +1765,62 @@
           <p class="takeaway" id="cold-takeaway"></p>
           <p class="note" id="cold-note"></p>
           <p id="cold-error" class="load-error" role="alert" style="color:var(--fault)"></p>
+          <button type="button" class="inspect-btn" data-open-drawer="pane-strikes">
+            <span>What the weather cannot explain: the 2024 strikes</span>
+            <span class="tag">Details →</span>
+          </button>
           <details class="sql" id="sql-23">
             <summary>Inspect SQL · sql/analysis/23_temperature_sensitivity.sql</summary>
+            <pre>Loading…</pre>
+          </details>
+        </div>
+
+        <!-- PANE 4b: THE 2024 STRIKES -->
+        <div class="drawer-pane" id="pane-strikes">
+          <h4 style="margin-top:0">How much electricity did the 2024 strikes take away?</h4>
+          <p class="note" id="st-intro"></p>
+          <div class="kpis-3" id="st-kpis"></div>
+          <p class="range-cap" id="st-chart-cap">Ports and transport strike, daily mean</p>
+          <div style="height:190px; margin:4px 0 8px;"><svg id="st-chart" class="chart"
+              aria-label="Measured consumption against what the model expected without the strike"></svg></div>
+          <div class="legend"><span><i style="background:var(--cons)"></i>Measured</span><span><i
+                style="background:var(--ink-2)"></i>Expected without the strike (dashed)</span></div>
+
+          <h4>All three strikes, and is it more than chance?</h4>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Strike</th>
+                  <th class="r">Effect</th>
+                  <th class="r" title="5th to 95th percentile of the placebo effects">Placebo MW</th>
+                  <th class="r">p</th>
+                </tr>
+              </thead>
+              <tbody id="st-table">
+                <tr>
+                  <td colspan="4">Loading…</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="takeaway" id="st-takeaway"></p>
+
+          <h4>Does consumption follow industrial output month by month?</h4>
+          <p class="note" id="st-monthly"></p>
+          <p class="takeaway" id="st-monthly-takeaway"></p>
+
+          <h4>How it works</h4>
+          <p class="note" id="st-method"></p>
+          <p class="note">Industrial output: <a href="https://stat.fi/en/statistics/ttvi" rel="noopener">Statistics Finland</a>
+            (CC BY 4.0). Strike dates: <span id="st-sources"></span>.</p>
+          <p id="st-error" class="load-error" role="alert" style="color:var(--fault)"></p>
+          <details class="sql" id="sql-28">
+            <summary>Inspect SQL · sql/analysis/28_consumption_hourly.sql</summary>
+            <pre>Loading…</pre>
+          </details>
+          <details class="sql" id="code-st">
+            <summary>Inspect Python · src/strike_effect.py</summary>
             <pre>Loading…</pre>
           </details>
         </div>
@@ -2828,6 +2883,57 @@ make test</pre>
       $("hf-checks").textContent = `Dry and full days are the 10th and 90th percentile of the storage index (${fmt(dry.storage_z, 2)} and ${fmt(full.storage_z, 2)}; it ranged from ${fmt(d.storage_range.min, 2)} to ${fmt(d.storage_range.max, 2)}). Check without assuming a straight line: fitted separately on the driest, middle and fullest third of days, hydro takes ${t.map(x => pct(x.shares.hydro)).join(", ")}. Natural inflow (the unregulated Tornionjoki) moves the hydro share by ${fmt(d.per_sd_inflow.hydro.per_sd * 100, 1)} points per standard deviation. Model: ${d.model}`;
     }
 
+    /* The 2024 strikes: measured consumption against a counterfactual */
+    function renderStrikes(d) {
+      if (!d || !d.events) return;
+      const mw = n => `${n < 0 ? "−" : n > 0 ? "+" : ""}${fmt(Math.abs(Math.round(n)))} MW`;
+      const big = d.events.reduce((a, e) => Math.abs(e.gwh) > Math.abs(a.gwh) ? e : a, d.events[0]);
+      $("st-intro").textContent = `A model learns hourly consumption from what a strike does not change (measured temperature, the calendar, the sun, the time of year, a slow trend) on every hour outside the strikes, ${dayFmt(d.window_start + "T12:00:00Z")} – ${dayFmt(d.window_end + "T12:00:00Z")}. On the strike days it says what Finland would have used; the effect is what was used minus that.`;
+      $("st-kpis").replaceChildren(
+        kpi(`${fmt(Math.abs(big.gwh), 0)} GWh`, `not used in the ${big.name.toLowerCase()} (${dayFmt(big.start + "T12:00:00Z").replace(/ \d{4}$/, "")} – ${dayFmt(big.end + "T12:00:00Z")})`),
+        kpi(mw(big.mean_mw), "on average, every hour of it"),
+        kpi(`${fmt(big.share_pct, 1)}%`, "of what Finland would have used"),
+      );
+      $("st-chart-cap").textContent = `${big.name}, daily mean`;
+      const dd = big.daily;
+      lineChart($("st-chart"), {
+        height: 180, forceZero: false, directLabels: false, yUnit: "MW",
+        series: [
+          { name: "Measured", short: "Measured", values: dd.map(x => x.actual_mw), color: "var(--cons)", width: 2 },
+          { name: "Expected without the strike", short: "Expected", values: dd.map(x => x.counterfactual_mw), color: "var(--ink-2)", width: 1.6, dash: "4 3" },
+        ],
+        labels: dd.map(x => x.day),
+        xTick: (i, l) => i % 7 === 0 ? dayFmt(l + "T12:00:00Z").replace(/ \d{4}$/, "") : null,
+        tipTitle: l => dayFmt(l + "T12:00:00Z"), tipValue: v => `${fmt(Math.round(v))} MW`,
+        tipExtra: i => [`Gap: ${mw(dd[i].actual_mw - dd[i].counterfactual_mw)}`],
+      });
+      const pv = p => p < 1 / 40 ? "< 0.025" : fmt(p, 2);
+      $("st-table").replaceChildren(...d.events.map(e => {
+        const tr = el("tr"), name = el("td", { style: "white-space:normal" });
+        name.append(el("b", {}, e.name), el("br"),
+          el("small", { style: "color:var(--muted)" }, `${dayFmt(e.start + "T12:00:00Z").replace(/ \d{4}$/, "")} – ${dayFmt(e.end + "T12:00:00Z")}: ${e.what}`));
+        const eff = el("td", { class: "r" }); eff.append(el("b", {}, mw(e.mean_mw)), el("br"), el("small", { style: "color:var(--muted)" }, `${fmt(e.gwh, 0)} GWh`));
+        const band = el("td", { class: "r" });
+        band.append(`${mw(e.placebo_band_mw[0]).replace(" MW", "")} to ${mw(e.placebo_band_mw[1]).replace(" MW", "")}`);
+        tr.append(name, eff, band, el("td", { class: "r" }, pv(e.placebo_p)));
+        return tr;
+      }));
+      const clear = d.events.filter(e => e.placebo_p < 0.05), unclear = d.events.filter(e => e.placebo_p >= 0.05);
+      $("st-takeaway").replaceChildren(el("b", {}, "Takeaway: "), document.createTextNode(
+        `${clear.map(e => `The ${e.name.toLowerCase()} cut consumption by ${mw(Math.abs(e.mean_mw)).replace(/^[−+]/, "")} (${fmt(Math.abs(e.share_pct), 1)}%), far beyond what the model gets wrong on ordinary periods of the same length`).join("; ")}. ` +
+        (unclear.length ? `The shorter strikes (${unclear.map(e => e.name.toLowerCase()).join(", ")}) also show a drop, but over a few days the model's ordinary error is as large, so they could be chance. ` : "") +
+        `The placebo range is the model's error on ${d.events[0].placebo_n} strike-free periods of the same length; p is the share of them at least as large.`));
+      const L = d.monthly_link.manufacturing.all_months;
+      $("st-monthly").textContent = `Month by month, the consumption a model of weather and calendar alone cannot explain was set against Statistics Finland's seasonally adjusted volume index of manufacturing output (${L.n} months). Their levels correlate (r = ${fmt(L.r_levels, 2)}), but both drift upward over these years, and two drifting series correlate whether or not they are linked. Their month-to-month changes do not move together (r = ${fmt(L.r_changes, 2)}), and with a trend in the model the index adds ${fmt(L.slope_with_trend, 1)} ± ${fmt(L.slope_se, 1)} MW per index point (t = ${fmt(L.slope_t, 2)}).`;
+      $("st-monthly-takeaway").replaceChildren(el("b", {}, "Takeaway: "), document.createTextNode(
+        Math.abs(L.slope_t) < 2
+          ? `No. Beyond a shared upward trend, monthly industrial output does not explain monthly consumption: the steady rise comes from something that grows smoothly, which this analysis does not identify, and industry shows up only when it stops outright, as in the strike.`
+          : `Yes: even beyond the shared trend, months with more industrial output use more electricity.`));
+      $("st-method").textContent = d.method;
+      $("st-sources").replaceChildren(...d.events.flatMap((e, i) => [i ? document.createTextNode(", ") : document.createTextNode(""),
+        el("a", { href: e.source, rel: "noopener" }, e.name)]));
+    }
+
     function renderSql(src) {
       if (!src) return;
       const map = {
@@ -2837,7 +2943,8 @@ make test</pre>
         "sql/analysis/24_wind_allocation_panel.sql": "sql-24", "src/wind_allocation.py": "code-wa",
         "sql/analysis/25_forecast_errors_hourly.sql": "sql-25", "src/forecast_ranges.py": "code-fr",
         "sql/analysis/26_weather_model_panel.sql": "sql-26", "src/weather_model.py": "code-wm",
-        "sql/analysis/27_hydrology_state.sql": "sql-27", "src/hydro_flex.py": "code-hf"
+        "sql/analysis/27_hydrology_state.sql": "sql-27", "src/hydro_flex.py": "code-hf",
+        "sql/analysis/28_consumption_hourly.sql": "sql-28", "src/strike_effect.py": "code-st"
       };
       src.files.forEach(f => {
         const d = $(map[f.path]); if (!d) return;
@@ -2854,14 +2961,14 @@ make test</pre>
 
     /* ───────── 5. BOOTSTRAP DATA PIPELINE ───────── */
     (async function main() {
-      const files = ["fingrid_recent_daily", "forecast_scorecard", "co2_forecast", "grid_events", "temperature", "wind_allocation", "forecast_ranges", "sql_sources", "engineering", "weather_model", "weather_lead_time", "hydro_flex"];
-      const [recent, scorecard, co2, events, temperature, windAlloc, ranges, sql, eng, weatherModel, leadTime, hydroFlex] = await Promise.all(files.map(f => safe(getJSON(`data/${f}.json`))));
+      const files = ["fingrid_recent_daily", "forecast_scorecard", "co2_forecast", "grid_events", "temperature", "wind_allocation", "forecast_ranges", "sql_sources", "engineering", "weather_model", "weather_lead_time", "hydro_flex", "strike_effect"];
+      const [recent, scorecard, co2, events, temperature, windAlloc, ranges, sql, eng, weatherModel, leadTime, hydroFlex, strikes] = await Promise.all(files.map(f => safe(getJSON(`data/${f}.json`))));
       safe(getJSON("data/fingrid_latest.json", { cache: "no-store" })).then(renderLatestTicker);
 
       const failed = (data, file, id) => { if (!data && id) $(id).textContent = `data/${file}.json could not be loaded; the rest of the page still works.`; };
       [[scorecard, "forecast_scorecard", "fc-error"], [co2, "co2_forecast", "co2-error"], [events, "grid_events", "ev-error"],
        [temperature, "temperature", "cold-error"], [windAlloc, "wind_allocation", "wa-error"], [ranges, "forecast_ranges", "rg-error"],
-       [weatherModel, "weather_model", "wm-error"], [hydroFlex, "hydro_flex", "hf-error"]].forEach(([d, f, id]) => failed(d, f, id));
+       [weatherModel, "weather_model", "wm-error"], [hydroFlex, "hydro_flex", "hf-error"], [strikes, "strike_effect", "st-error"]].forEach(([d, f, id]) => failed(d, f, id));
       if (eng) { datasetCount = eng.datasets; document.querySelectorAll(".n-datasets").forEach(n => { n.textContent = eng.datasets; }); }
       if (!recent) $("hero-tile-copy").textContent = "data/fingrid_recent_daily.json could not be loaded.";
 
@@ -2875,6 +2982,7 @@ make test</pre>
       renderWindAllocation(windAlloc);
       renderWeatherModel(weatherModel, leadTime);
       renderHydroFlex(hydroFlex);
+      renderStrikes(strikes);
       renderEngineering(eng);
       renderSql(sql);
 

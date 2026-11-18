@@ -240,6 +240,19 @@ def test_wind_balance_shows_the_water_state(open_dashboard):
     expect(page.locator("#hf-takeaway")).to_contain_text(pct(full["shares"]["hydro"]["share"]))
 
 
+def test_strikes_pane_shows_the_events(open_dashboard):
+    d = _data("strike_effect.json")
+    page = open_dashboard()
+    _open_pane(page, "pane-cold")
+    page.locator("#pane-cold [data-open-drawer=pane-strikes]").click()
+    expect(page.locator("#pane-strikes")).to_be_visible()
+    big = max(d["events"], key=lambda e: abs(e["gwh"]))
+    expect(page.locator("#st-kpis .kpi strong").first).to_have_text(f"{js_round(abs(big['gwh'])):,} GWh")
+    expect(page.locator("#st-table tr")).to_have_count(len(d["events"]))
+    expect(page.locator("#st-chart path")).not_to_have_count(0)
+    expect(page.locator("#st-sources a")).to_have_count(len(d["events"]))
+
+
 def test_public_weather_pane_shows_the_backtest(open_dashboard):
     d = _data("weather_model.json")
     mw = lambda v: f"{js_round(v):,} MW"

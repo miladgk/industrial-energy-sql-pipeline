@@ -736,6 +736,8 @@ PAGE_SQL_FILES = [
     "src/weather_model.py",
     "sql/analysis/27_hydrology_state.sql",
     "src/hydro_flex.py",
+    "sql/analysis/28_consumption_hourly.sql",
+    "src/strike_effect.py",
 ]
 
 
