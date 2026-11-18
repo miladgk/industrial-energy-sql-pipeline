@@ -50,6 +50,7 @@ env:
   SNAPSHOT_FILE: fingrid_observation.csv.gz
   FORECAST_ARCHIVE: weather_forecast.csv.gz
   HYDROLOGY_ARCHIVE: hydrology.csv.gz
+  PRICE_ARCHIVE: entsoe_price.csv.gz
 
 jobs:
   refresh:
@@ -133,6 +134,21 @@ jobs:
           fi
           python src/hydrology.py fetch
 
+      # Day-ahead prices for Finland and the zones it is connected to (ENTSO-E Transparency Platform,
+      # secret ENTSOE_TOKEN). Restored, then re-fetched from three days before the newest price up to
+      # tomorrow's. ENTSO-E being down or the token expiring warns here but does not stop the Fingrid refresh.
+      - name: Restore and update the ENTSO-E price archive
+        continue-on-error: true
+        env:
+          ENTSOE_TOKEN: ${{ secrets.ENTSOE_TOKEN }}
+        run: |
+          if gh release download "$SNAPSHOT_TAG" --pattern "$PRICE_ARCHIVE" --dir /tmp/snapshot; then
+            python src/entsoe_prices.py restore "/tmp/snapshot/$PRICE_ARCHIVE"
+          else
+            echo "::notice::No price archive yet: fetching prices from November 2023."
+          fi
+          python src/entsoe_prices.py fetch || { echo "::warning::ENTSO-E prices were not updated."; exit 1; }
+
       # history_from reaches the script only through the environment (no script injection),
       # and argparse accepts nothing but a YYYY-MM-DD date.
       - name: Sync from Fingrid
@@ -161,6 +177,10 @@ jobs:
           gh release upload "$SNAPSHOT_TAG" "/tmp/$FORECAST_ARCHIVE" --clobber
           python src/hydrology.py dump "/tmp/$HYDROLOGY_ARCHIVE"
           gh release upload "$SNAPSHOT_TAG" "/tmp/$HYDROLOGY_ARCHIVE" --clobber
+          python src/entsoe_prices.py dump "/tmp/$PRICE_ARCHIVE"     # writes nothing when no price is stored
+          if [ -s "/tmp/$PRICE_ARCHIVE" ]; then
+            gh release upload "$SNAPSHOT_TAG" "/tmp/$PRICE_ARCHIVE" --clobber
+          fi
 
       - name: Build the dashboard data
         run: python scripts/export_dashboard_data.py      # every part in DAILY_PARTS
