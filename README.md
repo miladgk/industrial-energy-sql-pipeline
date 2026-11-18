@@ -52,7 +52,8 @@ flowchart LR
 publishes the next day's forecasts at 12:00 Finnish time): start PostgreSQL, restore
 yesterday's warehouse and weather forecast archive from the release assets, store today's
 FMI weather forecasts (src/fmi_forecast.py) and the newest two-day-old Open-Meteo forecasts
-(src/openmeteo_forecast.py), update the hydrology archive (src/hydrology.py),
+(src/openmeteo_forecast.py), update the hydrology archive (src/hydrology.py) and the ENTSO-E day-ahead prices
+(src/entsoe_prices.py, secret `ENTSOE_TOKEN`; skipped without it),
 sync the last 7 days from Fingrid,
 publish the new snapshot, run the analyses, commit the dashboard JSON and redeploy
 Pages. A normal run takes about 2 minutes and some 30 API requests. No server runs between
@@ -142,6 +143,7 @@ whole). `tests/test_performance.py` checks the plans with EXPLAIN in CI.
 | Weather forecasts (FMI, CC BY 4.0, no key) | temperature and wind speed for those four cities plus Vaasa, Kokkola, Pori and Raahe, FMI's edited forecast and the Harmonie model, archived every day as issued in `weather_forecast` (FMI keeps no archive of its own) |
 | Weather forecasts (Open-Meteo Previous Runs API, CC BY 4.0, no key) | temperature and 100 m wind speed forecast 48 h ahead for the eight places above and seven wind-farm areas, every hour since September 2025; only hours whose 48-hour-old run was certainly out are stored |
 | Hydrology (SYKE Hydrology API, CC BY 4.0; NVE, NLOD; no key) | daily water levels of Lokka, Porttipahta, Oulujärvi, Saimaa and Näsijärvi, discharge of the unregulated Tornionjoki and snow water equivalent of three basins since 2000; weekly Norwegian reservoir filling per price area since 1995 (`src/hydrology.py`, table `hydrology_daily`). Discharge below regulated plants is left out on purpose: it is what the plants chose to release |
+| Day-ahead prices (ENTSO-E Transparency Platform; free token) | EUR/MWh for Finland and the four zones it is connected to (SE1, SE3, EE, NO4) since November 2023, at the resolution they cleared at: hourly until 30 September 2025, 15 minutes since (`src/entsoe_prices.py`, table `entsoe_price`) |
 | Calendar (computed) | Finnish public holidays (Easter by the Meeus algorithm), eves, bridge days, the Christmas period, July, the sun's elevation (`src/finnish_calendar.py`) |
 
 Listed with their purpose in `src/fingrid_catalog.py`.
@@ -200,7 +202,7 @@ a server.
 
 ## Tests
 
-196 tests in eight layers, all run in CI on Python 3.11/3.12 and PostgreSQL 14/15/16,
+203 tests in eight layers, all run in CI on Python 3.11/3.12 and PostgreSQL 14/15/16,
 against the restored real warehouse:
 
 | Layer | What it guards |
@@ -260,7 +262,8 @@ For the daily workflow on a fork, add the key as the repository secret
 │   └── strike_effect.py        # the 2024 strikes event study (run by hand)
 ├── sql/
 │   ├── schema/                 # 13 warehouse, 14 CO2 model, 15 event detector, 16 forecast archive,
-│   │                           # 17 hydrology, 18 dataset summary for /api/datasets
+│   │                           # 17 hydrology, 18 dataset summary for /api/datasets,
+│   │                           # 19 ENTSO-E day-ahead prices
 │   ├── analysis/               # 13-28, one query per file
 │   └── etl/02_data_quality_checks.sql
 ├── src/
@@ -279,6 +282,7 @@ For the daily workflow on a fork, add the key as the repository secret
 │   ├── finnish_calendar.py     # holidays, bridge days, sun elevation
 │   ├── weather_model.py        # public weather vs Fingrid: models, backtest, Diebold-Mariano
 │   ├── hydrology.py            # SYKE reservoir levels, river flow, snow; NVE reservoirs
+│   ├── entsoe_prices.py        # ENTSO-E day-ahead prices, FI and its neighbours
 │   ├── hydro_flex.py           # does hydro's share of extra wind depend on the water?
 │   ├── strike_effect.py        # counterfactual consumption, placebo test, trend-aware monthly check
 │   ├── db_connection.py
@@ -293,4 +297,4 @@ Data: [Fingrid Open Data](https://data.fingrid.fi), licensed
 [Open-Meteo.com](https://open-meteo.com/) and the [Finnish Meteorological Institute](https://en.ilmatieteenlaitos.fi/open-data),
 both CC BY 4.0. Water data by [SYKE](https://www.syke.fi/en) (CC BY 4.0) and
 [NVE](https://www.nve.no/) (NLOD). Industrial output by [Statistics Finland](https://stat.fi/en/statistics/ttvi)
-(CC BY 4.0). Code: MIT.
+(CC BY 4.0). Day-ahead prices from the [ENTSO-E Transparency Platform](https://transparency.entsoe.eu/). Code: MIT.

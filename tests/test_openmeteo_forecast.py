@@ -70,3 +70,29 @@ def test_fetch_backfills_each_place_and_is_idempotent(archive, monkeypatch):
     om.fetch(archive, now=NOW, getter=fake, pause=0)
     assert starts.count(om.BACKFILL_FROM) == 1                       # only the new place backfills
     assert starts.count(date(2001, 1, 2)) == len(om.PLACES) - 1      # the rest resume a day before their last hour
+
+
+@pytest.mark.smoke
+def test_a_timed_out_handshake_is_retried(monkeypatch):
+    import io
+    import json
+    import urllib.error
+
+    import openmeteo_forecast as om
+
+    calls = []
+
+    def flaky(req, timeout):
+        calls.append(1)
+        if len(calls) < 3:
+            raise urllib.error.URLError("_ssl.c:1001: The handshake operation timed out")
+        return io.BytesIO(json.dumps({"hourly": {}}).encode())
+
+    monkeypatch.setattr(om.urllib.request, "urlopen", flaky)
+    monkeypatch.setattr(om.time, "sleep", lambda s: None)
+    assert om.fetch_place(60.0, 25.0, date(2025, 1, 1), date(2025, 1, 2)) == {"hourly": {}}
+    assert len(calls) == 3
+    monkeypatch.setattr(om.urllib.request, "urlopen",
+                        lambda req, timeout: (_ for _ in ()).throw(urllib.error.HTTPError("u", 400, "bad", {}, None)))
+    with pytest.raises(urllib.error.HTTPError):                          # a bad request is not retried
+        om.fetch_place(60.0, 25.0, date(2025, 1, 1), date(2025, 1, 2))
