@@ -202,7 +202,7 @@ a server.
 
 ## Tests
 
-202 tests in eight layers, all run in CI on Python 3.11/3.12 and PostgreSQL 14/15/16,
+203 tests in eight layers, all run in CI on Python 3.11/3.12 and PostgreSQL 14/15/16,
 against the restored real warehouse:
 
 | Layer | What it guards |

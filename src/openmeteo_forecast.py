@@ -32,6 +32,7 @@ import json
 import os
 import sys
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import date, datetime, timedelta, timezone
@@ -65,9 +66,17 @@ def fetch_place(lat: float, lon: float, start: date, end: date) -> dict:
         "timezone": "UTC", "start_date": start.isoformat(), "end_date": end.isoformat(),
     })
     req = urllib.request.Request(f"{API_URL}?{query}", headers={"User-Agent": USER_AGENT})
-    # The URL is the fixed https API_URL above, so B310 (file:// and custom schemes) cannot apply.
-    with urllib.request.urlopen(req, timeout=120) as resp:  # nosec B310
-        return json.load(resp)
+    # A timed-out handshake or a 5xx is retried (15 s, 30 s, 60 s) before the daily run gives up.
+    for attempt in range(4):
+        try:
+            # The URL is the fixed https API_URL above, so B310 (file:// and custom schemes) cannot apply.
+            with urllib.request.urlopen(req, timeout=120) as resp:  # nosec B310
+                return json.load(resp)
+        except (urllib.error.URLError, TimeoutError) as e:
+            transient = not isinstance(e, urllib.error.HTTPError) or e.code in (429, 500, 502, 503, 504)
+            if not transient or attempt == 3:
+                raise
+            time.sleep(15 * 2 ** attempt)
 
 
 def rows_from(payload: dict, place: str, until: datetime) -> list[tuple]:
