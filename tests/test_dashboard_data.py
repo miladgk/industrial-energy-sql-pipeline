@@ -239,6 +239,25 @@ def test_price_wind_is_consistent():
     assert full and all(c["wind_captured"] < c["average"] for c in full)
     assert set(d["latest_price"]) == {"FI", "SE1", "SE3", "EE", "NO4"}
 
+
+def test_europe_is_consistent():
+    """Twelve months, only complete countries ranked, Finland among them; shares are shares; the yearly
+    rows are in order; Ember and the warehouse agree on Finland's price."""
+    d = _load("europe.json")
+    first, last = d["window_first_month"], d["window_last_month"]
+    assert (int(last[:4]) - int(first[:4])) * 12 + int(last[5:7]) - int(first[5:7]) == 11
+    names = [c["area"] for c in d["countries"]]
+    assert "Finland" in names and "EU" not in names and not set(names) & set(d["incomplete"])
+    assert [c["price"] for c in d["countries"]] == sorted(c["price"] for c in d["countries"])
+    assert d["finland_rank"]["of"] == len(names) >= 20
+    assert d["finland_rank"]["price_eur_mwh"] == names.index("Finland") + 1
+    for c in d["countries"]:
+        assert 0 <= c["wind_solar"] <= c["clean"] + 0.001 <= 1.002 and c["intensity"] > 0
+    years = [y["year"] for y in d["years"]]
+    assert years == sorted(years) and len(years) >= 5
+    assert d["price_check"]["months"] >= 12 and d["price_check"]["mean_abs_diff_plain"] < 1.0
+    assert all(-1 <= v["r"] <= 1 and 0 <= v["p_value"] <= 1 for v in d["correlations"].values())
+
 def test_forecast_ranges_are_ordered_and_scored():
     d = _load("forecast_ranges.json")
     for v in ("wind", "consumption"):
