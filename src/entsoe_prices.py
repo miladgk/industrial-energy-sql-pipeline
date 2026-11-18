@@ -212,8 +212,13 @@ def summary(conn) -> list[tuple]:
     with conn.cursor() as cur:
         cur.execute("""
             SELECT area, count(*), min(start_time), max(end_time),
-                   round(avg(eur_mwh) FILTER (WHERE start_time >= now() - interval '30 days')::numeric, 1)
-            FROM entsoe_price GROUP BY area ORDER BY area""")
+                   round(avg(eur_mwh) FILTER (WHERE start_time >= now() - interval '30 days')::numeric, 1),
+                   string_agg(DISTINCT (extract(epoch FROM end_time - start_time) / 60)::int::text, '/'),
+                   min(start_time) FILTER (WHERE end_time - start_time < interval '1 hour'),
+                   count(*) FILTER (WHERE nxt IS NOT NULL AND nxt <> end_time)
+            FROM (SELECT *, lead(start_time) OVER (PARTITION BY area ORDER BY start_time) AS nxt
+                  FROM entsoe_price) p
+            GROUP BY area ORDER BY area""")
         rows = cur.fetchall()
     conn.rollback()
     return rows
@@ -260,8 +265,10 @@ def main() -> None:
         if args.action == "fetch":
             for area, (got, changed) in fetch(conn, token).items():
                 print(f"  ✓ {area:4s} {got:7,} slots received, {changed:7,} new or changed")
-            for area, n, first, last, mean30 in summary(conn):
+            for area, n, first, last, mean30, minutes, first_fine, gaps in summary(conn):
+                fine = f"{first_fine:%Y-%m-%d %H:%M}" if first_fine else "none"
                 print(f"    {area:4s} {n:8,} rows  {first:%Y-%m-%d %H:%M} .. {last:%Y-%m-%d %H:%M} UTC  "
+                      f"slots {minutes} min (first sub-hourly {fine})  gaps {gaps}  "
                       f"last 30 days mean {mean30} EUR/MWh")
         elif args.action == "dump":
             n = dump(conn, args.path)
