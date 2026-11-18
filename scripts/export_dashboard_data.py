@@ -23,6 +23,7 @@ Usage (from the repository root; the database comes from DATABASE_URL or config.
 
 import argparse
 import json
+import math
 import os
 import re
 import subprocess
@@ -783,6 +784,86 @@ def export_europe() -> None:
     })
 
 
+EV_SQL = "sql/analysis/31_consumption_boilers_hourly.sql"
+
+
+def export_ev_charging() -> None:
+    """Do electric cars show up in consumption? Traficom's fleet, an energy estimate, and growth by hour."""
+    sys.path.insert(0, os.path.join(ROOT, "src"))
+    import ev_charging as ev
+    import strike_effect as se
+    import pandas as pd
+
+    try:
+        fleet, km = ev.fleet(), ev.km_per_year()
+    except Exception as e:                      # Traficom down: keep the published file
+        print(f"::warning::ev-charging: Traficom statistics not available ({e}); ev_charging.json left as it is.")
+        return
+    last_day = datetime.now(timezone.utc).date() - timedelta(days=1)
+    a, b = ev.windows(last_day)
+    conn = _db()
+    try:
+        with open(os.path.join(ROOT, EV_SQL), encoding="utf-8") as fh:
+            rows = _rows(conn, fh.read(), {"start": datetime.combine(a[0] - timedelta(days=4), datetime.min.time(), timezone.utc),
+                                           "end": datetime.combine(b[1] + timedelta(days=1), datetime.min.time(), timezone.utc)})
+    finally:
+        conn.close()
+    df = se.panel(rows)
+    df["boilers_mw"] = pd.to_numeric(df["boilers_mw"]).astype(float)
+    df = df[(df["day_fi"] >= a[0]) & (df["day_fi"] <= b[1]) & df["boilers_mw"].notna()].copy()
+    df["later"] = (df["day_fi"] >= b[0]).astype(int)
+    earlier, later = int((df["later"] == 0).sum()), int(df["later"].sum())
+    if min(earlier, later) < 24 * 300:
+        # Electric boilers (371) start in December 2024; until the warehouse holds them for both years
+        # (a run with history_from), keep the published file.
+        print(f"::warning::ev-charging: only {earlier} and {later} hours with boiler data; ev_charging.json left as it is.")
+        return
+    r1 = lambda v: round(float(v), 1)
+    kmy = {k: km[k]["km_per_year"] for k in ("bev", "phev")}
+    mid = lambda w: w[0] + (w[1] - w[0]) / 2
+    fa, fb = ev.fleet_at(fleet, mid(a)), ev.fleet_at(fleet, mid(b))
+    added = ev.energy(fb["bev"] - fa["bev"], fb["phev"] - fa["phev"], kmy)
+    now = ev.energy(fleet[-1]["bev"], fleet[-1]["phev"], kmy)
+    fits = {"consumption": ev.growth_by_hour(df, df["consumption_mw"]), "boilers": ev.growth_by_hour(df, df["boilers_mw"]),
+            "without_boilers": ev.growth_by_hour(df, df["consumption_mw"] - df["boilers_mw"])}
+    ci = lambda x: {k: r1(v) for k, v in x.items()}
+    _write("ev_charging.json", {
+        "generated_at": _now(),
+        "source": "Traficom statistics database (CC BY 4.0): vehicles in traffic by driving power, quarterly "
+                  "(040_kanta_tau_104) and periodic inspections by driving power and age (030_kats_tau_103); "
+                  "Fingrid Open Data (CC BY 4.0): consumption (124), electric boilers (371), temperatures "
+                  "(178, 182, 196, 185)",
+        "fleet": [{"quarter": f["quarter"], "bev": f["bev"], "phev": f["phev"]} for f in fleet if f["quarter"] >= "2016Q1"],
+        "km": {"inspection_year": km["inspection_year"], "age": ev.FIRST_INSPECTION_AGE,
+               **{k: {"km_per_year": round(km[k]["km_per_year"]), "cars": km[k]["cars"]} for k in ("bev", "phev")}},
+        "assumptions": {k: list(v) for k, v in ev.ASSUMPTIONS.items()},
+        "energy_now": {c: {"gwh_per_year": round(v["gwh_per_year"]), "mw": r1(v["mw"])} for c, v in now.items()},
+        "mean_consumption_mw": r1(df.loc[df["later"] == 1, "consumption_mw"].mean()),
+        "earlier": {"first": str(a[0]), "last": str(a[1]), "hours": earlier,
+                    "fleet_mid": {k: round(v) for k, v in fa.items()}},
+        "later": {"first": str(b[0]), "last": str(b[1]), "hours": later,
+                  "fleet_mid": {k: round(v) for k, v in fb.items()}},
+        "added_mw": {c: r1(v["mw"]) for c, v in added.items()},
+        "growth": {k: {"by_hour": [r1(g) for g in f["growth"]],
+                       "ci95_by_hour": [r1(wa_z * math.sqrt(f["cov"][h][h])) for h in range(24)],
+                       "mean": ci(ev.mean_growth(f)), "night_minus_evening": ci(ev.contrast(f))}
+                   for k, f in fits.items()},
+        "scenarios": {name: {"hours": list(hours), "by_hour": [r1(x) for x in _scenario_profile(added["central"]["mw"], hours)],
+                             "night_minus_evening": r1(ev.scenario_contrast(added["central"]["mw"], hours))}
+                      for name, hours in (("evening", ev.EVENING), ("night", ev.NIGHT))},
+        "blocks": {"night": list(ev.NIGHT_BLOCK), "evening": list(ev.EVENING_BLOCK)},
+        "sql": [EV_SQL],
+        "code": ["src/ev_charging.py"],
+    })
+
+
+wa_z = 1.959964
+
+
+def _scenario_profile(added_mw: float, hours) -> list[float]:
+    return [added_mw * 24 / len(hours) if h in hours else 0.0 for h in range(24)]
+
+
 WEATHER_MODEL_SQL = "sql/analysis/26_weather_model_panel.sql"
 WEATHER_RECORD_DAYS = 14
 
@@ -885,6 +966,8 @@ PAGE_SQL_FILES = [
     "src/price_wind.py",
     "sql/analysis/30_europe_comparison.sql",
     "src/europe.py",
+    "sql/analysis/31_consumption_boilers_hourly.sql",
+    "src/ev_charging.py",
 ]
 
 
@@ -1002,12 +1085,13 @@ PARTS = {
     "hydro-flex": export_hydro_flex,
     "price-wind": export_price_wind,
     "europe": export_europe,
+    "ev-charging": export_ev_charging,
     "fingrid-latest": export_fingrid_latest,
     "sql": export_sql_sources,
     "engineering": export_engineering,
 }
 DAILY_PARTS = ["fingrid-recent", "forecast-scorecard", "co2-forecast", "grid-events", "temperature", "wind-allocation",
-               "forecast-ranges", "weather-model", "hydro-flex", "price-wind", "europe"]
+               "forecast-ranges", "weather-model", "hydro-flex", "price-wind", "europe", "ev-charging"]
 
 
 def main() -> None:

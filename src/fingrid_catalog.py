@@ -54,6 +54,9 @@ DATASETS = [
     # 194 is positive when Finland exports (checked: r = -0.998 against consumption - production)
     (194, "net_export",              "Net import/export of electricity - real-time data",           "MW",       "actual",    M3),
     (398, "battery_discharge",       "Battery energy storage systems discharging power - real-time data", "MW", "actual",   M3),
+    # Electric boilers (district heat from electricity), measured since 4 December 2024: the large
+    # night-time load that has to be taken out before asking whether electric cars show up (src/ev_charging.py)
+    (371, "electric_boilers",        "Electric boiler consumption sum - real-time data",            "MW",       "actual",    M1),
     # Which border the extra wind leaves by, and which plants make room (sql/analysis/24).
     # The 15-minute border series are the 3-minute ones (87, 89, 180, 187) averaged, at a fifth
     # of the rows; positive = export from Finland, like 194, and the four add up to it.

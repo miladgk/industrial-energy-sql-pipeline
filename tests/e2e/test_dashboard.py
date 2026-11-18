@@ -279,6 +279,19 @@ def test_europe_pane_ranks_finland(open_dashboard):
     expect(page.locator("#eu-price-chart path")).not_to_have_count(0)
     expect(page.locator("#eu-check")).to_contain_text(f"{d['price_check']['months']} months")
 
+
+def test_electric_car_pane_sets_the_estimate_against_the_growth(open_dashboard):
+    d = _data("ev_charging.json")
+    page = open_dashboard()
+    _open_pane(page, "pane-cold")
+    page.locator("#pane-cold [data-open-drawer=pane-ev]").click()
+    expect(page.locator("#pane-ev")).to_be_visible()
+    expect(page.locator("#car-kpis .kpi strong").first).to_have_text(f"{js_round(d['fleet'][-1]['bev'] / 1000)}k")
+    expect(page.locator("#car-kpis .kpi strong").nth(2)).to_have_text(f"+{js_round(d['added_mw']['central'])} MW")
+    expect(page.locator("#car-growth-chart path")).not_to_have_count(0)
+    expect(page.locator("#car-fleet-chart path")).not_to_have_count(0)
+    expect(page.locator("#car-takeaway")).to_contain_text("cannot be separated")
+
 def test_public_weather_pane_shows_the_backtest(open_dashboard):
     d = _data("weather_model.json")
     mw = lambda v: f"{js_round(v):,} MW"

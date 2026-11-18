@@ -258,6 +258,26 @@ def test_europe_is_consistent():
     assert d["price_check"]["months"] >= 12 and d["price_check"]["mean_abs_diff_plain"] < 1.0
     assert all(-1 <= v["r"] <= 1 and 0 <= v["p_value"] <= 1 for v in d["correlations"].values())
 
+
+def test_ev_charging_is_consistent():
+    """Fleet in quarter order; the estimate's cases are ordered; two full years of hours; 24 hours of growth
+    whose mean is the reported mean; the scenario profiles add up to the added MW."""
+    d = _load("ev_charging.json")
+    q = [f["quarter"] for f in d["fleet"]]
+    assert q == sorted(q) and d["fleet"][-1]["bev"] > d["fleet"][0]["bev"]
+    e = d["energy_now"]
+    assert e["low"]["mw"] < e["central"]["mw"] < e["high"]["mw"]
+    assert d["added_mw"]["low"] <= d["added_mw"]["central"] <= d["added_mw"]["high"]
+    assert min(d["earlier"]["hours"], d["later"]["hours"]) >= 24 * 300
+    for g in d["growth"].values():
+        assert len(g["by_hour"]) == 24 and g["mean"]["ci_low"] <= g["mean"]["estimate"] <= g["mean"]["ci_high"]
+        assert sum(g["by_hour"]) / 24 == pytest.approx(g["mean"]["estimate"], abs=0.2)
+    total = [a + b for a, b in zip(d["growth"]["boilers"]["by_hour"], d["growth"]["without_boilers"]["by_hour"])]
+    assert total == pytest.approx(d["growth"]["consumption"]["by_hour"], abs=0.3)
+    for s in d["scenarios"].values():
+        assert sum(s["by_hour"]) / 24 == pytest.approx(d["added_mw"]["central"], abs=0.2)
+    assert 1000 < d["km"]["bev"]["km_per_year"] < 60000
+
 def test_forecast_ranges_are_ordered_and_scored():
     d = _load("forecast_ranges.json")
     for v in ("wind", "consumption"):

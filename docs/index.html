@@ -1463,6 +1463,7 @@
         <button type="button" class="dtab" role="tab" data-pane="pane-events" aria-selected="false">Grid events</button>
         <button type="button" class="dtab" role="tab" data-pane="pane-cold" aria-selected="false">Cold</button>
         <button type="button" class="dtab" role="tab" data-pane="pane-strikes" aria-selected="false">Strikes 2024</button>
+        <button type="button" class="dtab" role="tab" data-pane="pane-ev" aria-selected="false">Electric cars</button>
         <button type="button" class="dtab" role="tab" data-pane="pane-wind" aria-selected="false">Wind balance</button>
         <button type="button" class="dtab" role="tab" data-pane="pane-price" aria-selected="false">Wind &amp; price</button>
         <button type="button" class="dtab" role="tab" data-pane="pane-europe" aria-selected="false">Europe</button>
@@ -1769,6 +1770,10 @@
           <p id="cold-error" class="load-error" role="alert" style="color:var(--fault)"></p>
           <button type="button" class="inspect-btn" data-open-drawer="pane-strikes">
             <span>What the weather cannot explain: the 2024 strikes</span>
+            <span class="tag">Details →</span>
+          </button>
+          <button type="button" class="inspect-btn" data-open-drawer="pane-ev">
+            <span>Do electric cars show up in consumption?</span>
             <span class="tag">Details →</span>
           </button>
           <details class="sql" id="sql-23">
@@ -2085,6 +2090,42 @@
           </details>
           <details class="sql" id="code-eu">
             <summary>Inspect Python · src/europe.py</summary>
+            <pre>Loading…</pre>
+          </details>
+        </div>
+
+        <!-- PANE: ELECTRIC CARS -->
+        <div class="drawer-pane" id="pane-ev">
+          <h4 style="margin-top:0">Do electric cars show up in Finland's consumption?</h4>
+          <p class="note" id="car-intro"></p>
+          <div class="kpis-3" id="car-kpis"></div>
+          <p class="range-cap">Cars and vans in traffic, end of each quarter (Traficom)</p>
+          <div style="height:170px; margin:4px 0 8px;"><svg id="car-fleet-chart" class="chart"
+              aria-label="Battery-electric and plug-in hybrid cars and vans in traffic by quarter"></svg></div>
+          <div class="legend"><span><i style="background:var(--al-imports)"></i>Battery electric</span><span><i
+                style="background:var(--al-other)"></i>Plug-in hybrid</span></div>
+          <p class="takeaway" id="car-energy"></p>
+
+          <h4>Where in the day did consumption grow?</h4>
+          <p class="note" id="car-growth-intro"></p>
+          <div style="height:200px; margin:4px 0 8px;"><svg id="car-growth-chart" class="chart"
+              aria-label="Weather-adjusted growth of consumption by hour of the day, with what electric cars would add"></svg></div>
+          <div class="legend"><span><i style="background:var(--al-imports)"></i>Consumption without electric boilers</span><span><i
+                style="background:var(--al-hydro)"></i>Electric boilers</span><span><i
+                style="background:var(--al-cons)"></i>Cars, if charged 17–22 (dashed)</span><span><i
+                style="background:var(--al-other)"></i>Cars, if charged 22–06 (dashed)</span></div>
+          <p class="takeaway" id="car-takeaway"></p>
+
+          <h4>How it works</h4>
+          <p class="note" id="car-method"></p>
+          <p class="note">Fleet and mileage: <a href="https://trafi2.stat.fi/PXWeb/pxweb/en/TraFi/" rel="noopener">Traficom statistics database</a> (CC BY 4.0).</p>
+          <p id="car-error" class="load-error" role="alert" style="color:var(--fault)"></p>
+          <details class="sql" id="sql-31">
+            <summary>Inspect SQL · sql/analysis/31_consumption_boilers_hourly.sql</summary>
+            <pre>Loading…</pre>
+          </details>
+          <details class="sql" id="code-ev">
+            <summary>Inspect Python · src/ev_charging.py</summary>
             <pre>Loading…</pre>
           </details>
         </div>
@@ -3173,6 +3214,61 @@ make test</pre>
       $("eu-method").textContent = `Price: mean of Ember's monthly day-ahead prices (for countries with several bidding zones, such as Sweden, Norway, Denmark and Italy, Ember's national figure; how it combines the zones is not documented). Carbon intensity: Ember's life-cycle emissions of all generation divided by generation, so imports do not count. Wind + solar: share of generation. EU price: the EU countries' prices weighted by their demand (Ember publishes no EU price). Rank correlations are Spearman's, with p-values from 10,000 shuffles.`;
     }
 
+    /* Electric cars (Traficom) against weather-adjusted consumption growth */
+    function renderEv(d) {
+      if (!d || !d.fleet) return;
+      const last = d.fleet[d.fleet.length - 1], E = d.energy_now, A = d.added_mw;
+      const g = d.growth, rest = g.without_boilers, boil = g.boilers, all = g.consumption;
+      const k = n => `${fmt(n / 1000, 0)}k`;
+      const mwr = (x, n = 0) => `${fmt(x.estimate, n)} MW (${fmt(x.ci_low, n)} to ${fmt(x.ci_high, n)})`;
+      const q = last.quarter.replace("Q", " Q");
+      $("car-intro").textContent = `Finland's electric car fleet has grown fast. Is it big enough to see in the national consumption, and does the timing of the growth say when the cars charge? Nobody measures car charging on its own, so this sets an estimate from Traficom's statistics against Fingrid's measurements.`;
+      $("car-kpis").replaceChildren(
+        kpi(k(last.bev), `battery-electric cars and vans in traffic (${q}), plus ${k(last.phev)} plug-in hybrids`),
+        kpi(`${fmt(E.central.gwh_per_year / 1000, 1)} TWh`, `a year for charging, estimated (${fmt(E.low.gwh_per_year / 1000, 1)}–${fmt(E.high.gwh_per_year / 1000, 1)}): about ${fmt(100 * E.central.mw / d.mean_consumption_mw, 1)}% of consumption`),
+        kpi(`+${fmt(A.central, 0)} MW`, `added by the cars in the past year (${fmt(A.low, 0)}–${fmt(A.high, 0)}), against +${fmt(rest.mean.estimate, 0)} MW of growth in all other consumption except electric boilers`),
+      );
+      const fl = d.fleet;
+      lineChart($("car-fleet-chart"), {
+        height: 160, forceZero: true, directLabels: false, yUnit: "cars",
+        series: [
+          { name: "Battery electric", short: "BEV", values: fl.map(x => x.bev), color: "var(--al-imports)", width: 2 },
+          { name: "Plug-in hybrid", short: "PHEV", values: fl.map(x => x.phev), color: "var(--al-other)", width: 2 },
+        ],
+        labels: fl.map(x => x.quarter),
+        xTick: (i, l) => l.endsWith("Q1") && (+l.slice(0, 4)) % 2 === 0 ? l.slice(0, 4) : null,
+        tipTitle: l => l.replace("Q", " Q"), tipValue: v => fmt(v),
+      });
+      $("car-energy").replaceChildren(el("b", {}, "The estimate: "), document.createTextNode(
+        `At their first inspection, at age ${d.km.age}, battery-electric cars had driven ${fmt(d.km.bev.km_per_year)} km a year and plug-in hybrids ${fmt(d.km.phev.km_per_year)} (${fmt(d.km.bev.cars)} and ${fmt(d.km.phev.cars)} cars inspected in ${d.km.inspection_year}). ` +
+        `At ${d.assumptions.kwh_per_km[1]} kWh per km from the grid (${d.assumptions.kwh_per_km[0]}–${d.assumptions.kwh_per_km[2]}, charging losses and winter included) and ${pct(d.assumptions.phev_electric_share[1])} of a hybrid's km on electricity (${pct(d.assumptions.phev_electric_share[0])}–${pct(d.assumptions.phev_electric_share[2])}), today's fleet uses about ${fmt(E.central.gwh_per_year / 1000, 2)} TWh a year, ${fmt(E.central.mw, 0)} MW on average. The two kWh figures are assumptions, not measurements; the range carries them through.`));
+      const fmtD = iso => dayFmt(iso + "T12:00:00Z");
+      $("car-growth-intro").textContent = `Consumption from ${fmtD(d.later.first)} to ${fmtD(d.later.last)} against the year before, hour by hour of the Finnish day, with temperature, sunlight, weekdays, holidays and the season held fixed. Electric boilers, which turn cheap power into district heat and have been measured since December 2024, are shown on their own. The dashed lines are what the cars added over the year (+${fmt(A.central, 0)} MW on average) would look like if they all charged in the evening or all at night.`;
+      const sc = d.scenarios;
+      lineChart($("car-growth-chart"), {
+        height: 190, forceZero: true, directLabels: false, yUnit: "MW",
+        series: [
+          { name: "Without electric boilers", short: "Other", values: rest.by_hour, color: "var(--al-imports)", width: 2 },
+          { name: "Electric boilers", short: "Boilers", values: boil.by_hour, color: "var(--al-hydro)", width: 2 },
+          { name: "Cars, if charged 17–22", short: "Cars eve", values: sc.evening.by_hour, color: "var(--al-cons)", width: 1.4, dash: "4 3" },
+          { name: "Cars, if charged 22–06", short: "Cars night", values: sc.night.by_hour, color: "var(--al-other)", width: 1.4, dash: "4 3" },
+        ],
+        labels: [...Array(24).keys()].map(h => `${String(h).padStart(2, "0")}:00`),
+        xTick: (i, l) => i % 3 === 0 ? l : null,
+        tipTitle: l => `${l}–${l.slice(0, 2)}:59 Finnish time`, tipValue: v => `${v >= 0 ? "+" : ""}${fmt(v, 0)} MW`,
+        tipExtra: i => [`95% interval, without boilers: ±${fmt(rest.ci95_by_hour[i], 0)} MW`],
+      });
+      const c = rest.night_minus_evening, inside = (lo, hi, v) => lo <= v && v <= hi;
+      const eveOut = !inside(c.ci_low, c.ci_high, sc.evening.night_minus_evening), nightOut = !inside(c.ci_low, c.ci_high, sc.night.night_minus_evening);
+      $("car-takeaway").replaceChildren(el("b", {}, "Takeaway: "), document.createTextNode(
+        `Over the year, weather-adjusted consumption grew by ${mwr(all.mean)}. Electric boilers account for ${fmt(boil.mean.estimate, 0)} MW of it; the rest grew by ${mwr(rest.mean)}, and the cars' estimated +${fmt(A.central, 0)} MW is about ${pct(A.central / rest.mean.estimate)} of that, so most of the growth is something else (heat pumps, data centres, industry and other electrification are in the same numbers). ` +
+        `The timing does say something. Growth outside the boilers was ${fmt(Math.abs(c.estimate), 0)} MW ${c.estimate >= 0 ? "larger at night (00–06) than in the evening (17–22)" : "larger in the evening (17–22) than at night (00–06)"} (95% interval ${fmt(c.ci_low, 0)} to ${fmt(c.ci_high, 0)}). ` +
+        (eveOut ? `If the new cars all charged in the evening, the evening would have grown about ${fmt(-sc.evening.night_minus_evening, 0)} MW more than the night, which the data rule out unless something else grew at night by as much. ` : `Charging all in the evening would fit the data too. `) +
+        (nightOut ? `All of it at night would have made the night ${fmt(sc.night.night_minus_evening, 0)} MW ahead, just outside the interval, so charging that leans to the night (or is spread over the day) fits best. ` : `Charging all at night, as spot-price contracts and timers encourage, fits the data. `) +
+        `A difference between two blocks of hours is the most this can say: the cars cannot be separated from everything else that grew in the same year.`));
+      $("car-method").textContent = `Fleet: Traficom's cars and vans in traffic in mainland Finland by driving power, quarterly (battery electric; petrol and diesel plug-in hybrids). Kilometres: mean odometer at the first periodic inspection (age ${d.km.age}, when every car is inspected) divided by ${d.km.age}; vans are assumed to drive like cars. Cars added over the year: fleet at the middle of the later year minus at the middle of the earlier (${k(d.earlier.fleet_mid.bev)} → ${k(d.later.fleet_mid.bev)} battery electric), times km and kWh. Growth by hour: OLS of hourly consumption on 24 hour-of-day × later-year terms with hour, weekday and month fixed effects, heating degrees by quarter of the day and their 24-hour mean, sun elevation and holidays; Newey-West 95% intervals over 24 hours. ${fmt(d.earlier.hours)} and ${fmt(d.later.hours)} hours with boiler data.`;
+    }
+
     function renderSql(src) {
       if (!src) return;
       const map = {
@@ -3185,7 +3281,8 @@ make test</pre>
         "sql/analysis/27_hydrology_state.sql": "sql-27", "src/hydro_flex.py": "code-hf",
         "sql/analysis/28_consumption_hourly.sql": "sql-28", "src/strike_effect.py": "code-st",
         "sql/analysis/29_price_wind_panel.sql": "sql-29", "src/price_wind.py": "code-pw",
-        "sql/analysis/30_europe_comparison.sql": "sql-30", "src/europe.py": "code-eu"
+        "sql/analysis/30_europe_comparison.sql": "sql-30", "src/europe.py": "code-eu",
+        "sql/analysis/31_consumption_boilers_hourly.sql": "sql-31", "src/ev_charging.py": "code-ev"
       };
       src.files.forEach(f => {
         const d = $(map[f.path]); if (!d) return;
@@ -3202,14 +3299,14 @@ make test</pre>
 
     /* ───────── 5. BOOTSTRAP DATA PIPELINE ───────── */
     (async function main() {
-      const files = ["fingrid_recent_daily", "forecast_scorecard", "co2_forecast", "grid_events", "temperature", "wind_allocation", "forecast_ranges", "sql_sources", "engineering", "weather_model", "weather_lead_time", "hydro_flex", "strike_effect", "price_wind", "europe"];
-      const [recent, scorecard, co2, events, temperature, windAlloc, ranges, sql, eng, weatherModel, leadTime, hydroFlex, strikes, priceWind, europe] = await Promise.all(files.map(f => safe(getJSON(`data/${f}.json`))));
+      const files = ["fingrid_recent_daily", "forecast_scorecard", "co2_forecast", "grid_events", "temperature", "wind_allocation", "forecast_ranges", "sql_sources", "engineering", "weather_model", "weather_lead_time", "hydro_flex", "strike_effect", "price_wind", "europe", "ev_charging"];
+      const [recent, scorecard, co2, events, temperature, windAlloc, ranges, sql, eng, weatherModel, leadTime, hydroFlex, strikes, priceWind, europe, evCharging] = await Promise.all(files.map(f => safe(getJSON(`data/${f}.json`))));
       safe(getJSON("data/fingrid_latest.json", { cache: "no-store" })).then(renderLatestTicker);
 
       const failed = (data, file, id) => { if (!data && id) $(id).textContent = `data/${file}.json could not be loaded; the rest of the page still works.`; };
       [[scorecard, "forecast_scorecard", "fc-error"], [co2, "co2_forecast", "co2-error"], [events, "grid_events", "ev-error"],
        [temperature, "temperature", "cold-error"], [windAlloc, "wind_allocation", "wa-error"], [ranges, "forecast_ranges", "rg-error"],
-       [weatherModel, "weather_model", "wm-error"], [hydroFlex, "hydro_flex", "hf-error"], [strikes, "strike_effect", "st-error"], [priceWind, "price_wind", "pw-error"], [europe, "europe", "eu-error"]].forEach(([d, f, id]) => failed(d, f, id));
+       [weatherModel, "weather_model", "wm-error"], [hydroFlex, "hydro_flex", "hf-error"], [strikes, "strike_effect", "st-error"], [priceWind, "price_wind", "pw-error"], [europe, "europe", "eu-error"], [evCharging, "ev_charging", "car-error"]].forEach(([d, f, id]) => failed(d, f, id));
       if (eng) { datasetCount = eng.datasets; document.querySelectorAll(".n-datasets").forEach(n => { n.textContent = eng.datasets; }); }
       if (!recent) $("hero-tile-copy").textContent = "data/fingrid_recent_daily.json could not be loaded.";
 
@@ -3226,6 +3323,7 @@ make test</pre>
       renderStrikes(strikes);
       renderPriceWind(priceWind);
       renderEurope(europe);
+      renderEv(evCharging);
       renderEngineering(eng);
       renderSql(sql);
 
