@@ -22,6 +22,12 @@ Hourly power data is autocorrelated, so the 95 % intervals use Newey-West
 (HAC) standard errors with a Bartlett kernel over 24 hourly lags; plain OLS
 intervals would be several times too narrow.
 
+breakdown() then asks which border the lower imports come from and which
+plants make room: the same regression on each border's measured import and on
+each kind of plant, fitted on the hours where all of them are known. OLS is
+linear in the response, so the border shares add up to the import share and
+the plant shares to the other-production share of those same hours exactly.
+
 These are associations after controlling for weather and the calendar, not
 proven causal effects: wind is close to exogenous (the weather decides it),
 nuclear output less so (outages are planned around demand and prices).
@@ -35,6 +41,9 @@ HEATING_BALANCE_C = 15.0        # from the weekday fit in sql/analysis/23_temper
 HAC_LAGS = 24
 DRIVERS = ("wind_mw", "nuclear_mw")
 RESPONSES = ("net_import_mw", "hydro_mw", "other_mw", "consumption_mw")
+BORDERS = ("import_sweden_north_mw", "import_sweden_central_mw", "import_estonia_mw", "import_norway_mw",
+           "import_unmeasured_mw")
+PLANTS = ("chp_district_heating_mw", "chp_industrial_mw", "reserve_and_small_mw", "other_rest_mw")
 SEASONS = {"winter": (12, 1, 2), "spring": (3, 4, 5), "summer": (6, 7, 8), "autumn": (9, 10, 11)}
 Z95 = 1.959964
 
@@ -111,3 +120,12 @@ def by_season(rows: list[dict]) -> dict:
         if len(part) >= 24 * 30:
             out[season] = fit(part)
     return out
+
+
+def breakdown(rows: list[dict], min_hours: int = 24 * 300) -> dict | None:
+    """Wind and nuclear coefficients of every border and plant column, plus their parents
+    (net_import_mw, other_mw), on the hours where all of them are present."""
+    part = [r for r in rows if all(r.get(k) is not None for k in BORDERS + PLANTS)]
+    if len(part) < min_hours:
+        return None
+    return fit(part, ("net_import_mw", "other_mw") + BORDERS + PLANTS)

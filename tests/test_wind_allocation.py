@@ -5,6 +5,7 @@ REGRESSION tests on synthetic data with a known answer (no database):
   - the fixed-effects regression recovers the shares that generated the data
   - the shares of +1 MW add up to 1, as Fingrid's definition of consumption demands
   - Newey-West intervals are wider than plain OLS ones when errors are autocorrelated
+  - the border and plant shares add up to the import and other-production shares
 
 INTEGRATION test on the warehouse (skipped until 191, 194 and 398 are synced):
   - sql/analysis/24_wind_allocation_panel.sql balances every hour exactly, and
@@ -79,6 +80,24 @@ def test_newey_west_widens_intervals_when_errors_are_autocorrelated():
     assert hac_se > 1.5 * ols_se
 
 
+@pytest.mark.regression
+def test_border_and_plant_shares_add_up_to_their_parents():
+    rng = np.random.default_rng(5)
+    rows = _synthetic(seed=9)
+    for r in rows:
+        split_import = rng.dirichlet(np.ones(4)) * 0.97
+        r.update({k: r["net_import_mw"] * w for k, w in zip(wa.BORDERS[:4], split_import)})
+        r["import_unmeasured_mw"] = r["net_import_mw"] - sum(r[k] for k in wa.BORDERS[:4])
+        r.update({"chp_district_heating_mw": 0.3 * r["other_mw"] + rng.normal(0, 50),
+                  "chp_industrial_mw": 0.5 * r["other_mw"] + rng.normal(0, 50), "reserve_and_small_mw": rng.normal(80, 5)})
+        r["other_rest_mw"] = r["other_mw"] - r["chp_district_heating_mw"] - r["chp_industrial_mw"] - r["reserve_and_small_mw"]
+    fitted = wa.breakdown(rows, min_hours=24 * 30)
+    coef = lambda k: fitted["responses"][k]["wind_mw"]["coef"]
+    assert sum(coef(k) for k in wa.BORDERS) == pytest.approx(coef("net_import_mw"), abs=1e-9)
+    assert sum(coef(k) for k in wa.PLANTS) == pytest.approx(coef("other_mw"), abs=1e-9)
+    assert wa.breakdown(rows[:100], min_hours=24 * 30) is None
+
+
 @pytest.mark.integration
 def test_hourly_panel_balances_every_hour(db):
     from analysis_window import default_window
@@ -98,3 +117,10 @@ def test_hourly_panel_balances_every_hour(db):
     measured = [(r["net_import_mw"], r["net_import_measured_mw"]) for r in rows if r["net_import_measured_mw"] is not None]
     a, b = np.array(measured, dtype=float).T
     assert np.corrcoef(a, b)[0, 1] > 0.99
+    detail = [r for r in rows if all(r[k] is not None for k in wa.BORDERS + wa.PLANTS)]
+    for r in detail:
+        assert sum(r[k] for k in wa.BORDERS) == pytest.approx(r["net_import_mw"], abs=1e-6)
+        assert sum(r[k] for k in wa.PLANTS) == pytest.approx(r["other_mw"], abs=1e-6)
+    if len(detail) >= 24 * 30:
+        unmeasured = np.array([abs(r["import_unmeasured_mw"]) for r in detail], dtype=float)
+        assert np.median(unmeasured) < 100        # the four measured borders carry nearly all the trade
