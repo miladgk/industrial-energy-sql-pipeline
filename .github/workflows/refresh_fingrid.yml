@@ -149,6 +149,12 @@ jobs:
           fi
           python src/entsoe_prices.py fetch || { echo "::warning::ENTSO-E prices were not updated."; exit 1; }
 
+      # Ember's monthly European prices and generation (CC BY 4.0, no key; about 5 MB). Ember keeps the
+      # history, so it is fetched fresh, not archived; if it fails, the export keeps the published europe.json.
+      - name: Fetch Ember's European electricity data
+        continue-on-error: true
+        run: python src/ember.py fetch || { echo "::warning::Ember data was not fetched."; exit 1; }
+
       # history_from reaches the script only through the environment (no script injection),
       # and argparse accepts nothing but a YYYY-MM-DD date.
       - name: Sync from Fingrid

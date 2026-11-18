@@ -25,6 +25,7 @@ every day, and answers questions no single chart does:
 | Does hydro make more room for wind when its reservoirs are full? | The opposite. Over three years, with five reservoir and lake levels against their 2000-2022 norm for the date (SYKE): on the driest tenth of days hydro absorbs 16% of each extra MW of wind (15-17%), on the fullest tenth 9% (8-11%). Full reservoirs must release water; low ones save it. Imports take about 55% whatever the water. | `sql/analysis/27`, `src/hydro_flex.py` |
 | How much electricity did the 2024 strikes take away? | The four-week ports and transport strike (11 Mar - 7 Apr 2024, paper and pulp mills shut) cut consumption by 1,148 MW on average, 11% or 769 GWh, against a counterfactual of weather and calendar; no strike-free placebo period comes close. The two short February strikes show drops too (-922 and -598 MW) but are within the model's ordinary error (p = 0.05 and 0.10). Month by month, industrial output (Statistics Finland) shows no measurable link to the consumption weather and calendar leave unexplained once the shared trend is removed (r of changes -0.18, t = 0.33; 35 months, so a small effect could go undetected). | `sql/analysis/28`, `src/strike_effect.py` |
 | Does wind make electricity cheaper? | Yes. Over three years of ENTSO-E day-ahead prices, each extra GW of Fingrid's day-ahead wind forecast goes with a Finnish price 18.5 €/MWh lower (95% interval 17.4-19.5), holding weather, calendar, demand, nuclear and the reservoirs fixed; 17.9 with spikes clipped. Not a straight line: the median falls from 69 €/MWh below 1 GW to 30 at 2-3 GW, then flattens near zero. The effect is larger when the reservoirs are full (20.8 vs 17.2 €/MWh per GW, p = 0.004), consistent with the hydrology finding. Above 6 GW Finland is cheaper than northern Sweden in 56% of hours (3% below 1 GW). Wind earned 66% of the average price in 2024 and 55% in 2025. | `sql/analysis/29`, `src/price_wind.py` |
+| How does Finland compare with the rest of Europe? | Over the last twelve complete months (Nov 2025 - Oct 2026) Finland had the lowest average wholesale price of the 27 European countries with complete data (55.5 €/MWh; EU countries weighted by demand: 106.5) and the 4th cleanest electricity (74 gCO2e/kWh; EU 221), but only the 19th largest wind and solar share (28%): nuclear (38%) and hydro (16%) do much of the work. Across countries dirtier electricity tends to be dearer (rank correlation 0.42, p = 0.03); wind and solar share alone shows no clear link (-0.33, p = 0.09). Ember's monthly Finnish price matches the warehouse's hourly ENTSO-E prices to 0.18 €/MWh on average (plain mean; Ember says load-weighted, but the load-weighted mean is 0.97 away). | `sql/analysis/30`, `src/europe.py` |
 
 Numbers as of November 2026; the site always shows the current ones.
 
@@ -145,6 +146,7 @@ whole). `tests/test_performance.py` checks the plans with EXPLAIN in CI.
 | Weather forecasts (Open-Meteo Previous Runs API, CC BY 4.0, no key) | temperature and 100 m wind speed forecast 48 h ahead for the eight places above and seven wind-farm areas, every hour since September 2025; only hours whose 48-hour-old run was certainly out are stored |
 | Hydrology (SYKE Hydrology API, CC BY 4.0; NVE, NLOD; no key) | daily water levels of Lokka, Porttipahta, Oulujärvi, Saimaa and Näsijärvi, discharge of the unregulated Tornionjoki and snow water equivalent of three basins since 2000; weekly Norwegian reservoir filling per price area since 1995 (`src/hydrology.py`, table `hydrology_daily`). Discharge below regulated plants is left out on purpose: it is what the plants chose to release |
 | Day-ahead prices (ENTSO-E Transparency Platform; free token) | EUR/MWh for Finland and the four zones it is connected to (SE1, SE3, EE, NO4) since November 2023, at the resolution they cleared at: hourly until 30 September 2025, 15 minutes since (`src/entsoe_prices.py`, table `entsoe_price`) |
+| Europe (Ember, CC BY 4.0, no key) | monthly wholesale day-ahead prices for 34 European countries since 2015 and monthly generation and life-cycle emissions by source for those countries and the EU (`src/ember.py`, tables `ember_area`, `ember_generation`, `ember_price`; fetched fresh every day) |
 | Calendar (computed) | Finnish public holidays (Easter by the Meeus algorithm), eves, bridge days, the Christmas period, July, the sun's elevation (`src/finnish_calendar.py`) |
 
 Listed with their purpose in `src/fingrid_catalog.py`.
@@ -171,6 +173,7 @@ All logic lives in SQL; the API, the reports and the dashboard export run the sa
 | `sql/analysis/25_forecast_errors_hourly.sql` + `src/forecast_ranges.py` | Fingrid's day-ahead forecasts next to what happened; split conformal ranges (global, by hour, Mondrian by hour block x forecast level, adaptive conformal inference), each day calibrated on the 90 days ending two days before it and replayed as a backtest (coverage, width, interval score) | `LEFT JOIN` for the future, `VALUES` pairs; numpy |
 | `sql/analysis/28_consumption_hourly.sql` + `src/strike_effect.py` | hourly consumption with measured temperature; gradient-boosted counterfactual trained outside the strikes (+/- 3 days); effect = measured - counterfactual; placebo test refitted on 40 strike-free periods of equal length; monthly residual against Statistics Finland's industrial output index, tested on levels, on month-to-month changes and with a trend | `FILTER` pivot, completeness rules; scikit-learn, pandas |
 | `sql/analysis/29_price_wind_panel.sql` + `src/price_wind.py` | hourly prices of FI and its neighbours with Fingrid's day-ahead forecasts, every series averaged weighted by slot length (hourly and 15-minute data mix); the Finnish price regressed on forecast wind, wind x reservoir storage, forecast consumption, nuclear and heating with hour, weekday, month and year fixed effects and Newey-West intervals; price and coupling with SE1 by GW of wind; the wind-weighted price per year | duration-weighted aggregation, `UNION ALL` of two sources; numpy |
+| `sql/analysis/30_europe_comparison.sql` + `src/europe.py` | per country over any window of months: mean price, life-cycle emissions / generation, wind + solar, clean, nuclear, hydro and fossil shares, net imports / demand, and whether every month is present; run for the last twelve complete months and for every year; Spearman correlations with permutation p-values; Ember's Finnish price checked against the hourly ENTSO-E archive | `FILTER` aggregation, `NULLIF` guards, month arithmetic with `age()` |
 | `sql/analysis/27_hydrology_state.sql` + `src/hydro_flex.py` | each reservoir level and the Tornionjoki's log discharge as a z-score against the 2000-2022 norm for the same date (pooled +/- 7 days); the hourly balance regressed on wind, wind x storage and wind x inflow of the day before, with hour, weekday, month and year fixed effects and Newey-West intervals; shares at the 10th/50th/90th percentile of storage, and a check by thirds of days | window-pooled seasonal norms, `LATERAL`; numpy |
 | `sql/analysis/26_weather_model_panel.sql` + `src/weather_model.py` | per hour: actuals, Fingrid's day-ahead forecasts, wind capacity and the two-day-old weather at 15 places; gradient-boosted trees (weather + calendar; and a regularised correction of Fingrid's forecast) in a weekly-refit rolling-origin backtest with Diebold-Mariano tests; Fingrid's error by kind of day. `scripts/weather_lead_time.py` replays it with 24-hour-old and the newest weather | `FILTER` pivot over two tables; scikit-learn, pandas |
 | `sql/etl/02_data_quality_checks.sql` | default partition empty, no empty or stale dataset, 30-day coverage, 0 Hz gap markers | |
@@ -204,7 +207,7 @@ a server.
 
 ## Tests
 
-209 tests in eight layers, all run in CI on Python 3.11/3.12 and PostgreSQL 14/15/16,
+215 tests in eight layers, all run in CI on Python 3.11/3.12 and PostgreSQL 14/15/16,
 against the restored real warehouse:
 
 | Layer | What it guards |
@@ -265,8 +268,8 @@ For the daily workflow on a fork, add the key as the repository secret
 ├── sql/
 │   ├── schema/                 # 13 warehouse, 14 CO2 model, 15 event detector, 16 forecast archive,
 │   │                           # 17 hydrology, 18 dataset summary for /api/datasets,
-│   │                           # 19 ENTSO-E day-ahead prices
-│   ├── analysis/               # 13-29, one query per file
+│   │                           # 19 ENTSO-E day-ahead prices, 20 Ember
+│   ├── analysis/               # 13-30, one query per file
 │   └── etl/02_data_quality_checks.sql
 ├── src/
 │   ├── fingrid_api.py          # API client (key, paging, retries, 429 back-off)
@@ -288,6 +291,8 @@ For the daily workflow on a fork, add the key as the repository secret
 │   ├── hydro_flex.py           # does hydro's share of extra wind depend on the water?
 │   ├── strike_effect.py        # counterfactual consumption, placebo test, trend-aware monthly check
 │   ├── price_wind.py           # does wind make electricity cheaper? per GW, by storage, capture price
+│   ├── ember.py                # Ember's European prices, generation and emissions
+│   ├── europe.py               # Finland in Europe: ranks, rank correlations, price check
 │   ├── db_connection.py
 │   └── api.py                  # FastAPI
 └── tests/                      # eight layers + load/locustfile.py
@@ -300,4 +305,5 @@ Data: [Fingrid Open Data](https://data.fingrid.fi), licensed
 [Open-Meteo.com](https://open-meteo.com/) and the [Finnish Meteorological Institute](https://en.ilmatieteenlaitos.fi/open-data),
 both CC BY 4.0. Water data by [SYKE](https://www.syke.fi/en) (CC BY 4.0) and
 [NVE](https://www.nve.no/) (NLOD). Industrial output by [Statistics Finland](https://stat.fi/en/statistics/ttvi)
-(CC BY 4.0). Day-ahead prices from the [ENTSO-E Transparency Platform](https://transparency.entsoe.eu/). Code: MIT.
+(CC BY 4.0). Day-ahead prices from the [ENTSO-E Transparency Platform](https://transparency.entsoe.eu/). European data by
+[Ember](https://ember-energy.org/data/) (CC BY 4.0). Code: MIT.

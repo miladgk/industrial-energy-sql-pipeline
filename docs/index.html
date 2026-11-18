@@ -1465,6 +1465,7 @@
         <button type="button" class="dtab" role="tab" data-pane="pane-strikes" aria-selected="false">Strikes 2024</button>
         <button type="button" class="dtab" role="tab" data-pane="pane-wind" aria-selected="false">Wind balance</button>
         <button type="button" class="dtab" role="tab" data-pane="pane-price" aria-selected="false">Wind &amp; price</button>
+        <button type="button" class="dtab" role="tab" data-pane="pane-europe" aria-selected="false">Europe</button>
         <button type="button" class="dtab" role="tab" data-pane="pane-craft" aria-selected="false">Engineering</button>
       </nav>
 
@@ -2020,12 +2021,70 @@
           <p class="note" id="pw-method"></p>
           <p class="note">Prices: <a href="https://transparency.entsoe.eu/" rel="noopener">ENTSO-E Transparency Platform</a>.</p>
           <p id="pw-error" class="load-error" role="alert" style="color:var(--fault)"></p>
+          <button type="button" class="inspect-btn" data-open-drawer="pane-europe">
+            <span>How Finland's price compares with the rest of Europe</span>
+            <span class="tag">Details →</span>
+          </button>
           <details class="sql" id="sql-29">
             <summary>Inspect SQL · sql/analysis/29_price_wind_panel.sql</summary>
             <pre>Loading…</pre>
           </details>
           <details class="sql" id="code-pw">
             <summary>Inspect Python · src/price_wind.py</summary>
+            <pre>Loading…</pre>
+          </details>
+        </div>
+
+        <!-- PANE: FINLAND IN EUROPE -->
+        <div class="drawer-pane" id="pane-europe">
+          <h4 style="margin-top:0">Finland in Europe</h4>
+          <p class="note" id="eu-intro"></p>
+          <div class="kpis-3" id="eu-kpis"></div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Country</th>
+                  <th class="r">Price €/MWh</th>
+                  <th class="r" title="Life-cycle emissions per kWh generated">gCO₂/kWh</th>
+                  <th class="r">Wind + solar</th>
+                </tr>
+              </thead>
+              <tbody id="eu-table">
+                <tr>
+                  <td colspan="4">Loading…</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="note" id="eu-incomplete"></p>
+          <p class="takeaway" id="eu-takeaway"></p>
+
+          <h4>Finland and the EU, year by year</h4>
+          <p class="range-cap">Wholesale price, €/MWh (EU: countries weighted by demand)</p>
+          <div style="height:170px; margin:4px 0 8px;"><svg id="eu-price-chart" class="chart"
+              aria-label="Yearly wholesale price, Finland and the EU"></svg></div>
+          <p class="range-cap">Carbon intensity of generation, gCO₂/kWh</p>
+          <div style="height:170px; margin:4px 0 8px;"><svg id="eu-co2-chart" class="chart"
+              aria-label="Yearly carbon intensity of generation, Finland and the EU"></svg></div>
+          <div class="legend"><span><i style="background:var(--rec)"></i>Finland</span><span><i
+                style="background:var(--ink-2)"></i>EU (dashed)</span></div>
+          <p class="takeaway" id="eu-years-takeaway"></p>
+
+          <h4>Does Ember agree with this warehouse?</h4>
+          <p class="note" id="eu-check"></p>
+
+          <h4>How it works</h4>
+          <p class="note" id="eu-method"></p>
+          <p class="note">Data: <a href="https://ember-energy.org/data/" rel="noopener">Ember</a> (CC BY 4.0), monthly
+            electricity data and European wholesale electricity price data.</p>
+          <p id="eu-error" class="load-error" role="alert" style="color:var(--fault)"></p>
+          <details class="sql" id="sql-30">
+            <summary>Inspect SQL · sql/analysis/30_europe_comparison.sql</summary>
+            <pre>Loading…</pre>
+          </details>
+          <details class="sql" id="code-eu">
+            <summary>Inspect Python · src/europe.py</summary>
             <pre>Loading…</pre>
           </details>
         </div>
@@ -3061,6 +3120,59 @@ make test</pre>
       $("pw-method").textContent = `Model: ${d.model} Each extra GW of forecast consumption raises the price by ${eur(d.consumption_per_gw.eur_per_gw)} (${fmt(d.consumption_per_gw.ci_low, 1)}–${fmt(d.consumption_per_gw.ci_high, 1)}), for scale. R² = ${fmt(d.r2, 2)}. Two zones count as the same price when they differ by at most half a cent per MWh. Since October 2025 the auction sets 15-minute prices; they are averaged to the hour.`;
     }
 
+    /* Finland in Europe (Ember) */
+    function renderEurope(d) {
+      if (!d || !d.countries) return;
+      const monthFmt = iso => new Date(iso + "T12:00:00Z").toLocaleDateString("en-GB", { month: "short", year: "numeric", timeZone: "UTC" });
+      const ord = n => `${n}${n % 10 === 1 && n % 100 !== 11 ? "st" : n % 10 === 2 && n % 100 !== 12 ? "nd" : n % 10 === 3 && n % 100 !== 13 ? "rd" : "th"}`;
+      const span = `${monthFmt(d.window_first_month)} – ${monthFmt(d.window_last_month)}`;
+      const fi = d.countries.find(c => c.area === "Finland"), rk = d.finland_rank;
+      $("eu-intro").textContent = `The last twelve complete months (${span}) for the ${rk.of} European countries with a price and generation data for every month: the average day-ahead wholesale price, the life-cycle emissions per kWh generated, and the share of wind and solar. Sorted by price.`;
+      $("eu-kpis").replaceChildren(
+        kpi(`${ord(rk.price_eur_mwh)} of ${rk.of}`, `cheapest wholesale price: ${fmt(fi.price, 1)} €/MWh (EU ${fmt(d.eu.price_demand_weighted, 1)})`),
+        kpi(`${fmt(fi.intensity, 0)} g`, `CO₂ per kWh generated (EU ${fmt(d.eu.intensity, 0)} g), ${ord(rk.intensity_g_kwh)} cleanest`),
+        kpi(pct(fi.wind_solar), `wind and solar, ${ord(rk.wind_solar_share)} of ${rk.of}: the rest is mostly nuclear (${pct(fi.nuclear)}) and hydro (${pct(fi.hydro)})`),
+      );
+      const maxP = Math.max(...d.countries.map(c => c.price));
+      $("eu-table").replaceChildren(...d.countries.map(c => {
+        const me = c.area === "Finland";
+        const tr = el("tr", me ? { style: "background:var(--surface-2);font-weight:600" } : {});
+        const price = el("td", { class: "r" });
+        price.append(document.createTextNode(fmt(c.price, 1)), el("span", {
+          style: `display:block;height:4px;border-radius:2px;margin-top:3px;margin-left:auto;width:${Math.max(4, 100 * c.price / maxP)}%;background:var(--rec)`
+        }));
+        tr.append(el("td", {}, c.area), price, el("td", { class: "r" }, fmt(c.intensity, 0)), el("td", { class: "r" }, pct(c.wind_solar)));
+        return tr;
+      }));
+      $("eu-incomplete").textContent = d.incomplete.length ? `Left out for missing months: ${d.incomplete.join(", ")}.` : "";
+      const cr = d.correlations, sig = x => x.p_value < 0.05;
+      $("eu-takeaway").replaceChildren(el("b", {}, "Takeaway: "), document.createTextNode(
+        `Over these twelve months Finland had the ${rk.price_eur_mwh === 1 ? "lowest" : `${ord(rk.price_eur_mwh)} lowest`} wholesale price of the ${rk.of} countries, with electricity about ${fmt(d.eu.intensity / fi.intensity, 1)} times cleaner than the EU's. Its wind and solar share is only middling: low-carbon Finland rests on nuclear and hydro as well as wind. ` +
+        `Across the ${cr.intensity_g_kwh.n} countries, dirtier electricity tends to be more expensive (rank correlation ${fmt(cr.intensity_g_kwh.r, 2)}, p = ${fmt(cr.intensity_g_kwh.p_value, 3)}${sig(cr.intensity_g_kwh) ? "" : ", could be chance"}), ` +
+        `but a larger wind and solar share alone ${sig(cr.wind_solar_share) ? "also goes with lower prices" : "does not clearly go with lower prices"} (${fmt(cr.wind_solar_share.r, 2)}, p = ${fmt(cr.wind_solar_share.p_value, 2)}). Countries differ in everything at once (hydro, nuclear, links to neighbours, gas), so this describes Europe; it does not show what would happen to one country's price if it changed its mix.`));
+      const ys = d.years;
+      const yearChart = (svg, fiKey, euKey, unit, digits) => lineChart($(svg), {
+        height: 160, forceZero: true, directLabels: false, yUnit: unit,
+        series: [
+          { name: "Finland", short: "Finland", values: ys.map(y => y[fiKey]), color: "var(--rec)", width: 2 },
+          { name: "EU", short: "EU", values: ys.map(y => y[euKey]), color: "var(--ink-2)", width: 1.6, dash: "4 3" },
+        ],
+        labels: ys.map(y => String(y.year)),
+        xTick: (i, l) => (ys.length > 8 && i % 2) ? null : l,
+        tipTitle: l => l, tipValue: v => `${fmt(v, digits)} ${unit}`,
+      });
+      yearChart("eu-price-chart", "fi_price", "eu_price", "€/MWh", 1);
+      yearChart("eu-co2-chart", "fi_intensity", "eu_intensity", "g/kWh", 0);
+      const first = ys.find(y => y.eu_intensity != null), lastY = ys[ys.length - 1];
+      const widest = ys.filter(y => y.eu_price != null).reduce((a, y) => (y.eu_price - y.fi_price > a.eu_price - a.fi_price ? y : a));
+      $("eu-years-takeaway").replaceChildren(el("b", {}, "Takeaway: "), document.createTextNode(
+        `Since ${first.year} the carbon intensity of Finnish generation fell from ${fmt(first.fi_intensity, 0)} to ${fmt(lastY.fi_intensity, 0)} g/kWh (EU: ${fmt(first.eu_intensity, 0)} to ${fmt(lastY.eu_intensity, 0)}), as wind and solar rose from ${pct(first.fi_wind_solar)} to ${pct(lastY.fi_wind_solar)} of generation and Olkiluoto 3 started in 2023. ` +
+        `Finland's price was below the EU's in ${ys.filter(y => y.eu_price != null && y.fi_price < y.eu_price).length} of ${ys.filter(y => y.eu_price != null).length} years, by the widest margin in ${widest.year} (${fmt(widest.fi_price, 0)} vs ${fmt(widest.eu_price, 0)} €/MWh); in ${lastY.year} it ranked ${ord(lastY.fi_price_rank)} cheapest of ${lastY.countries}.`));
+      const ck = d.price_check;
+      $("eu-check").textContent = `Ember's monthly price for Finland against the hourly ENTSO-E prices in this warehouse, ${monthFmt(ck.first)} – ${monthFmt(ck.last)} (${ck.months} months): the plain mean of the hours differs from Ember's figure by ${fmt(ck.mean_abs_diff_plain, 2)} €/MWh on average (at most ${fmt(ck.max_abs_diff_plain, 2)}). Ember describes its monthly prices as weighted by load, but weighting the hours by Finnish consumption moves them further away (${fmt(ck.mean_abs_diff_load_weighted, 2)} €/MWh on average), so for Finland Ember's figure behaves like the plain mean. Both come from ENTSO-E, so this checks that the two pipelines agree, not that either is independently right.`;
+      $("eu-method").textContent = `Price: mean of Ember's monthly day-ahead prices (for countries with several bidding zones, such as Sweden, Norway, Denmark and Italy, Ember's national figure; how it combines the zones is not documented). Carbon intensity: Ember's life-cycle emissions of all generation divided by generation, so imports do not count. Wind + solar: share of generation. EU price: the EU countries' prices weighted by their demand (Ember publishes no EU price). Rank correlations are Spearman's, with p-values from 10,000 shuffles.`;
+    }
+
     function renderSql(src) {
       if (!src) return;
       const map = {
@@ -3072,7 +3184,8 @@ make test</pre>
         "sql/analysis/26_weather_model_panel.sql": "sql-26", "src/weather_model.py": "code-wm",
         "sql/analysis/27_hydrology_state.sql": "sql-27", "src/hydro_flex.py": "code-hf",
         "sql/analysis/28_consumption_hourly.sql": "sql-28", "src/strike_effect.py": "code-st",
-        "sql/analysis/29_price_wind_panel.sql": "sql-29", "src/price_wind.py": "code-pw"
+        "sql/analysis/29_price_wind_panel.sql": "sql-29", "src/price_wind.py": "code-pw",
+        "sql/analysis/30_europe_comparison.sql": "sql-30", "src/europe.py": "code-eu"
       };
       src.files.forEach(f => {
         const d = $(map[f.path]); if (!d) return;
@@ -3089,14 +3202,14 @@ make test</pre>
 
     /* ───────── 5. BOOTSTRAP DATA PIPELINE ───────── */
     (async function main() {
-      const files = ["fingrid_recent_daily", "forecast_scorecard", "co2_forecast", "grid_events", "temperature", "wind_allocation", "forecast_ranges", "sql_sources", "engineering", "weather_model", "weather_lead_time", "hydro_flex", "strike_effect", "price_wind"];
-      const [recent, scorecard, co2, events, temperature, windAlloc, ranges, sql, eng, weatherModel, leadTime, hydroFlex, strikes, priceWind] = await Promise.all(files.map(f => safe(getJSON(`data/${f}.json`))));
+      const files = ["fingrid_recent_daily", "forecast_scorecard", "co2_forecast", "grid_events", "temperature", "wind_allocation", "forecast_ranges", "sql_sources", "engineering", "weather_model", "weather_lead_time", "hydro_flex", "strike_effect", "price_wind", "europe"];
+      const [recent, scorecard, co2, events, temperature, windAlloc, ranges, sql, eng, weatherModel, leadTime, hydroFlex, strikes, priceWind, europe] = await Promise.all(files.map(f => safe(getJSON(`data/${f}.json`))));
       safe(getJSON("data/fingrid_latest.json", { cache: "no-store" })).then(renderLatestTicker);
 
       const failed = (data, file, id) => { if (!data && id) $(id).textContent = `data/${file}.json could not be loaded; the rest of the page still works.`; };
       [[scorecard, "forecast_scorecard", "fc-error"], [co2, "co2_forecast", "co2-error"], [events, "grid_events", "ev-error"],
        [temperature, "temperature", "cold-error"], [windAlloc, "wind_allocation", "wa-error"], [ranges, "forecast_ranges", "rg-error"],
-       [weatherModel, "weather_model", "wm-error"], [hydroFlex, "hydro_flex", "hf-error"], [strikes, "strike_effect", "st-error"], [priceWind, "price_wind", "pw-error"]].forEach(([d, f, id]) => failed(d, f, id));
+       [weatherModel, "weather_model", "wm-error"], [hydroFlex, "hydro_flex", "hf-error"], [strikes, "strike_effect", "st-error"], [priceWind, "price_wind", "pw-error"], [europe, "europe", "eu-error"]].forEach(([d, f, id]) => failed(d, f, id));
       if (eng) { datasetCount = eng.datasets; document.querySelectorAll(".n-datasets").forEach(n => { n.textContent = eng.datasets; }); }
       if (!recent) $("hero-tile-copy").textContent = "data/fingrid_recent_daily.json could not be loaded.";
 
@@ -3112,6 +3225,7 @@ make test</pre>
       renderHydroFlex(hydroFlex);
       renderStrikes(strikes);
       renderPriceWind(priceWind);
+      renderEurope(europe);
       renderEngineering(eng);
       renderSql(sql);
 

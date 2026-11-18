@@ -266,6 +266,19 @@ def test_price_pane_shows_wind_and_the_price(open_dashboard):
     expect(page.locator("#pw-chart path")).not_to_have_count(0)
     expect(page.locator("#pw-water")).to_contain_text(f"p = {d['storage_interaction']['p_value']:.3f}")
 
+
+def test_europe_pane_ranks_finland(open_dashboard):
+    d = _data("europe.json")
+    page = open_dashboard()
+    _open_pane(page, "pane-wind")
+    page.locator("#pane-wind [data-open-drawer=pane-price]").click()
+    page.locator("#pane-price [data-open-drawer=pane-europe]").click()
+    expect(page.locator("#pane-europe")).to_be_visible()
+    expect(page.locator("#eu-table tr")).to_have_count(len(d["countries"]))
+    expect(page.locator("#eu-kpis .kpi strong").first).to_contain_text(f"of {d['finland_rank']['of']}")
+    expect(page.locator("#eu-price-chart path")).not_to_have_count(0)
+    expect(page.locator("#eu-check")).to_contain_text(f"{d['price_check']['months']} months")
+
 def test_public_weather_pane_shows_the_backtest(open_dashboard):
     d = _data("weather_model.json")
     mw = lambda v: f"{js_round(v):,} MW"

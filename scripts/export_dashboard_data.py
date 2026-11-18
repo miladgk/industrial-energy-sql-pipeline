@@ -701,6 +701,88 @@ def export_price_wind() -> None:
     })
 
 
+EUROPE_SQL = "sql/analysis/30_europe_comparison.sql"
+FI_MONTHLY_PRICE_SQL = """
+    WITH p AS (
+        SELECT date_trunc('hour', start_time) AS h,
+               SUM(eur_mwh * EXTRACT(EPOCH FROM end_time - start_time)) / 3600 AS price
+        FROM entsoe_price WHERE area = 'FI'
+        GROUP BY 1 HAVING SUM(EXTRACT(EPOCH FROM end_time - start_time)) = 3600),
+    l AS (
+        SELECT date_trunc('hour', start_time) AS h, AVG(value) AS load
+        FROM fingrid_observation WHERE dataset_id = 124 GROUP BY 1 HAVING COUNT(*) = 4)
+    SELECT month, AVG(price) AS plain, SUM(price * load) / SUM(load) AS weighted, COUNT(*) AS hours
+    FROM (SELECT date_trunc('month', h AT TIME ZONE 'Europe/Helsinki')::date AS month, price, load
+          FROM p JOIN l USING (h)) x
+    WHERE month < date_trunc('month', now() AT TIME ZONE 'Europe/Helsinki')::date
+    GROUP BY month
+    HAVING COUNT(*) >= 24 * 28 - 1
+    ORDER BY month"""
+
+
+def export_europe() -> None:
+    """Finland in Europe: Ember's prices and generation, the last twelve complete months and every year."""
+    sys.path.insert(0, os.path.join(ROOT, "src"))
+    import europe as eu
+    from datetime import date
+
+    conn = _db()
+    try:
+        last = _rows(conn, "SELECT (SELECT max(month) FROM ember_generation WHERE area = 'Finland') AS gen, "
+                           "(SELECT max(month) FROM ember_price WHERE area = 'Finland') AS price")[0]
+        if not last["gen"] or not last["price"]:
+            print("::warning::europe: no Ember data loaded; europe.json left as it is.")
+            return
+        with open(os.path.join(ROOT, EUROPE_SQL), encoding="utf-8") as fh:
+            sql = fh.read()
+        start, end = eu.window(date.fromisoformat(last["gen"][:10]), date.fromisoformat(last["price"][:10]),
+                               datetime.now(timezone.utc).date())
+        rows = _rows(conn, sql, {"start": start, "end": end})
+        years = []
+        for y in range(2015, end.year + (1 if end.month == 12 else 0)):
+            yr = _rows(conn, sql, {"start": date(y, 1, 1), "end": date(y, 12, 1)})
+            fi = next((r for r in yr if r["area"] == eu.FINLAND and r["complete"]), None)
+            agg = next((r for r in yr if r["area"] == "EU"), None)
+            if fi:
+                years.append({"year": y, "fi_price": fi["price_eur_mwh"], "eu_price": eu.eu_price(yr),
+                              "fi_intensity": fi["intensity_g_kwh"], "eu_intensity": agg and agg["intensity_g_kwh"],
+                              "fi_wind_solar": fi["wind_solar_share"], "rank_price": eu.ranks(yr)})
+        ours = {date.fromisoformat(r["month"][:10]): (r["plain"], r["weighted"]) for r in _rows(conn, FI_MONTHLY_PRICE_SQL)}
+        ember = {date.fromisoformat(r["month"][:10]): r["eur_mwh"]
+                 for r in _rows(conn, "SELECT month, eur_mwh FROM ember_price WHERE area = 'Finland'")}
+    finally:
+        conn.close()
+    r1, r3 = (lambda v: None if v is None else round(float(v), 1)), (lambda v: None if v is None else round(float(v), 3))
+    agg = next(r for r in rows if r["area"] == "EU")
+    countries = [{"area": r["area"], "iso3": r["iso3"], "eu_member": r["eu_member"], "price": r1(r["price_eur_mwh"]),
+                  "intensity": r1(r["intensity_g_kwh"]), "wind_solar": r3(r["wind_solar_share"]),
+                  "clean": r3(r["clean_share"]), "nuclear": r3(r["nuclear_share"] or 0.0),
+                  "hydro": r3(r["hydro_share"] or 0.0), "net_import": r3(r["net_import_share"])}
+                 for r in rows if r["complete"] and r["area"] != "EU"]
+    check = eu.price_check(ours, {m: ember[m] for m in ember if m < datetime.now(timezone.utc).date().replace(day=1)})
+    _write("europe.json", {
+        "generated_at": _now(),
+        "source": "Ember (CC BY 4.0): monthly electricity data (generation and life-cycle emissions by source) "
+                  "and European wholesale electricity price data (day-ahead, from ENTSO-E); ENTSO-E Transparency "
+                  "Platform and Fingrid (124) for the price check",
+        "window_first_month": str(start), "window_last_month": str(end),
+        "countries": countries,
+        "incomplete": sorted(r["area"] for r in rows if not r["complete"] and r["area"] != "EU"),
+        "eu": {"price_demand_weighted": r1(eu.eu_price(rows)), "intensity": r1(agg["intensity_g_kwh"]),
+               "wind_solar": r3(agg["wind_solar_share"]), "clean": r3(agg["clean_share"])},
+        "finland_rank": eu.ranks(rows),
+        "correlations": {k: {"r": r3(v["r"]), "p_value": round(v["p_value"], 4), "n": v["n"]}
+                         for k, v in eu.correlations(rows).items()},
+        "years": [{"year": y["year"], "fi_price": r1(y["fi_price"]), "eu_price": r1(y["eu_price"]),
+                   "fi_intensity": r1(y["fi_intensity"]), "eu_intensity": r1(y["eu_intensity"]),
+                   "fi_wind_solar": r3(y["fi_wind_solar"]), "fi_price_rank": y["rank_price"]["price_eur_mwh"],
+                   "countries": y["rank_price"]["of"]} for y in years],
+        "price_check": {k: (r3(v) if isinstance(v, float) else v) for k, v in check.items()},
+        "sql": [EUROPE_SQL],
+        "code": ["src/europe.py", "src/ember.py"],
+    })
+
+
 WEATHER_MODEL_SQL = "sql/analysis/26_weather_model_panel.sql"
 WEATHER_RECORD_DAYS = 14
 
@@ -801,6 +883,8 @@ PAGE_SQL_FILES = [
     "src/strike_effect.py",
     "sql/analysis/29_price_wind_panel.sql",
     "src/price_wind.py",
+    "sql/analysis/30_europe_comparison.sql",
+    "src/europe.py",
 ]
 
 
@@ -917,12 +1001,13 @@ PARTS = {
     "weather-model": export_weather_model,
     "hydro-flex": export_hydro_flex,
     "price-wind": export_price_wind,
+    "europe": export_europe,
     "fingrid-latest": export_fingrid_latest,
     "sql": export_sql_sources,
     "engineering": export_engineering,
 }
 DAILY_PARTS = ["fingrid-recent", "forecast-scorecard", "co2-forecast", "grid-events", "temperature", "wind-allocation",
-               "forecast-ranges", "weather-model", "hydro-flex", "price-wind"]
+               "forecast-ranges", "weather-model", "hydro-flex", "price-wind", "europe"]
 
 
 def main() -> None:
