@@ -54,6 +54,17 @@ DATASETS = [
     # 194 is positive when Finland exports (checked: r = -0.998 against consumption - production)
     (194, "net_export",              "Net import/export of electricity - real-time data",           "MW",       "actual",    M3),
     (398, "battery_discharge",       "Battery energy storage systems discharging power - real-time data", "MW", "actual",   M3),
+    # Which border the extra wind leaves by, and which plants make room (sql/analysis/24).
+    # The 15-minute border series are the 3-minute ones (87, 89, 180, 187) averaged, at a fifth
+    # of the rows; positive = export from Finland, like 194, and the four add up to it.
+    # Russia (58) has carried no data since May 2022.
+    (55,  "flow_estonia",            "Transmission of electricity between Finland and Estonia - power measured every 15 minutes", "MWh/h", "actual", Q),
+    (57,  "flow_norway",             "Transmission of electricity between Finland and Norway - measured every 15 minutes", "MW", "actual", Q),
+    (60,  "flow_sweden_north",       "Transmission of electricity between Finland and Northern Sweden - power measured every 15 minutes", "MW", "actual", Q),
+    (61,  "flow_sweden_central",     "Transmission of electricity between Finland and Central Sweden - power measured every 15 minutes", "MW", "actual", Q),
+    (201, "chp_district_heating",    "Cogeneration of district heating - real-time data",          "MW",       "actual",    M3),
+    (202, "chp_industrial",          "Industrial cogeneration - real-time data",                   "MW",       "actual",    M3),
+    (205, "reserve_and_small",       "Electricity production, reserve power plants and small-scale production - real-time data", "MW", "actual", M3),
     # Weather: how much colder days raise consumption (sql/analysis/22-23)
     (178, "temp_helsinki",           "Temperature in Helsinki - real time data",                   "C",        "weather",   M3),
     (182, "temp_jyvaskyla",          "Temperature in Jyväskylä - real time data",                  "C",        "weather",   M3),

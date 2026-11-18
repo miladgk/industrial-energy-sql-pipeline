@@ -1099,6 +1099,20 @@
     }
 
     @media (max-width: 560px) {
+      .table-wrap td.r small {
+        display: block;
+      }
+
+      .table-wrap th,
+      .table-wrap td {
+        padding: 8px 8px;
+      }
+
+      .table-wrap th,
+      .table-wrap td:first-child {
+        white-space: normal;
+      }
+
       .wide-body {
         grid-template-columns: 1fr;
       }
@@ -1387,7 +1401,7 @@
 
         <div class="wide-body">
           <div class="mini-kpis">
-            <div class="mkpi"><strong id="mk-wa-imports">–</strong><span>of each extra MW of wind means lower imports</span></div>
+            <div class="mkpi"><strong id="mk-wa-imports">–</strong><span id="mk-wa-imports-label">of each extra MW of wind means lower imports</span></div>
             <div class="mkpi"><strong id="mk-wa-cons">–</strong><span>means higher consumption</span></div>
           </div>
           <div>
@@ -1699,6 +1713,46 @@
             </table>
           </div>
           <p class="takeaway" id="wa-season-takeaway"></p>
+
+          <h4>Which border, which plants</h4>
+          <p class="note" id="wa-detail-intro"></p>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Part</th>
+                  <th class="r">+1 MW wind</th>
+                  <th class="r">+1 MW nuclear</th>
+                </tr>
+              </thead>
+              <tbody id="wa-detail">
+                <tr>
+                  <td colspan="3">Loading…</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="takeaway" id="wa-detail-takeaway"></p>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Wind</th>
+                  <th class="r" title="Northern Sweden">SE1</th>
+                  <th class="r" title="Central Sweden">SE3</th>
+                  <th class="r" title="Estonia">EE</th>
+                  <th class="r" title="District-heating CHP">DH CHP</th>
+                  <th class="r" title="Industrial CHP">Ind CHP</th>
+                </tr>
+              </thead>
+              <tbody id="wa-detail-seasons">
+                <tr>
+                  <td colspan="6">Loading…</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="note">Share of +1 MW of wind, season by season. SE1 northern Sweden, SE3 central Sweden, EE Estonia; DH CHP district-heating and Ind CHP industrial combined heat and power.</p>
 
           <h4>How it is estimated</h4>
           <p class="note" id="wa-method"></p>
@@ -2400,12 +2454,16 @@ make test</pre>
       ["imports", "Lower imports", "--al-imports"], ["hydro", "Less hydro", "--al-hydro"],
       ["other", "Less other production", "--al-other"], ["consumption", "More consumption", "--al-cons"],
     ];
-    const pct = v => `${fmt(v * 100, 0)}%`;
+    const pct = v => `${fmt(Math.abs(v) < 0.005 ? 0 : v * 100, 0)}%`;   // no "-0%"
     const SEASON_NAMES = { winter: "Winter", spring: "Spring", summer: "Summer", autumn: "Autumn" };
     function renderWindAllocation(d) {
       if (!d || !d.wind) return;
       $("mk-wa-imports").textContent = pct(d.wind.imports.share);
       $("mk-wa-cons").textContent = pct(d.wind.consumption.share);
+      if (d.breakdown) {
+        const sweden = d.breakdown.wind.borders.sweden_north.share + d.breakdown.wind.borders.sweden_central.share;
+        $("mk-wa-imports-label").textContent = `of each extra MW of wind means lower imports, ${pct(sweden)} of it over the Swedish borders`;
+      }
 
       const rows = [
         { label: "Wind · year", shares: d.wind },
@@ -2470,7 +2528,50 @@ make test</pre>
         `wind pushes out the most other production (${pct(other.wind.other.share)}), when CHP plants run for district heating.`));
       $("wa-method").textContent = `${d.model} ${d.identity[0].toUpperCase() + d.identity.slice(1)}.`;
       const chk = d.net_import_check, bat = d.battery_per_mw_wind;
+      renderWindDetail(d.breakdown);
       $("wa-checks").textContent = `Checks: net imports computed from Fingrid's definition match the separately measured net export (194) with r = ${fmt(Math.abs(chk.r_identity_vs_measured_194), 4)} and a mean gap of ${fmt(chk.mean_difference_mw, 1)} MW. Battery discharge (398) barely reacts: ${fmt(bat.coef * 1000, 1)} kW per extra MW of wind.`;
+    }
+
+    const BORDER_NAMES = {
+      sweden_north: "Northern Sweden (SE1)", sweden_central: "Central Sweden (SE3)", estonia: "Estonia",
+      norway: "Norway", unmeasured: "Åland & metering gap",
+    };
+    const PLANT_NAMES = {
+      chp_district_heating: "District-heating CHP", chp_industrial: "Industrial CHP",
+      reserve_and_small: "Reserve & small-scale plants", rest: "Rest (condensing, solar, …)",
+    };
+    function renderWindDetail(b) {
+      if (!b) return;
+      const ci = c => `${pct(c.share)} <small style="color:var(--muted)">(${pct(c.ci_low)} to ${pct(c.ci_high)})</small>`;
+      const head = (label, key, color) => {
+        const tr = el("tr", { class: "group" }), td = el("td");
+        td.append(el("i", { style: `display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:7px;background:var(${color})` }), el("b", {}, label));
+        const a = el("td", { class: "r" }); a.innerHTML = `<b>${pct(b.wind.total[key].share)}</b>`;
+        const n = el("td", { class: "r" }); n.innerHTML = `<b>${pct(b.nuclear.total[key].share)}</b>`;
+        tr.append(td, a, n); return tr;
+      };
+      const lines = (group, names) => Object.entries(names).map(([k, name]) => {
+        const tr = el("tr"); tr.appendChild(el("td", { style: "padding-left:24px" }, name));
+        const a = el("td", { class: "r" }); a.innerHTML = ci(b.wind[group][k]);
+        const n = el("td", { class: "r" }); n.innerHTML = ci(b.nuclear[group][k]);
+        tr.append(a, n); return tr;
+      });
+      $("wa-detail-intro").textContent = `Lower imports split by border (Fingrid's measured flows) and less other production split by kind of plant, over the ${fmt(b.hours)} hours where all of them are known. Each group adds up to the bold total above it.`;
+      $("wa-detail").replaceChildren(head("Lower imports", "imports", "--al-imports"), ...lines("borders", BORDER_NAMES),
+        head("Less other production", "other", "--al-other"), ...lines("plants", PLANT_NAMES));
+      const top = (group, names, skip) => Object.entries(b.wind[group]).filter(([k]) => k !== skip)
+        .sort((x, y) => y[1].share - x[1].share).map(([k, v]) => [names[k], v.share]);
+      const [[b1, s1], [b2, s2]] = top("borders", BORDER_NAMES, "unmeasured");
+      const [[p1, q1]] = top("plants", PLANT_NAMES, "rest");
+      $("wa-detail-takeaway").replaceChildren(el("b", {}, "Takeaway: "), document.createTextNode(
+        `Most of the extra wind that leaves Finland goes over the ${b1} border (${pct(s1)} of each MW), then ${b2} (${pct(s2)}). ` +
+        `Of the plants that make room, ${p1} gives way the most (${pct(q1)}).`));
+      $("wa-detail-seasons").replaceChildren(...b.seasons.map(s => {
+        const tr = el("tr"); tr.appendChild(el("td", {}, SEASON_NAMES[s.season] || s.season));
+        ["sweden_north", "sweden_central", "estonia"].forEach(k => tr.appendChild(el("td", { class: "r" }, pct(s.borders[k].share))));
+        ["chp_district_heating", "chp_industrial"].forEach(k => tr.appendChild(el("td", { class: "r" }, pct(s.plants[k].share))));
+        return tr;
+      }));
     }
 
     function renderSql(src) {

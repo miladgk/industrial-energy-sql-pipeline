@@ -10,7 +10,7 @@
 
 Fingrid, Finland's electricity transmission system operator, publishes hundreds of
 measurements and forecasts as [open data](https://data.fingrid.fi), one chart at a
-time. This project keeps 28 of them in a partitioned PostgreSQL warehouse, refreshed
+time. This project keeps 35 of them in a partitioned PostgreSQL warehouse, refreshed
 every day, and answers questions no single chart does:
 
 | Question | Answer over the last 12 months | Where |
@@ -19,7 +19,7 @@ every day, and answers questions no single chart does:
 | When will electricity be cleanest tomorrow? | A day-ahead CO2-intensity forecast in SQL. Replayed over 338 days: 4.5 g/kWh mean error vs 7.1 for a naive baseline; the hour it picks emitted 14.8% less than an average hour (19.7% for a perfect pick). | `sql/schema/14`, `sql/analysis/18-19` |
 | What unusual happened on the grid? | 802 frequency excursions, 6 fast nuclear drops, 14 low-inertia periods, 12 imbalance-price spikes. The minute before a full hour is out of band 2.1x as often as an average minute. | `sql/schema/15`, `sql/analysis/20-21` |
 | How much does cold raise demand? | Below about 15 °C each degree colder adds 154 MW on a weekday (1.5% of average use; r² 0.89). The coldest day (-25 °C) used 14.8 GW, 1.8x the warmest. | `sql/analysis/22-23` |
-| Where does an extra MW of wind go? | About 54% replaces imports (74% in summer), 11% replaces hydro, 15% other production (25% in winter, when CHP runs) and 20% is matched by higher consumption. Extra nuclear brings the same +20% consumption, which points to demand following cheap power rather than to wind chill. | `sql/analysis/24`, `src/wind_allocation.py` |
+| Where does an extra MW of wind go? | About 54% replaces imports (74% in summer), 11% replaces hydro, 15% other production (25% in winter, when CHP runs) and 20% is matched by higher consumption. The measured border flows say where it leaves: 32 points over northern Sweden (53 in summer), 16 over central Sweden, 5 over Estonia; district-heating CHP gives way the most (11 points, 20 in winter). Extra nuclear brings the same +20% consumption, which points to demand following cheap power rather than to wind chill. | `sql/analysis/24`, `src/wind_allocation.py` |
 | How wrong will tomorrow's forecast be? | Calibrated 80% / 95% ranges around Fingrid's day-ahead wind and consumption forecasts (conformal prediction, grouped by time of day and forecast level, adapting day by day). Replayed over 341 days with only what was known at issue time: wind 79.5% / 93.5% of hours inside, consumption 79.1% / 93.6%; interval score 4-8% better than one set of quantiles. | `sql/analysis/25`, `src/forecast_ranges.py` |
 
 Numbers as of November 2026; the site always shows the current ones.
@@ -36,7 +36,7 @@ nuclear trips are not used as labels for the event detector.
 
 ```mermaid
 flowchart LR
-    F[Fingrid Open Data API<br/>28 datasets] -->|sync_fingrid.py<br/>incremental, idempotent| W[(PostgreSQL<br/>fingrid_observation<br/>monthly partitions)]
+    F[Fingrid Open Data API<br/>35 datasets] -->|sync_fingrid.py<br/>incremental, idempotent| W[(PostgreSQL<br/>fingrid_observation<br/>monthly partitions)]
     W --> Q[Quality gate<br/>02_data_quality_checks.sql]
     W --> S[SQL views, functions<br/>sql/analysis/*.sql]
     S --> E[export_dashboard_data.py] --> J[docs/data/*.json] --> P[GitHub Pages<br/>static dashboard]
@@ -64,7 +64,7 @@ test runs against real data and needs no Fingrid key.
 ## The warehouse
 
 ```
-fingrid_dataset (28 rows)                fingrid_observation (~2 M rows, ~1.8 M more a year)
+fingrid_dataset (35 rows)                fingrid_observation (~3.4 M rows, ~3 M more a year)
   dataset_id  PK                           dataset_id  FK -> fingrid_dataset   ┐ primary key
   key, name, unit                          start_time  partition key           ┘
   kind  actual | forecast | capacity |     end_time
@@ -118,7 +118,8 @@ whole). `tests/test_performance.py` checks the plans with EXPLAIN in CI.
 | Purpose | Fingrid datasets |
 |---|---|
 | What happened | 74 production, 75 wind, 124 consumption, 188 nuclear, 191 hydro, 398 battery discharge (3-min) |
-| Trade | 194 measured net export (3-min; positive = export, so it is negated into net imports) |
+| Trade | 194 measured net export (3-min; positive = export, so it is negated into net imports); per border 60 northern Sweden, 61 central Sweden, 55 Estonia, 57 Norway (15-min, same sign; they add up to 194) |
+| Kinds of plant | 201 district-heating CHP, 202 industrial CHP, 205 reserve and small-scale plants (3-min) |
 | Fingrid's forecasts | 165/166 consumption, 245/246 wind, 247/248 solar (day-ahead / every 15 min) |
 | Capacity behind them | 267 solar, 268 wind |
 | Balancing | 319 imbalance price, 375/376 activated mFRR up/down, 377 mFRR need |
@@ -146,7 +147,7 @@ All logic lives in SQL; the API, the reports and the dashboard export run the sa
 | `sql/analysis/21_frequency_by_minute.sql` | out-of-band frequency by minute of the hour | `FILTER` aggregates |
 | `sql/analysis/22_temperature_daily.sql` | daily four-city temperature and national consumption | two-level aggregation, `HAVING` |
 | `sql/analysis/23_temperature_sensitivity.sql` | hinge model per day type; the balance point (5-20 °C) is searched in SQL, best r² kept | `generate_series` grid, `regr_r2`, `DISTINCT ON` |
-| `sql/analysis/24_wind_allocation_panel.sql` + `src/wind_allocation.py` | the hourly power balance (consumption = wind + nuclear + hydro + other + net imports); each part regressed on wind, nuclear and heating degrees with hour, weekday and month fixed effects, Newey-West (HAC) 95% intervals, per season | `FILTER` pivot, completeness rules; numpy OLS + HAC |
+| `sql/analysis/24_wind_allocation_panel.sql` + `src/wind_allocation.py` | the hourly power balance (consumption = wind + nuclear + hydro + other + net imports); each part regressed on wind, nuclear and heating degrees with hour, weekday and month fixed effects, Newey-West (HAC) 95% intervals, per season; imports split by border and other production by kind of plant, the parts adding up to their totals | `FILTER` pivot, completeness rules; numpy OLS + HAC |
 | `sql/analysis/25_forecast_errors_hourly.sql` + `src/forecast_ranges.py` | Fingrid's day-ahead forecasts next to what happened; split conformal ranges (global, by hour, Mondrian by hour block x forecast level, adaptive conformal inference), each day calibrated on the 90 days ending two days before it and replayed as a backtest (coverage, width, interval score) | `LEFT JOIN` for the future, `VALUES` pairs; numpy |
 | `sql/etl/02_data_quality_checks.sql` | default partition empty, no empty or stale dataset, 30-day coverage, 0 Hz gap markers | |
 
@@ -179,7 +180,7 @@ a server.
 
 ## Tests
 
-159 tests in eight layers, all run in CI on Python 3.11/3.12 and PostgreSQL 14/15/16,
+160 tests in eight layers, all run in CI on Python 3.11/3.12 and PostgreSQL 14/15/16,
 against the restored real warehouse:
 
 | Layer | What it guards |
@@ -241,7 +242,7 @@ For the daily workflow on a fork, add the key as the repository secret
 │   └── etl/02_data_quality_checks.sql
 ├── src/
 │   ├── fingrid_api.py          # API client (key, paging, retries, 429 back-off)
-│   ├── fingrid_catalog.py      # the 28 datasets and why
+│   ├── fingrid_catalog.py      # the 35 datasets and why
 │   ├── sync_fingrid.py         # incremental, idempotent sync
 │   ├── warehouse_snapshot.py   # dump / restore as CSV.gz
 │   ├── setup_db.py             # applies sql/schema

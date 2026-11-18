@@ -217,6 +217,13 @@ def test_wind_balance_shows_the_published_shares(open_dashboard):
     expect(page.locator("#wa-table tr").first).to_contain_text(pct(d["wind"]["imports"]["share"]))
     expect(page.locator("#wa-seasons tr")).to_have_count(len(d["seasons"]))
     expect(page.locator("#wa-checks")).to_contain_text(f"{abs(d['net_import_check']['r_identity_vs_measured_194']):.4f}")
+    b = d["breakdown"]
+    expect(page.locator("#wa-detail tr")).to_have_count(2 + len(b["wind"]["borders"]) + len(b["wind"]["plants"]))
+    expect(page.locator("#wa-detail tr").nth(1)).to_contain_text(pct(b["wind"]["borders"]["sweden_north"]["share"]))
+    expect(page.locator("#wa-detail-seasons tr")).to_have_count(len(b["seasons"]))
+    expect(page.locator("#wa-detail-takeaway")).to_contain_text("Northern Sweden (SE1)")
+    sweden = b["wind"]["borders"]["sweden_north"]["share"] + b["wind"]["borders"]["sweden_central"]["share"]
+    expect(page.locator("#mk-wa-imports-label")).to_contain_text(f"{pct(sweden)} of it over the Swedish borders")
 
 
 def test_wind_balance_rows_can_be_read_with_the_keyboard(open_dashboard):

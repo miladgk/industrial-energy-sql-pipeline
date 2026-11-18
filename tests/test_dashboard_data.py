@@ -156,6 +156,12 @@ def test_wind_allocation_shares_add_up_to_one_megawatt():
         assert sum(p["share"] for p in s["wind"].values()) == pytest.approx(1.0, abs=0.01), s["season"]
     assert d["hours"] >= 24 * 300
     assert abs(d["net_import_check"]["r_identity_vs_measured_194"]) > 0.99     # 194 confirms Fingrid's definition
+    b = d["breakdown"]
+    for driver in ("wind", "nuclear"):
+        total = b[driver]["total"]
+        assert sum(p["share"] for p in b[driver]["borders"].values()) == pytest.approx(total["imports"]["share"], abs=0.01)
+        assert sum(p["share"] for p in b[driver]["plants"].values()) == pytest.approx(total["other"]["share"], abs=0.01)
+    assert b["hours"] >= 24 * 300
 
 
 def test_forecast_ranges_are_ordered_and_scored():

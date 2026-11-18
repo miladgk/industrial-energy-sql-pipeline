@@ -360,6 +360,11 @@ def export_temperature(days: int = 365) -> None:
 
 WIND_ALLOCATION_SQL = "sql/analysis/24_wind_allocation_panel.sql"
 WIND_ALLOCATION_PARTS = {"net_import_mw": "imports", "hydro_mw": "hydro", "other_mw": "other", "consumption_mw": "consumption"}
+WIND_ALLOCATION_BORDERS = {"import_sweden_north_mw": "sweden_north", "import_sweden_central_mw": "sweden_central",
+                           "import_estonia_mw": "estonia", "import_norway_mw": "norway",
+                           "import_unmeasured_mw": "unmeasured"}
+WIND_ALLOCATION_PLANTS = {"chp_district_heating_mw": "chp_district_heating", "chp_industrial_mw": "chp_industrial",
+                          "reserve_and_small_mw": "reserve_and_small", "other_rest_mw": "rest"}
 
 
 def export_wind_allocation(days: int = 365) -> None:
@@ -379,10 +384,10 @@ def export_wind_allocation(days: int = 365) -> None:
     if len(rows) < 24 * 300:
         raise SystemExit(f"wind-allocation: only {len(rows)} complete hours: run src/sync_fingrid.py first")
 
-    def shares(fitted: dict, driver: str) -> dict:
+    def shares(fitted: dict, driver: str, parts: dict = WIND_ALLOCATION_PARTS) -> dict:
         # "pushed out" shares are minus the coefficient; consumption is the coefficient itself
         out = {}
-        for response, name in WIND_ALLOCATION_PARTS.items():
+        for response, name in parts.items():
             c = fitted["responses"][response][driver]
             sign = 1 if response == "consumption_mw" else -1
             lo, hi = sorted((sign * c["ci_low"], sign * c["ci_high"]))
@@ -395,10 +400,27 @@ def export_wind_allocation(days: int = 365) -> None:
                 if r["net_import_measured_mw"] is not None]
     a, b = np.array(measured).T
     bat = overall["responses"]["battery_mw"]["wind_mw"]
+    detail = wa.breakdown(rows)
+    if detail is None:
+        raise SystemExit("wind-allocation: too few hours with every border and plant: run src/sync_fingrid.py first")
+    parents = {"net_import_mw": "imports", "other_mw": "other"}
+    breakdown = {"hours": detail["hours"]}
+    for driver, key in (("wind_mw", "wind"), ("nuclear_mw", "nuclear")):
+        breakdown[key] = {"total": shares(detail, driver, parents),
+                          "borders": shares(detail, driver, WIND_ALLOCATION_BORDERS),
+                          "plants": shares(detail, driver, WIND_ALLOCATION_PLANTS)}
+    breakdown["seasons"] = []
+    for name, months in wa.SEASONS.items():
+        f = wa.breakdown([r for r in rows if r["month_fi"] in months], min_hours=24 * 30)
+        if f is not None:
+            breakdown["seasons"].append({"season": name, "hours": f["hours"],
+                                         "borders": shares(f, "wind_mw", WIND_ALLOCATION_BORDERS),
+                                         "plants": shares(f, "wind_mw", WIND_ALLOCATION_PLANTS)})
     _write("wind_allocation.json", {
         "generated_at": _now(),
         "source": "Fingrid Open Data API (CC BY 4.0): consumption (124), production (74), wind (75), nuclear (188), "
-                  "hydro (191), measured net export (194), battery discharge (398), temperatures (178, 182, 196, 185)",
+                  "hydro (191), measured net export (194), battery discharge (398), temperatures (178, 182, 196, 185), "
+                  "border flows (60, 61, 55, 57), CHP and reserve production (201, 202, 205)",
         "window_start": w["start"].strftime("%Y-%m-%d"),
         "window_end_exclusive": w["end"].strftime("%Y-%m-%d"),
         "hours": overall["hours"],
@@ -413,6 +435,7 @@ def export_wind_allocation(days: int = 365) -> None:
         "r2": {WIND_ALLOCATION_PARTS[k]: round(v["r2"], 3) for k, v in overall["responses"].items() if k in WIND_ALLOCATION_PARTS},
         "seasons": [{"season": name, "months": list(wa.SEASONS[name]), "hours": f["hours"], "wind": shares(f, "wind_mw")}
                     for name, f in seasons.items()],
+        "breakdown": breakdown,
         "battery_per_mw_wind": {"coef": round(bat["coef"], 4), "ci_low": round(bat["ci_low"], 4), "ci_high": round(bat["ci_high"], 4)},
         "net_import_check": {"hours": len(measured), "r_identity_vs_measured_194": round(float(np.corrcoef(a, b)[0, 1]), 4),
                              "mean_difference_mw": round(float((a - b).mean()), 1)},
