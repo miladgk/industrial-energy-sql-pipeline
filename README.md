@@ -24,6 +24,7 @@ every day, and answers questions no single chart does:
 | Can public weather data beat Fingrid's forecast? | No. Gradient-boosted trees on Open-Meteo forecasts made two days ahead (15 places) and the Finnish calendar, replayed over 182 days: wind error 534 MW vs Fingrid's 346, consumption 368 vs 290. Used as a correction to Fingrid's forecast it changes the error by under 1% (Diebold-Mariano p = 0.85 and 0.75). For wind, fresher weather closes 93% of the gap; for consumption it closes none. | `sql/analysis/26`, `src/weather_model.py` |
 | Does hydro make more room for wind when its reservoirs are full? | The opposite. Over three years, with five reservoir and lake levels against their 2000-2022 norm for the date (SYKE): on the driest tenth of days hydro absorbs 16% of each extra MW of wind (15-17%), on the fullest tenth 9% (8-11%). Full reservoirs must release water; low ones save it. Imports take about 55% whatever the water. | `sql/analysis/27`, `src/hydro_flex.py` |
 | How much electricity did the 2024 strikes take away? | The four-week ports and transport strike (11 Mar - 7 Apr 2024, paper and pulp mills shut) cut consumption by 1,148 MW on average, 11% or 769 GWh, against a counterfactual of weather and calendar; no strike-free placebo period comes close. The two short February strikes show drops too (-922 and -598 MW) but are within the model's ordinary error (p = 0.05 and 0.10). Month by month, industrial output (Statistics Finland) shows no measurable link to the consumption weather and calendar leave unexplained once the shared trend is removed (r of changes -0.18, t = 0.33; 35 months, so a small effect could go undetected). | `sql/analysis/28`, `src/strike_effect.py` |
+| Does wind make electricity cheaper? | Yes. Over three years of ENTSO-E day-ahead prices, each extra GW of Fingrid's day-ahead wind forecast goes with a Finnish price 18.5 €/MWh lower (95% interval 17.4-19.5), holding weather, calendar, demand, nuclear and the reservoirs fixed; 17.9 with spikes clipped. Not a straight line: the median falls from 69 €/MWh below 1 GW to 30 at 2-3 GW, then flattens near zero. The effect is larger when the reservoirs are full (20.8 vs 17.2 €/MWh per GW, p = 0.004), consistent with the hydrology finding. Above 6 GW Finland is cheaper than northern Sweden in 56% of hours (3% below 1 GW). Wind earned 66% of the average price in 2024 and 55% in 2025. | `sql/analysis/29`, `src/price_wind.py` |
 
 Numbers as of November 2026; the site always shows the current ones.
 
@@ -169,6 +170,7 @@ All logic lives in SQL; the API, the reports and the dashboard export run the sa
 | `sql/analysis/24_wind_allocation_panel.sql` + `src/wind_allocation.py` | the hourly power balance (consumption = wind + nuclear + hydro + other + net imports); each part regressed on wind, nuclear and heating degrees with hour, weekday and month fixed effects, Newey-West (HAC) 95% intervals, per season; imports split by border and other production by kind of plant, the parts adding up to their totals | `FILTER` pivot, completeness rules; numpy OLS + HAC |
 | `sql/analysis/25_forecast_errors_hourly.sql` + `src/forecast_ranges.py` | Fingrid's day-ahead forecasts next to what happened; split conformal ranges (global, by hour, Mondrian by hour block x forecast level, adaptive conformal inference), each day calibrated on the 90 days ending two days before it and replayed as a backtest (coverage, width, interval score) | `LEFT JOIN` for the future, `VALUES` pairs; numpy |
 | `sql/analysis/28_consumption_hourly.sql` + `src/strike_effect.py` | hourly consumption with measured temperature; gradient-boosted counterfactual trained outside the strikes (+/- 3 days); effect = measured - counterfactual; placebo test refitted on 40 strike-free periods of equal length; monthly residual against Statistics Finland's industrial output index, tested on levels, on month-to-month changes and with a trend | `FILTER` pivot, completeness rules; scikit-learn, pandas |
+| `sql/analysis/29_price_wind_panel.sql` + `src/price_wind.py` | hourly prices of FI and its neighbours with Fingrid's day-ahead forecasts, every series averaged weighted by slot length (hourly and 15-minute data mix); the Finnish price regressed on forecast wind, wind x reservoir storage, forecast consumption, nuclear and heating with hour, weekday, month and year fixed effects and Newey-West intervals; price and coupling with SE1 by GW of wind; the wind-weighted price per year | duration-weighted aggregation, `UNION ALL` of two sources; numpy |
 | `sql/analysis/27_hydrology_state.sql` + `src/hydro_flex.py` | each reservoir level and the Tornionjoki's log discharge as a z-score against the 2000-2022 norm for the same date (pooled +/- 7 days); the hourly balance regressed on wind, wind x storage and wind x inflow of the day before, with hour, weekday, month and year fixed effects and Newey-West intervals; shares at the 10th/50th/90th percentile of storage, and a check by thirds of days | window-pooled seasonal norms, `LATERAL`; numpy |
 | `sql/analysis/26_weather_model_panel.sql` + `src/weather_model.py` | per hour: actuals, Fingrid's day-ahead forecasts, wind capacity and the two-day-old weather at 15 places; gradient-boosted trees (weather + calendar; and a regularised correction of Fingrid's forecast) in a weekly-refit rolling-origin backtest with Diebold-Mariano tests; Fingrid's error by kind of day. `scripts/weather_lead_time.py` replays it with 24-hour-old and the newest weather | `FILTER` pivot over two tables; scikit-learn, pandas |
 | `sql/etl/02_data_quality_checks.sql` | default partition empty, no empty or stale dataset, 30-day coverage, 0 Hz gap markers | |
@@ -202,7 +204,7 @@ a server.
 
 ## Tests
 
-203 tests in eight layers, all run in CI on Python 3.11/3.12 and PostgreSQL 14/15/16,
+209 tests in eight layers, all run in CI on Python 3.11/3.12 and PostgreSQL 14/15/16,
 against the restored real warehouse:
 
 | Layer | What it guards |
@@ -264,7 +266,7 @@ For the daily workflow on a fork, add the key as the repository secret
 │   ├── schema/                 # 13 warehouse, 14 CO2 model, 15 event detector, 16 forecast archive,
 │   │                           # 17 hydrology, 18 dataset summary for /api/datasets,
 │   │                           # 19 ENTSO-E day-ahead prices
-│   ├── analysis/               # 13-28, one query per file
+│   ├── analysis/               # 13-29, one query per file
 │   └── etl/02_data_quality_checks.sql
 ├── src/
 │   ├── fingrid_api.py          # API client (key, paging, retries, 429 back-off)
@@ -285,6 +287,7 @@ For the daily workflow on a fork, add the key as the repository secret
 │   ├── entsoe_prices.py        # ENTSO-E day-ahead prices, FI and its neighbours
 │   ├── hydro_flex.py           # does hydro's share of extra wind depend on the water?
 │   ├── strike_effect.py        # counterfactual consumption, placebo test, trend-aware monthly check
+│   ├── price_wind.py           # does wind make electricity cheaper? per GW, by storage, capture price
 │   ├── db_connection.py
 │   └── api.py                  # FastAPI
 └── tests/                      # eight layers + load/locustfile.py

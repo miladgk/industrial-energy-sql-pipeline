@@ -217,6 +217,28 @@ def test_strike_effect_is_consistent():
     assert {"r_levels", "r_changes", "slope_t", "n"} <= set(link) and link["n"] >= 24
 
 
+
+def test_price_wind_is_consistent():
+    """Effects sit inside their intervals and are ordered with storage; the bins cover the hours and their
+    shares are shares; the wind-weighted price is below the average in every full year."""
+    d = _load("price_wind.json")
+    assert d["hours"] >= 24 * 365 * 2
+    for e in [d["per_gw"], *d["per_gw_checks"].values(), *d["at_storage"]]:
+        assert e["ci_low"] <= e["eur_per_gw"] <= e["ci_high"]
+    assert [a["percentile"] for a in d["at_storage"]] == [10, 50, 90]
+    assert d["at_storage"][0]["storage_z"] < d["at_storage"][1]["storage_z"] < d["at_storage"][2]["storage_z"]
+    assert 0 <= d["storage_interaction"]["p_value"] <= 1
+    bins = d["by_wind_bin"]
+    assert bins[0]["gw_from"] == 0 and bins[-1]["gw_to"] is None
+    assert abs(sum(b["hours"] for b in bins) - d["hours"]) <= 24 * 7
+    for b in bins:
+        assert b["p25"] <= b["median"] <= b["p75"]
+        assert b["share_below_se1"] + b["share_same_as_se1"] + b["share_above_se1"] == pytest.approx(1, abs=0.002)
+        assert all(0 <= b[k] <= 1 for k in b if k.startswith("share"))
+    full = [c for c in d["capture_by_year"] if not c["partial"]]
+    assert full and all(c["wind_captured"] < c["average"] for c in full)
+    assert set(d["latest_price"]) == {"FI", "SE1", "SE3", "EE", "NO4"}
+
 def test_forecast_ranges_are_ordered_and_scored():
     d = _load("forecast_ranges.json")
     for v in ("wind", "consumption"):

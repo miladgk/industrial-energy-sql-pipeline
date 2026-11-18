@@ -253,6 +253,19 @@ def test_strikes_pane_shows_the_events(open_dashboard):
     expect(page.locator("#st-sources a")).to_have_count(len(d["events"]))
 
 
+
+def test_price_pane_shows_wind_and_the_price(open_dashboard):
+    d = _data("price_wind.json")
+    page = open_dashboard()
+    _open_pane(page, "pane-wind")
+    page.locator("#pane-wind [data-open-drawer=pane-price]").click()
+    expect(page.locator("#pane-price")).to_be_visible()
+    expect(page.locator("#pw-kpis .kpi strong").first).to_have_text(f"−{js_round(d['per_gw']['eur_per_gw'])} €/MWh")
+    expect(page.locator("#pw-table tr")).to_have_count(len(d["by_wind_bin"]))
+    expect(page.locator("#pw-capture tr")).to_have_count(len(d["capture_by_year"]))
+    expect(page.locator("#pw-chart path")).not_to_have_count(0)
+    expect(page.locator("#pw-water")).to_contain_text(f"p = {d['storage_interaction']['p_value']:.3f}")
+
 def test_public_weather_pane_shows_the_backtest(open_dashboard):
     d = _data("weather_model.json")
     mw = lambda v: f"{js_round(v):,} MW"
