@@ -21,6 +21,7 @@ every day, and answers questions no single chart does:
 | How much does cold raise demand? | Below about 15 °C each degree colder adds 154 MW on a weekday (1.5% of average use; r² 0.89). The coldest day (-25 °C) used 14.8 GW, 1.8x the warmest. | `sql/analysis/22-23` |
 | Where does an extra MW of wind go? | About 54% replaces imports (74% in summer), 11% replaces hydro, 15% other production (25% in winter, when CHP runs) and 20% is matched by higher consumption. The measured border flows say where it leaves: 32 points over northern Sweden (53 in summer), 16 over central Sweden, 5 over Estonia; district-heating CHP gives way the most (11 points, 20 in winter). Extra nuclear brings the same +20% consumption, which points to demand following cheap power rather than to wind chill. | `sql/analysis/24`, `src/wind_allocation.py` |
 | How wrong will tomorrow's forecast be? | Calibrated 80% / 95% ranges around Fingrid's day-ahead wind and consumption forecasts (conformal prediction, grouped by time of day and forecast level, adapting day by day). Replayed over 341 days with only what was known at issue time: wind 79.5% / 93.5% of hours inside, consumption 79.1% / 93.6%; interval score 4-8% better than one set of quantiles. | `sql/analysis/25`, `src/forecast_ranges.py` |
+| Can public weather data beat Fingrid's forecast? | No. Gradient-boosted trees on Open-Meteo forecasts made two days ahead (15 places) and the Finnish calendar, replayed over 182 days: wind error 534 MW vs Fingrid's 346, consumption 368 vs 290. Used as a correction to Fingrid's forecast it changes the error by under 1% (Diebold-Mariano p = 0.85 and 0.75). For wind, fresher weather closes 93% of the gap; for consumption it closes none. | `sql/analysis/26`, `src/weather_model.py` |
 
 Numbers as of November 2026; the site always shows the current ones.
 
@@ -47,8 +48,9 @@ flowchart LR
 
 **Daily refresh** (`.github/workflows/refresh_fingrid.yml`, 10:53 UTC, after Fingrid
 publishes the next day's forecasts at 12:00 Finnish time): start PostgreSQL, restore
-yesterday's warehouse and FMI forecast archive from the release assets, store today's
-FMI weather forecasts (src/fmi_forecast.py), sync the last 7 days from Fingrid,
+yesterday's warehouse and weather forecast archive from the release assets, store today's
+FMI weather forecasts (src/fmi_forecast.py) and the newest two-day-old Open-Meteo forecasts
+(src/openmeteo_forecast.py), sync the last 7 days from Fingrid,
 publish the new snapshot, run the analyses, commit the dashboard JSON and redeploy
 Pages. A normal run takes about 2 minutes and some 30 API requests. No server runs between
 refreshes.
@@ -126,6 +128,8 @@ whole). `tests/test_performance.py` checks the plans with EXPLAIN in CI.
 | CO2 and stability | 396 CO2 intensity of consumption, 260 kinetic energy, 422/423 frequency deviation, 177 frequency (1-min) |
 | Weather | 178 Helsinki, 182 Jyväskylä, 196 Oulu, 185 Rovaniemi temperature (3-min) |
 | Weather forecasts (FMI, CC BY 4.0, no key) | temperature and wind speed for those four cities plus Vaasa, Kokkola, Pori and Raahe, FMI's edited forecast and the Harmonie model, archived every day as issued in `weather_forecast` (FMI keeps no archive of its own) |
+| Weather forecasts (Open-Meteo Previous Runs API, CC BY 4.0, no key) | temperature and 100 m wind speed forecast 48 h ahead for the eight places above and seven wind-farm areas, every hour since September 2025; only hours whose 48-hour-old run was certainly out are stored |
+| Calendar (computed) | Finnish public holidays (Easter by the Meeus algorithm), eves, bridge days, the Christmas period, July, the sun's elevation (`src/finnish_calendar.py`) |
 
 Listed with their purpose in `src/fingrid_catalog.py`.
 
@@ -149,6 +153,7 @@ All logic lives in SQL; the API, the reports and the dashboard export run the sa
 | `sql/analysis/23_temperature_sensitivity.sql` | hinge model per day type; the balance point (5-20 °C) is searched in SQL, best r² kept | `generate_series` grid, `regr_r2`, `DISTINCT ON` |
 | `sql/analysis/24_wind_allocation_panel.sql` + `src/wind_allocation.py` | the hourly power balance (consumption = wind + nuclear + hydro + other + net imports); each part regressed on wind, nuclear and heating degrees with hour, weekday and month fixed effects, Newey-West (HAC) 95% intervals, per season; imports split by border and other production by kind of plant, the parts adding up to their totals | `FILTER` pivot, completeness rules; numpy OLS + HAC |
 | `sql/analysis/25_forecast_errors_hourly.sql` + `src/forecast_ranges.py` | Fingrid's day-ahead forecasts next to what happened; split conformal ranges (global, by hour, Mondrian by hour block x forecast level, adaptive conformal inference), each day calibrated on the 90 days ending two days before it and replayed as a backtest (coverage, width, interval score) | `LEFT JOIN` for the future, `VALUES` pairs; numpy |
+| `sql/analysis/26_weather_model_panel.sql` + `src/weather_model.py` | per hour: actuals, Fingrid's day-ahead forecasts, wind capacity and the two-day-old weather at 15 places; gradient-boosted trees (weather + calendar; and a regularised correction of Fingrid's forecast) in a weekly-refit rolling-origin backtest with Diebold-Mariano tests; Fingrid's error by kind of day. `scripts/weather_lead_time.py` replays it with 24-hour-old and the newest weather | `FILTER` pivot over two tables; scikit-learn, pandas |
 | `sql/etl/02_data_quality_checks.sql` | default partition empty, no empty or stale dataset, 30-day coverage, 0 Hz gap markers | |
 
 ---
@@ -180,7 +185,7 @@ a server.
 
 ## Tests
 
-160 tests in eight layers, all run in CI on Python 3.11/3.12 and PostgreSQL 14/15/16,
+177 tests in eight layers, all run in CI on Python 3.11/3.12 and PostgreSQL 14/15/16,
 against the restored real warehouse:
 
 | Layer | What it guards |
@@ -188,7 +193,7 @@ against the restored real warehouse:
 | smoke | database, warehouse, API routes and dashboard files are alive |
 | api | response shapes, validation, every number equals its SQL file |
 | integration | sync, idempotency, revisions, snapshot round trip, partition layout, quality gate |
-| regression | hand-made datasets with exact answers through the scorecard, CO2 model, event detector and wind-allocation model (incl. Newey-West vs OLS) |
+| regression | hand-made datasets with exact answers through the scorecard, CO2 model, event detector, wind-allocation model (incl. Newey-West vs OLS), Finnish holidays and the weather model (no look-ahead, Diebold-Mariano) |
 | performance | EXPLAIN shows pruning and index use; generous latency budgets |
 | security | injection payloads rejected, no error leakage, read-only sessions, no secrets in git |
 | data | published JSON is internally consistent and matches the SQL in the repo |
@@ -235,10 +240,11 @@ For the daily workflow on a fork, add the key as the repository secret
 │   └── data/*.json             # built by scripts/export_dashboard_data.py
 ├── scripts/
 │   ├── export_dashboard_data.py
-│   └── benchmark_warehouse.py
+│   ├── benchmark_warehouse.py
+│   └── weather_lead_time.py    # how much fresher weather would help (run by hand)
 ├── sql/
 │   ├── schema/                 # 13 warehouse, 14 CO2 model, 15 event detector, 16 FMI forecast archive
-│   ├── analysis/               # 13-25, one query per file
+│   ├── analysis/               # 13-26, one query per file
 │   └── etl/02_data_quality_checks.sql
 ├── src/
 │   ├── fingrid_api.py          # API client (key, paging, retries, 429 back-off)
@@ -252,6 +258,9 @@ For the daily workflow on a fork, add the key as the repository secret
 │   ├── wind_allocation.py      # fixed-effects regression with Newey-West intervals
 │   ├── forecast_ranges.py      # conformal ranges around Fingrid's forecasts + backtest
 │   ├── fmi_forecast.py         # daily FMI weather forecast archive
+│   ├── openmeteo_forecast.py   # two-day-old Open-Meteo forecasts, backfilled
+│   ├── finnish_calendar.py     # holidays, bridge days, sun elevation
+│   ├── weather_model.py        # public weather vs Fingrid: models, backtest, Diebold-Mariano
 │   ├── db_connection.py
 │   └── api.py                  # FastAPI
 └── tests/                      # eight layers + load/locustfile.py
@@ -260,4 +269,6 @@ For the daily workflow on a fork, add the key as the repository secret
 ---
 
 Data: [Fingrid Open Data](https://data.fingrid.fi), licensed
-[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Code: MIT.
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Weather data by
+[Open-Meteo.com](https://open-meteo.com/) and the [Finnish Meteorological Institute](https://en.ilmatieteenlaitos.fi/open-data),
+both CC BY 4.0. Code: MIT.

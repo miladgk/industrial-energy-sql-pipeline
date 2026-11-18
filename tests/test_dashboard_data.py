@@ -164,6 +164,28 @@ def test_wind_allocation_shares_add_up_to_one_megawatt():
     assert b["hours"] >= 24 * 300
 
 
+def test_weather_model_scores_are_consistent():
+    """Skill is 1 - model MAE / Fingrid MAE, p-values are probabilities, every forecast hour has all three."""
+    d = _load("weather_model.json")
+    for v in ("wind", "consumption"):
+        x = d[v]
+        b = x["backtest"]
+        assert b["days"] >= 60
+        for m in ("weather", "weather_fingrid"):
+            assert b["skill_vs_fingrid"][m] == pytest.approx(1 - b["mae_mw"][m] / b["mae_mw"]["fingrid"], abs=0.002)
+            assert 0 <= b["diebold_mariano"][m]["p_value"] <= 1
+            assert b["rmse_mw"][m] >= b["mae_mw"][m]
+        assert 23 <= len(x["hours"]) <= 25
+        assert all(h["fingrid_mw"] is not None and h["weather_mw"] is not None for h in x["hours"])
+        if v == "wind":
+            assert all(h["weather_mw"] >= 0 for h in x["hours"])
+    kinds = {r["kind"] for r in d["fingrid_by_day_type"]}
+    assert {"weekday", "weekend", "holiday"} <= kinds
+    lead = _load("weather_lead_time.json")
+    for v in ("wind", "consumption"):
+        assert [x["lead"] for x in lead["variables"][v]["leads"]] == ["48 h (published)", "24 h", "newest"]
+
+
 def test_forecast_ranges_are_ordered_and_scored():
     d = _load("forecast_ranges.json")
     for v in ("wind", "consumption"):
