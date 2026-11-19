@@ -221,11 +221,11 @@ def test_electric_car_chapter_sets_the_estimate_against_the_growth(open_dashboar
 # ── Latest Fingrid values (hourly Pages deploy) ────────────────
 
 def test_latest_fingrid_ticker_shows_finnish_time(open_dashboard):
-    from tests.e2e.conftest import SAMPLE_LATEST  # noqa: E402  (same sample the fixture serves)
+    """conftest.SAMPLE_LATEST: wind 6,603.0 MW and consumption 11,454.5 MW, 06:15–06:30 UTC on 16 November."""
     page = open_dashboard()
     expect(page.locator("#live-ticker")).to_be_visible()
-    expect(page.locator("#tick-wind")).to_have_text(f"{fmt(js_round(SAMPLE_LATEST['wind_production']['value_mw']))} MW")
-    expect(page.locator("#tick-cons")).to_have_text(f"{fmt(js_round(SAMPLE_LATEST['consumption']['value_mw']))} MW")
+    expect(page.locator("#tick-wind")).to_have_text("6,603 MW")
+    expect(page.locator("#tick-cons")).to_have_text("11,455 MW")       # Math.round(11454.5)
     # 06:15–06:30 UTC on 16 November is 08:15–08:30 in Finland (UTC+2 in winter)
     expect(page.locator("#tick-age")).to_have_text("08:15–08:30 Finnish time")
 
