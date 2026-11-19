@@ -1,34 +1,53 @@
 """
 conftest.py (e2e)
 ~~~~~~~~~~~~~~~~~
-Fixtures for the end-to-end tests:  real Chromium  ->  docs/ (static server).
+Fixtures for the end-to-end tests:  real Chromium  ->  the built dashboard.
 
-The dashboard is a static page: it reads the JSON files in docs/data/, built
-from the warehouse by scripts/export_dashboard_data.py, and calls no API. The
-static server here serves docs/ exactly like GitHub Pages does.
+The dashboard is a static page (React + Vite, source in web/): it reads the
+JSON files in docs/data/, built from the warehouse by
+scripts/export_dashboard_data.py, and calls no API. GitHub Pages serves the
+build (web/dist/) with docs/data/ copied next to it; the server here does the
+same, except that it reads data/ and assets/ straight from docs/, so the tests
+always check the page against the data files in the repository, even when the
+build is older than the last export.
+
+Build the page first:   npm --prefix web ci && npm --prefix web run build
 """
 
 import functools
 import http.server
 import os
 import threading
+from urllib.parse import unquote, urlsplit
 
 import pytest
 
 playwright_sync = pytest.importorskip("playwright.sync_api", reason="pip install playwright")
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+DIST = os.path.join(ROOT, "web", "dist")
+DOCS = os.path.join(ROOT, "docs")
 
 
-class _QuietHandler(http.server.SimpleHTTPRequestHandler):
+class _DashboardHandler(http.server.SimpleHTTPRequestHandler):
+    """web/dist/ for the page and its bundle, docs/ for data/ and assets/ (as in the Pages artifact)."""
+
+    def translate_path(self, path):
+        rel = unquote(urlsplit(path).path).lstrip("/")
+        if rel.startswith(("data/", "assets/")):
+            return os.path.join(DOCS, *rel.split("/"))
+        return super().translate_path(path)
+
     def log_message(self, *args):  # keep pytest output clean
         pass
 
 
 @pytest.fixture(scope="session")
 def static_url():
-    """Serve docs/ like GitHub Pages: plain static files."""
-    handler = functools.partial(_QuietHandler, directory=os.path.join(ROOT, "docs"))
+    """Serve the dashboard like GitHub Pages: plain static files."""
+    if not os.path.exists(os.path.join(DIST, "index.html")):
+        pytest.skip("web/dist/ is not built; run: npm --prefix web ci && npm --prefix web run build")
+    handler = functools.partial(_DashboardHandler, directory=DIST)
     server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     yield f"http://127.0.0.1:{server.server_address[1]}"
@@ -61,7 +80,9 @@ SAMPLE_LATEST = {
 @pytest.fixture
 def open_dashboard(browser, static_url):
     """
-    Factory: open_dashboard(viewport=None, block=(), latest="sample") -> Page
+    Factory: open_dashboard(viewport=None, block=(), latest="sample", chapter=None) -> Page
+
+    * chapter: open on that chapter (the URL hash, e.g. "europe"); default the overview
 
     * block: data file names (e.g. "co2_forecast.json", or "*" for all of them) answered with 404
     * latest="missing" answers data/fingrid_latest.json with 404 instead of SAMPLE_LATEST
@@ -72,7 +93,7 @@ def open_dashboard(browser, static_url):
     """
     contexts = []
 
-    def _open(viewport=None, block=(), latest="sample"):
+    def _open(viewport=None, block=(), latest="sample", chapter=None):
         context = browser.new_context(viewport=viewport or {"width": 1400, "height": 900})
         contexts.append(context)
         page = context.new_page()
@@ -87,7 +108,7 @@ def open_dashboard(browser, static_url):
             page.route("**/data/fingrid_latest.json", lambda route: route.fulfill(json=SAMPLE_LATEST))
         for name in block:
             page.route(f"**/data/{name}", lambda route: route.fulfill(status=404))
-        page.goto(static_url + "/index.html")
+        page.goto(static_url + "/index.html" + (f"#{chapter}" if chapter else ""))
         return page
 
     yield _open

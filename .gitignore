@@ -2,6 +2,9 @@
 config.yaml
 docs/PROJECT_BRIEF.md
 
+# Dashboard (web/): dependencies and the build (dist/ below covers web/dist/)
+node_modules/
+
 # Python
 __pycache__/
 *.py[cod]

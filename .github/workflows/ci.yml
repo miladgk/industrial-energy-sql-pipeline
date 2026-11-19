@@ -107,7 +107,24 @@ jobs:
         run: |
           pytest tests/ -v
 
-      # End-to-end: a real Chromium drives the dashboard against the real API + DB.
+      # The dashboard (web/): type-check and build it, as the Pages deploy does.
+      - name: Set up Node.js (dashboard)
+        if: matrix.python == '3.11' && matrix.postgres == '15'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Type-check and build the dashboard
+        if: matrix.python == '3.11' && matrix.postgres == '15'
+        working-directory: web
+        run: |
+          npm ci
+          npm run lint
+          npm run build
+
+      # End-to-end: a real Chromium drives the built dashboard against docs/data/.
       - name: E2E tests (Playwright + Chromium)
         if: matrix.python == '3.11' && matrix.postgres == '15'
         run: |

@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Grid in SQL · Finland's Living Energy Observatory</title>
+    <meta name="description" content="Finland's electricity grid in a PostgreSQL warehouse: Fingrid's forecasts scored, tomorrow's cleanest hours forecast, and a log of grid events. Real Fingrid Open Data, refreshed daily." />
+    <link rel="canonical" href="https://miladgk.github.io/industrial-energy-sql-pipeline/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Grid in SQL · Finland's Living Energy Observatory" />
+    <meta property="og:description" content="Finland's electricity grid in a PostgreSQL warehouse: how good Fingrid's forecasts are, the cleanest hours of tomorrow, and a log of grid events, refreshed daily from Fingrid Open Data." />
+    <meta property="og:url" content="https://miladgk.github.io/industrial-energy-sql-pipeline/" />
+    <meta name="twitter:card" content="summary" />
+    <link rel="icon" type="image/svg+xml" href="assets/favicon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700&family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" />
+    <script>
+      // Before the first paint, so a remembered light theme never flashes dark.
+      (function () {
+        var t = null;
+        try { t = localStorage.getItem("theme"); } catch (e) {}
+        if (t === "light") document.documentElement.classList.remove("dark");
+      })();
+    </script>
+  </head>
+  <body>
+    <noscript>This dashboard needs JavaScript: it draws its charts from the JSON files in data/.</noscript>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

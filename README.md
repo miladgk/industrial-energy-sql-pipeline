@@ -222,7 +222,7 @@ against the restored real warehouse:
 | performance | EXPLAIN shows pruning and index use; generous latency budgets |
 | security | injection payloads rejected, no error leakage, read-only sessions, no secrets in git |
 | data | published JSON is internally consistent and matches the SQL in the repo |
-| e2e | Chromium: numbers come from the data files, no foreign requests, charts, keyboard, inspector drawer, theme, phone layout, one broken file does not break the page |
+| e2e | Chromium against the built dashboard: numbers come from the data files, no foreign requests, charts, keyboard, SQL lenses, command palette, theme, one-screen desktop and phone layout, one broken file does not break the page |
 
 Plus a Locust load test, bandit and pip-audit in CI.
 
@@ -239,6 +239,7 @@ docker compose up -d                         # PostgreSQL
 make db-setup snapshot-restore quality-checks   # the published warehouse, no API key needed
 make api                                     # http://localhost:8000/docs
 make test                                    # e2e needs: pip install playwright && playwright install chromium
+make site-dev                                # the dashboard on http://localhost:3000 (Node.js 20+)
 ```
 
 To sync new data yourself, add a free key from [data.fingrid.fi](https://data.fingrid.fi)
@@ -260,9 +261,12 @@ For the daily workflow on a fork, add the key as the repository secret
 │   ├── refresh_fingrid.yml     # daily: restore, sync, snapshot, analyses, redeploy
 │   └── pages.yml               # deploy + hourly latest values
 ├── benchmarks/index_benchmark.md
-├── docs/                       # the static dashboard (GitHub Pages)
-│   ├── index.html
+├── docs/                       # what the dashboard reads (copied next to the page on deploy)
+│   ├── assets/favicon.svg
 │   └── data/*.json             # built by scripts/export_dashboard_data.py
+├── web/                        # the dashboard: Vite + React + Tailwind, built to web/dist/
+│   ├── index.html
+│   └── src/                    # App.tsx, dataLoader.ts, views/ (one per chapter), components/
 ├── scripts/
 │   ├── export_dashboard_data.py
 │   ├── benchmark_warehouse.py

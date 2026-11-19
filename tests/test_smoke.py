@@ -55,8 +55,11 @@ def test_openapi_schema_is_served(client):
     assert set(API_ROUTES) <= set(response.json()["paths"])
 
 
-def test_dashboard_page_exists(project_root):
-    assert os.path.getsize(os.path.join(project_root, "docs", "index.html")) > 1000
+def test_dashboard_source_exists(project_root):
+    """The dashboard is a Vite + React app in web/, built into web/dist/ by the Pages deploy."""
+    for part in ("index.html", "package.json", "package-lock.json", os.path.join("src", "main.tsx"),
+                 os.path.join("src", "dataLoader.ts")):
+        assert os.path.getsize(os.path.join(project_root, "web", part)) > 100, part
 
 
 @pytest.mark.parametrize("name", DASHBOARD_DATA)
