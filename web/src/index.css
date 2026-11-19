@@ -1,0 +1,458 @@
+@import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  :root {
+    color-scheme: light;
+    --bg: #eef2f7;
+    --surface: #ffffff;
+    --surface-2: #e6ecf5;
+    --surface-3: #d8e2ef;
+    --line: rgba(15, 23, 42, 0.09);
+    --line-strong: rgba(15, 23, 42, 0.18);
+    --ink: #090d16;
+    --ink-2: #475569;
+    --muted: #64748b;
+    --grid: rgba(15, 23, 42, 0.06);
+    --axis: rgba(15, 23, 42, 0.18);
+    --real: #059669;
+    --cons: #4f46e5;
+    --syn: #d97706;
+    --fault: #e11d48;
+    --ok: #059669;
+    --rec: #2563eb;
+    --prec: #db2777;
+    --fc-da: #2563eb;
+    --fc-id: #db2777;
+    --wm: #ea580c;
+    --al-imports: #2563eb;
+    --al-hydro: #ea580c;
+    --al-other: #0d9488;
+    --al-cons: #d97706;
+    --band: rgba(15, 23, 42, 0.04);
+    --focus: #2563eb;
+    --glow-a: rgba(16, 185, 129, 0.14);
+    --glow-b: rgba(37, 99, 235, 0.13);
+    --glow-c: rgba(99, 102, 241, 0.10);
+  }
+
+  .dark {
+    color-scheme: dark;
+    --bg: #04070d;
+    --surface: #0b111e;
+    --surface-2: #121a2d;
+    --surface-3: #1a2540;
+    --line: rgba(255, 255, 255, 0.09);
+    --line-strong: rgba(255, 255, 255, 0.18);
+    --ink: #f8fafc;
+    --ink-2: #94a3b8;
+    --muted: #64748b;
+    --grid: rgba(255, 255, 255, 0.06);
+    --axis: rgba(255, 255, 255, 0.18);
+    --real: #10b981;
+    --cons: #818cf8;
+    --syn: #f59e0b;
+    --fault: #f43f5e;
+    --ok: #10b981;
+    --rec: #38bdf8;
+    --prec: #f472b6;
+    --fc-da: #38bdf8;
+    --fc-id: #f472b6;
+    --wm: #fb923c;
+    --al-imports: #38bdf8;
+    --al-hydro: #fb923c;
+    --al-other: #2dd4bf;
+    --al-cons: #facc15;
+    --band: rgba(255, 255, 255, 0.04);
+    --focus: #38bdf8;
+    --glow-a: rgba(16, 185, 129, 0.19);
+    --glow-b: rgba(56, 189, 248, 0.17);
+    --glow-c: rgba(129, 140, 248, 0.14);
+  }
+
+  html,
+  body {
+    height: 100%;
+    margin: 0;
+    background-color: var(--bg);
+    color: var(--ink);
+    font-family: "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
+    font-size: 14px;
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Deep multi-source aurora light pools behind glass panels */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: -8%;
+    pointer-events: none;
+    z-index: 0;
+    will-change: transform, opacity;
+    background:
+      radial-gradient(820px 460px at 12% 4%, var(--glow-a), transparent 65%),
+      radial-gradient(780px 480px at 88% 18%, var(--glow-b), transparent 64%),
+      radial-gradient(850px 500px at 52% 96%, var(--glow-c), transparent 66%);
+    animation: aurora-breathe 22s ease-in-out infinite alternate;
+  }
+
+  @keyframes aurora-breathe {
+    0% {
+      transform: translate3d(0%, 0%, 0) scale(1);
+      opacity: 0.92;
+    }
+    50% {
+      transform: translate3d(1.6%, -1.4%, 0) scale(1.03);
+      opacity: 1;
+    }
+    100% {
+      transform: translate3d(-1.4%, 1.6%, 0) scale(0.985);
+      opacity: 0.94;
+    }
+  }
+
+  /* Subtle spatial depth grid texture */
+  body::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    background-image:
+      linear-gradient(to right, rgba(148, 163, 184, 0.03) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(148, 163, 184, 0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    mask-image: radial-gradient(ellipse 85% 80% at 50% 45%, #000 50%, transparent 100%);
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: "Bricolage Grotesque", system-ui, -apple-system, sans-serif;
+    text-wrap: balance;
+    letter-spacing: -0.02em;
+  }
+
+  code,
+  pre,
+  .font-mono,
+  .num,
+  svg text {
+    font-family: "JetBrains Mono", monospace;
+    font-variant-ligatures: none;
+    font-variant-numeric: tabular-nums;
+  }
+
+  td,
+  th {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* ============================================================================
+   2026 SPATIAL GLASSMORPHISM & DEPTH ARCHITECTURE
+   ============================================================================ */
+
+/* Primary Elevated Frosted Glass Chamber */
+.glass-card {
+  position: relative;
+  background: linear-gradient(
+    155deg,
+    rgba(255, 255, 255, 0.86) 0%,
+    rgba(244, 248, 254, 0.74) 100%
+  );
+  backdrop-filter: blur(22px) saturate(165%);
+  -webkit-backdrop-filter: blur(22px) saturate(165%);
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-top-color: rgba(255, 255, 255, 0.95);
+  border-left-color: rgba(255, 255, 255, 0.8);
+  box-shadow:
+    0 14px 32px -10px rgba(15, 23, 42, 0.08),
+    0 4px 12px -2px rgba(15, 23, 42, 0.04),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.9);
+}
+
+.dark .glass-card {
+  background: linear-gradient(
+    155deg,
+    rgba(22, 33, 58, 0.68) 0%,
+    rgba(10, 15, 28, 0.80) 55%,
+    rgba(8, 12, 23, 0.86) 100%
+  );
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-top-color: rgba(255, 255, 255, 0.22);
+  border-left-color: rgba(255, 255, 255, 0.14);
+  box-shadow:
+    0 20px 44px -14px rgba(0, 0, 0, 0.78),
+    0 6px 18px -4px rgba(0, 0, 0, 0.52),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.16),
+    inset 0 0 32px 0 rgba(56, 189, 248, 0.04);
+}
+
+/* Specular Elevated KPI Glass Tile */
+.glass-kpi {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, 0.9) 0%,
+    rgba(241, 246, 253, 0.78) 100%
+  );
+  backdrop-filter: blur(18px) saturate(155%);
+  -webkit-backdrop-filter: blur(18px) saturate(155%);
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-top-color: rgba(255, 255, 255, 0.95);
+  box-shadow:
+    0 10px 22px -8px rgba(15, 23, 42, 0.07),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.95);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.glass-kpi::after {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 2px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.glass-kpi:hover {
+  transform: translateY(-2px);
+  border-color: rgba(15, 23, 42, 0.14);
+  border-top-color: rgba(255, 255, 255, 1);
+  box-shadow:
+    0 16px 32px -10px rgba(15, 23, 42, 0.12),
+    0 6px 14px -4px rgba(15, 23, 42, 0.06),
+    inset 0 1px 0 0 rgba(255, 255, 255, 1);
+}
+
+.dark .glass-kpi {
+  background: linear-gradient(
+    165deg,
+    rgba(26, 39, 68, 0.64) 0%,
+    rgba(11, 17, 32, 0.80) 100%
+  );
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-top-color: rgba(255, 255, 255, 0.24);
+  border-left-color: rgba(255, 255, 255, 0.14);
+  box-shadow:
+    0 12px 28px -8px rgba(0, 0, 0, 0.68),
+    0 4px 10px -2px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.18),
+    inset 0 0 20px 0 rgba(56, 189, 248, 0.035);
+}
+
+.dark .glass-kpi:hover {
+  transform: translateY(-2px);
+  border-color: rgba(56, 189, 248, 0.22);
+  border-top-color: rgba(255, 255, 255, 0.34);
+  border-left-color: rgba(255, 255, 255, 0.2);
+  box-shadow:
+    0 18px 38px -10px rgba(0, 0, 0, 0.82),
+    0 8px 18px -4px rgba(0, 0, 0, 0.56),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.26),
+    inset 0 0 26px 0 rgba(56, 189, 248, 0.075);
+}
+
+/* Semantic Telemetry Top Specular Accents */
+.glass-kpi.telemetry-nominal::after {
+  opacity: 0.9;
+  background: linear-gradient(90deg, rgba(16, 185, 129, 0.15), rgba(16, 185, 129, 0.95) 50%, rgba(16, 185, 129, 0.15));
+}
+.glass-kpi.telemetry-signal::after {
+  opacity: 0.9;
+  background: linear-gradient(90deg, rgba(14, 165, 233, 0.15), rgba(56, 189, 248, 0.95) 50%, rgba(14, 165, 233, 0.15));
+}
+.glass-kpi.telemetry-warning::after {
+  opacity: 0.9;
+  background: linear-gradient(90deg, rgba(245, 158, 11, 0.15), rgba(245, 158, 11, 0.95) 50%, rgba(245, 158, 11, 0.15));
+}
+.glass-kpi.telemetry-critical::after {
+  opacity: 0.92;
+  background: linear-gradient(90deg, rgba(244, 63, 94, 0.15), rgba(244, 63, 94, 0.95) 50%, rgba(244, 63, 94, 0.15));
+}
+.glass-kpi.telemetry-indigo::after {
+  opacity: 0.9;
+  background: linear-gradient(90deg, rgba(99, 102, 241, 0.15), rgba(129, 140, 248, 0.95) 50%, rgba(99, 102, 241, 0.15));
+}
+
+.dark .glass-kpi.telemetry-nominal:hover {
+  border-color: rgba(16, 185, 129, 0.3);
+}
+.dark .glass-kpi.telemetry-signal:hover {
+  border-color: rgba(56, 189, 248, 0.3);
+}
+.dark .glass-kpi.telemetry-warning:hover {
+  border-color: rgba(245, 158, 11, 0.3);
+}
+.dark .glass-kpi.telemetry-critical:hover {
+  border-color: rgba(244, 63, 94, 0.3);
+}
+.dark .glass-kpi.telemetry-indigo:hover {
+  border-color: rgba(129, 140, 248, 0.3);
+}
+
+/* Evidence Matrix Semantic Row Highlights */
+.telemetry-row-good {
+  background-color: rgba(16, 185, 129, 0.08);
+  box-shadow: inset 2px 0 0 rgba(5, 150, 105, 0.8);
+}
+.dark .telemetry-row-good {
+  background-color: rgba(16, 185, 129, 0.11);
+  box-shadow: inset 2px 0 0 rgba(16, 185, 129, 0.85);
+}
+
+.telemetry-row-warn {
+  background-color: rgba(245, 158, 11, 0.08);
+  box-shadow: inset 2px 0 0 rgba(217, 119, 6, 0.8);
+}
+.dark .telemetry-row-warn {
+  background-color: rgba(245, 158, 11, 0.10);
+  box-shadow: inset 2px 0 0 rgba(245, 158, 11, 0.85);
+}
+
+.telemetry-row-crit {
+  background-color: rgba(244, 63, 94, 0.08);
+  box-shadow: inset 2px 0 0 rgba(225, 29, 72, 0.85);
+}
+.dark .telemetry-row-crit {
+  background-color: rgba(244, 63, 94, 0.11);
+  box-shadow: inset 2px 0 0 rgba(244, 63, 94, 0.9);
+}
+
+/* Lens Micro-Transition (Compositor-Only) */
+@keyframes lens-enter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.lens-enter {
+  animation: lens-enter 170ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body::before {
+    animation: none !important;
+  }
+  .lens-enter {
+    animation: none !important;
+  }
+  .glass-kpi {
+    transition: none !important;
+  }
+  .glass-kpi:hover,
+  .dark .glass-kpi:hover {
+    transform: none !important;
+  }
+}
+
+/* Recessed Instrument Well (for inner boxes, KPI strips, and control tracks) */
+.glass-well {
+  background: linear-gradient(
+    180deg,
+    rgba(226, 232, 240, 0.55) 0%,
+    rgba(241, 245, 249, 0.45) 100%
+  );
+  border: 1px solid rgba(15, 23, 42, 0.07);
+  box-shadow:
+    inset 0 2px 5px rgba(15, 23, 42, 0.06),
+    0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+.dark .glass-well {
+  background: linear-gradient(
+    180deg,
+    rgba(4, 7, 14, 0.66) 0%,
+    rgba(10, 16, 30, 0.52) 100%
+  );
+  border: 1px solid rgba(255, 255, 255, 0.065);
+  border-bottom-color: rgba(255, 255, 255, 0.12);
+  box-shadow:
+    inset 0 2px 8px rgba(0, 0, 0, 0.68),
+    0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+/* Top Bar & Sidebar Frosted Chrome */
+.glass-chrome {
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(24px) saturate(170%);
+  -webkit-backdrop-filter: blur(24px) saturate(170%);
+  box-shadow: 0 4px 20px -4px rgba(15, 23, 42, 0.06);
+}
+
+.dark .glass-chrome {
+  background: linear-gradient(
+    180deg,
+    rgba(13, 20, 36, 0.78) 0%,
+    rgba(8, 13, 24, 0.84) 100%
+  );
+  backdrop-filter: blur(24px) saturate(170%);
+  -webkit-backdrop-filter: blur(24px) saturate(170%);
+  box-shadow:
+    0 8px 28px -6px rgba(0, 0, 0, 0.65),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.1);
+}
+
+/* Thin subtle scrollbars for internal table/code containers */
+.thin-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+
+/* SVG Chart Styling */
+svg.chart {
+  width: 100%;
+  height: 100%;
+  display: block;
+  overflow: visible;
+  user-select: none;
+}
+
+svg.chart text {
+  font-size: 10.5px;
+  fill: var(--muted);
+}
+
+svg.chart text.unit {
+  font-size: 10px;
+  fill: var(--muted);
+  font-weight: 500;
+}
+
+svg.chart text.lbl {
+  font-size: 10.5px;
+  font-weight: 600;
+  fill: var(--ink);
+}
+
+svg.chart text.tip-text {
+  font-size: 11px;
+  fill: var(--ink-2);
+}
+
+svg.chart text.tip-text tspan.t0 {
+  fill: var(--ink);
+  font-weight: 600;
+}
+
+svg.chart rect.tip-hit {
+  fill: transparent;
+  cursor: crosshair;
+  outline: none;
+}
+
+svg.chart rect.tip-hit:focus-visible {
+  stroke: var(--focus);
+  stroke-width: 1.5px;
+  stroke-dasharray: 4 3;
+}

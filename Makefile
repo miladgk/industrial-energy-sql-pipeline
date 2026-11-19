@@ -1,4 +1,4 @@
-.PHONY: install install-pip up down db-setup sync snapshot-restore quality-checks report export benchmark api test test-smoke test-api test-integration test-regression test-e2e test-performance test-security test-data load-test security clean
+.PHONY: install install-pip up down db-setup sync snapshot-restore quality-checks report export benchmark api test test-smoke test-api test-integration test-regression test-e2e test-performance test-security test-data load-test security clean site site-dev
 
 SNAPSHOT_URL = https://github.com/miladgk/industrial-energy-sql-pipeline/releases/download/warehouse-snapshot/fingrid_observation.csv.gz
 
@@ -38,6 +38,13 @@ report:              ## every analysis query -> outputs/*.csv
 export:              ## rebuild the dashboard data files in docs/data/
 	python scripts/export_dashboard_data.py
 
+site:                ## build the dashboard (web/) into web/dist/ (needs Node.js 20+)
+	npm --prefix web ci
+	npm --prefix web run build
+
+site-dev:            ## dashboard dev server on http://localhost:3000 (reads docs/data/)
+	npm --prefix web run dev
+
 benchmark:           ## re-measure benchmarks/index_benchmark.md
 	python scripts/benchmark_warehouse.py
 
@@ -60,7 +67,7 @@ test-integration:
 test-regression:
 	pytest -m regression -v
 
-test-e2e:
+test-e2e: site
 	pytest -m e2e -v   # needs: pip install playwright && playwright install chromium
 
 test-performance:

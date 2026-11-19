@@ -2,9 +2,10 @@ name: Deploy dashboard to GitHub Pages
 
 # Runs on every push to main, when refresh_fingrid.yml asks for it, and every hour.
 # Each run fetches the newest Fingrid values into docs/data/fingrid_latest.json
-# (two small API requests) and deploys it with the site. That file is git-ignored,
-# so the hourly refresh adds no commits; the 365-day history stays in
-# refresh_fingrid.yml, which runs once a day.
+# (two small API requests), builds the dashboard (web/, Vite + React) and deploys
+# web/dist/, which holds the page plus a copy of docs/data/ and docs/assets/.
+# fingrid_latest.json is git-ignored, so the hourly refresh adds no commits; the
+# 365-day history stays in refresh_fingrid.yml, which runs once a day.
 
 on:
   push:
@@ -28,7 +29,7 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -48,9 +49,22 @@ jobs:
           FINGRID_API_KEY: ${{ secrets.FINGRID_API_KEY }}
         run: python scripts/export_dashboard_data.py --parts fingrid-latest
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      # Copies docs/data/ (including the file fetched above) and docs/assets/ into web/dist/.
+      - name: Build the dashboard
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: docs
+          path: web/dist
       - id: deployment
         uses: actions/deploy-pages@v4
