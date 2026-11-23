@@ -10,7 +10,7 @@
 
 Fingrid, Finland's electricity transmission system operator, publishes hundreds of
 measurements and forecasts as [open data](https://data.fingrid.fi), one chart at a
-time. This project keeps 35 of them in a partitioned PostgreSQL warehouse, refreshed
+time. This project keeps 36 of them in a partitioned PostgreSQL warehouse, refreshed
 every day, and answers questions no single chart does:
 
 | Question | Answer over the last 12 months | Where |
@@ -82,7 +82,7 @@ test runs against real data and needs no Fingrid key.
 ## The warehouse
 
 ```
-fingrid_dataset (35 rows)                fingrid_observation (~8.9 M rows since Nov 2023, ~3 M more a year)
+fingrid_dataset (36 rows)                fingrid_observation (~8.9 M rows since Nov 2023, ~3 M more a year)
   dataset_id  PK                           dataset_id  FK -> fingrid_dataset   ┐ primary key
   key, name, unit                          start_time  partition key           ┘
   kind  actual | forecast | capacity |     end_time
